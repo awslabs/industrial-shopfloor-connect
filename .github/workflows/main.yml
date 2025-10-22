@@ -1,0 +1,30 @@
+---
+# This pipeline is for running builds
+name: Build-Checks
+
+# Controls when the workflow will run
+on:
+  push:
+    # Triggers the workflow for feature branches and main (final confirmation)
+    branches:
+      - "bugfix/*"
+      - "feature/*"
+      - "main"
+  pull_request:
+    branches:
+      - main
+      - release/*
+
+jobs:
+  CheckBuild:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'corretto' # See 'Supported distributions' for available options
+          java-version: '21'
+      - name: build using gradle
+        run: |
+          ./gradlew build

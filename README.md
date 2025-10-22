@@ -93,14 +93,14 @@ At first, we have to download and extract the SFC bundles. These are precompiled
 
 ```shell
 # Define sfc version and directory
-export VERSION=$(curl -s "https://api.github.com/repos/aws-samples/shopfloor-connectivity/tags" | jq -r '.[0].name')
+export VERSION=$(curl -s "https://api.github.com/repos/awslabs/industrial-shopfloor-connect/tags" | jq -r '.[0].name')
 export SFC_DEPLOYMENT_DIR="./sfc"
 ```
 
 ```shell
 # Download and extract bundles into folder ./sfc
 mkdir $SFC_DEPLOYMENT_DIR && cd $SFC_DEPLOYMENT_DIR
-wget https://github.com/aws-samples/shopfloor-connectivity/releases/download/$VERSION/\
+wget https://github.com/awslabs/industrial-shopfloor-connect/releases/download/$VERSION/\
 {aws-s3-target,debug-target,opcua,sfc-main}.tar.gz
 
 for file in *.tar.gz; do

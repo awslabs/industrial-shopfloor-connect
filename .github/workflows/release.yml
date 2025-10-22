@@ -1,0 +1,31 @@
+on:
+  push:
+    # Sequence of patterns matched against refs/tags
+    tags:
+      - 'v*' # Push events to matching v*, i.e. v1.0
+
+name: Create Release
+
+jobs:
+  build:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: 'corretto' # See 'Supported distributions' for available options
+          java-version: '21'
+      - name: build using gradle
+        run: |
+          ./gradlew build
+          cd build/distribution
+          for i in *.tar.gz; do sha512sum $i > $i.sha512sum; done'
+          for i in *.tar.gz.sha512sum; do sha512sum -c $i; done
+      - name: release using gh cli
+        env:
+          TAG_VAL: ${{ github.ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create $TAG_VAL *.tar.gz *.tar.gz.sha512sum --repo $GITHUB_REPOSITORY
