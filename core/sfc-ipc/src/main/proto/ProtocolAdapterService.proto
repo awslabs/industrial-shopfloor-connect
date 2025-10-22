@@ -1,0 +1,70 @@
+
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: MIT-0
+
+
+//SFC protocol service
+
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/empty.proto";
+import "Types.proto";
+import "Metrics.proto";
+
+package com.amazonaws.sfc.ipc;
+
+option java_multiple_files = true;
+
+// gRPC service to stream source data from server to SFC code
+service ProtocolAdapterService {
+  // Reads values, server side streaming
+  rpc ReadValues(ReadValuesRequest) returns(stream ReadValuesReply) {}
+  rpc ReadMetrics(ReadMetricsRequest) returns(stream MetricsDataMessage){}
+  rpc InitializeAdapter(InitializeAdapterRequest) returns (InitializeAdapterResponse){}
+}
+
+
+message InitializeAdapterResponse{
+  bool initialized = 1;
+  string error = 2;
+}
+
+
+// Request for ReadValues
+message ReadValuesRequest{
+  // Sources and channels to read
+  repeated SourceReadValueRequest sources = 1;
+  // Read interval
+  int64 interval = 2;
+  // Schedule name
+  optional string scheduleName = 3;
+}
+
+// Source and its channels to read
+message SourceReadValueRequest {
+  // ID of the source
+  string sourceID = 1;
+  // IDs of the channels
+  repeated string channels = 2;
+}
+
+// Reply containing read source/channel values
+message ReadValuesReply{
+  repeated SourceReadValuesReply sources = 1;
+  bytes compressed = 2;
+}
+
+// Values fro a single source
+message SourceReadValuesReply {
+  // ID of the source
+  string sourceID = 1;
+  // Channel values
+  map<string, ChannelValue> values = 2;
+  // Source/server level timestamp
+  google.protobuf.Timestamp timestamp = 3;
+  // Read error
+  string error = 4;
+
+}
+

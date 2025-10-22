@@ -1,0 +1,59 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.SPDX-License-Identifier: MIT-0
+ */
+
+package com.amazonaws.sfc.transformations
+
+import com.google.gson.Gson
+import com.google.gson.JsonObject
+import org.junit.jupiter.api.Assertions
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
+
+class LnTest {
+
+    @Test
+    fun `create and validation`() {
+        Assertions.assertDoesNotThrow {
+            Ln.create().validate()
+        }
+    }
+
+    @Test
+    fun `deserialize from json`() {
+
+        val json = """
+            {
+               "Operator": "Ln"
+            }"""
+        assertEquals(Ln.create(), Ln.fromJson(Gson().fromJson(json, JsonObject::class.java)))
+    }
+
+    @Test
+    fun `operator logic and return types`() {
+        val testValues = listOf<Pair<Number?, Number?>>(
+            Pair(0.0.toFloat(), kotlin.math.ln(0.0.toFloat())),
+            Pair(1.0.toFloat(), kotlin.math.ln(1.0.toFloat())),
+            Pair(0.0, kotlin.math.ln(0.0)),
+            Pair(1.0, kotlin.math.ln(1.0)),
+            Pair(0, kotlin.math.ln(0.0)),
+            Pair(1, kotlin.math.ln(1.0)),
+            Pair(null, null),
+            Pair(Double.NaN, null),
+            Pair(-1, null))
+
+
+        val ln = Ln.create()
+        for (v in testValues) {
+            val target: Number? = v.first
+            val result = ln.apply(target)
+            assertEquals(v.second, result, if (v.first != null) v.first!!::class.java.name else "null")
+            if (result != null) {
+                assertTrue(result::class == if (target is Float) Float::class else Double::class)
+            }
+        }
+    }
+
+}
+

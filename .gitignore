@@ -1,0 +1,11 @@
+**/BuildConfig.kt
+
+build/
+.gradle/
+.idea/
+*.db
+/gradle/
+.cline
+.kiro
+.vscode
+.kotlin

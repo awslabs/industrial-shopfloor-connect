@@ -1,0 +1,36 @@
+
+// Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+// SPDX-License-Identifier: MIT-0
+
+
+// SFC target service
+
+syntax = "proto3";
+
+import "google/protobuf/empty.proto";
+import "Metrics.proto";
+
+package com.amazonaws.sfc.ipc;
+
+option java_multiple_files = true;
+
+// Service to stream output values from SFC core to target services
+service MetricsWriterService{
+  // Client side streaming of values to target service
+  rpc WriteMetrics(stream MetricsDataMessage) returns (google.protobuf.Empty);
+  rpc InitializeMetricsWriter(InitializeMetricsWriterRequest) returns (InitializeMetricsWriterResponse){}
+}
+
+
+message InitializeMetricsWriterRequest{
+  string metricsConfiguration = 1;
+}
+
+message InitializeMetricsWriterResponse{
+  bool initialized = 1;
+  string error = 2;
+}
+
+
+
+
