@@ -4,7 +4,6 @@ build/
 .gradle/
 .idea/
 *.db
-/gradle/
 .cline
 .kiro
 .vscode
