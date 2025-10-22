@@ -22,7 +22,7 @@ jobs:
         run: |
           ./gradlew build
           cd build/distribution
-          for i in *.tar.gz; do sha512sum $i > $i.sha512sum; done'
+          for i in *.tar.gz; do sha512sum $i > $i.sha512sum; done
           for i in *.tar.gz.sha512sum; do sha512sum -c $i; done
       - name: release using gh cli
         env:
