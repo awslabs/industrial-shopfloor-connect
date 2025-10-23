@@ -1,4 +1,4 @@
-# Custom Log Writer
+# Custom Target Formatter
 
 Template for custom target formaatter
 
