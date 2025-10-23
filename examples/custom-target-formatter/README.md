@@ -1,5 +1,5 @@
 # Custom Target Formatter
 
-Template for custom target formaatter
+Sample Kotlin Project for [custom target formatter](../../docs/sfc-extending.md#custom-formatters)
 
 [Examples](../../docs/examples/README.md)
