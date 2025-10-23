@@ -512,7 +512,7 @@ abstract class TargetFormatter(val configuration: String, val logger : Logger) {
 }
 ```
 
-
+> You find a full **example Target formatter Kotlin project** [`here`](../examples/custom-target-formatter).
 
 The constructor accepts two parameters that can be utilized by the custom formatter.
 
