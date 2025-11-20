@@ -1,6 +1,8 @@
 Shop Floor Connectivity (SFC) Framework
 =======================================
 
+> This repository is the successor of the archived [aws-samples/shopfloor-connectivity](https://github.com/aws-samples/shopfloor-connectivity) repo.
+
 ## Introduction
 
 Shop Floor Connectivity (SFC) is a data ingestion technology that can deliver data to multiple AWS Services.
