@@ -174,44 +174,44 @@ cat << EOF > $SFC_DEPLOYMENT_DIR/example.json
         "SourceReadingMode": "Polling",
         "SubscribePublishingInterval": 100,
         "Channels": {
-          "ServerStatus": {
-            "Name": "ServerStatus",
-            "NodeId": "ns=0;i=2256"
-          },
-          "ServerTime": {
-            "Name": "ServerTime",
-            "NodeId": "ns=0;i=2256",
-            "Selector": "@.currentTime"
-          },
-          "State": {
-            "Name": "State",
-            "NodeId": "ns=0;i=2259"
-          },
-          "Machine1AbsoluteErrorTime": {
-            "Name": "AbsoluteErrorTime",
-            "NodeId": "ns=21;i=59048"
-          },
-          "Machine1AbsoluteLength": {
-            "Name": "AbsoluteLength",
-            "NodeId": "ns=21;i=59066"
-          },
-          "Machine1AbsoluteMachineOffTime": {
-            "Name": "AbsoluteMachineOffTime",
-            "NodeId": "ns=21;i=59041"
-          },
-          "Machine1AbsoluteMachineOnTime": {
-            "Name": "AbsoluteMachineOnTime",
-            "NodeId": "ns=21;i=59050"
-          },
-          "Machine1AbsolutePiecesIn": {
-            "Name": "AbsolutePiecesIn",
-            "NodeId": "ns=21;i=59068"
-          },
-          "Machine1FeedSpeed": {
-            "Name": "FeedSpeed",
-            "NodeId": "ns=21;i=59039"
-          }
-        }
+                "ServerStatus": {
+                    "Name": "ServerStatus",
+                    "NodeId": "ns=0;i=2256"
+                },
+                "ServerTime": {
+                    "Name": "ServerTime",
+                    "NodeId": "ns=0;i=2256",
+                    "Selector": "@.currentTime"
+                },
+                "State": {
+                    "Name": "State",
+                    "NodeId": "ns=0;i=2259"
+                },
+                "Machine1AbsoluteErrorTime": {
+                    "Name": "AbsoluteErrorTime",
+                    "NodeId": "ns=20;i=59217"
+                },
+                "Machine1AbsoluteLength": {
+                    "Name": "AbsoluteLength",
+                    "NodeId": "ns=20;i=59235"
+                },
+                "Machine1AbsoluteMachineOffTime": {
+                    "Name": "AbsoluteMachineOffTime",
+                    "NodeId": "ns=20;i=59210"
+                },
+                "Machine1AbsoluteMachineOnTime": {
+                    "Name": "AbsoluteMachineOnTime",
+                    "NodeId": "ns=20;i=59219"
+                },
+                "Machine1AbsolutePiecesIn": {
+                    "Name": "AbsolutePiecesIn",
+                    "NodeId": "ns=20;i=59237"
+                },
+                "Machine1FeedSpeed": {
+                    "Name": "FeedSpeed",
+                    "NodeId": "ns=20;i=59208"
+                }
+            }
       }
     },
     "Targets": {
