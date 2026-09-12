@@ -164,6 +164,8 @@ class AwsS3TablesTargetWriter(
         val config = credentialClientConfig
         if (config == null) {
             log.info("Using default AWS credentials provider")
+            // The default provider has no worker to signal readiness, so signal it here
+            credentialsAvailableChannel.trySend(true)
             DefaultCredentialsProvider.create()
         } else {
             log.info("Using SFC credential provider client ${targetConfiguration.credentialProviderClient}")
