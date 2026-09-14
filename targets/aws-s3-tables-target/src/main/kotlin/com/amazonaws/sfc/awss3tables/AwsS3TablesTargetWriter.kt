@@ -396,7 +396,6 @@ class AwsS3TablesTargetWriter(
 
         val log = logger.getCtxLoggers(className, "build")
 
-        val missingValues = mutableListOf<String>()
         val targetDataMap = targetData.toMap(writerConfiguration.elementNames, true)
 
         val recordsData = sequence {
@@ -405,6 +404,7 @@ class AwsS3TablesTargetWriter(
             table.mappings.forEachIndexed { tableMappingIndex, tableMapping: Map<String, ColumnMappingConfiguration> ->
 
                 val filteredByValueFilter = mutableListOf<Pair<String, Any>>()
+                val missingValues = mutableListOf<String>()
                 // get thet data for a record for each tableMapping
                 val mappedRecordData = sequence {
 
