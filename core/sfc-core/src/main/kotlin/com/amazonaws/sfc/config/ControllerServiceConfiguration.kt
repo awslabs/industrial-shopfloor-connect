@@ -219,7 +219,7 @@ class ControllerServiceConfiguration : ServiceConfiguration() {
     // validates a configured channel in a source
     private fun validateChannel(sourceID: String, channelID: String, channel: ChannelConfiguration) {
 
-        validateChannelName(sourceID, channel)
+        validateChannelName(sourceID, channelID)
         validateChannelTransformation(sourceID, channelID, channel)
         validateChannelValueFilter(sourceID, channelID, channel)
         validateChannelChangeFilter(sourceID, channelID, channel)
@@ -285,10 +285,10 @@ class ControllerServiceConfiguration : ServiceConfiguration() {
         )
     }
 
-    private fun validateChannelName(sourceID: String, channel: ChannelConfiguration) {
+    private fun validateChannelName(sourceID: String, channelID: String) {
         ConfigurationException.check(
-            ChannelConfiguration.CHANNEL_SEPARATOR !in sourceID,
-            "ChannelID \"$channel\" of source \"$sourceID\" can not contain '${ChannelConfiguration.CHANNEL_SEPARATOR}' character",
+            ChannelConfiguration.CHANNEL_SEPARATOR !in channelID,
+            "ChannelID \"$channelID\" of source \"$sourceID\" can not contain '${ChannelConfiguration.CHANNEL_SEPARATOR}' character",
             "Channels",
             sources[sourceID]?.channels
         )
