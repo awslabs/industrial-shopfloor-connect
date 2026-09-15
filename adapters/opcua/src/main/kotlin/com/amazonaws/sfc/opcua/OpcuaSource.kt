@@ -47,7 +47,6 @@ import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.Unsigned.uint
 import org.eclipse.milo.opcua.stack.core.types.enumerated.*
 import org.eclipse.milo.opcua.stack.core.types.structured.*
 import org.eclipse.milo.opcua.stack.core.util.EndpointUtil
-import sun.security.x509.X509CertImpl
 import java.net.URI
 import java.security.KeyPair
 import java.security.cert.X509Certificate
@@ -569,7 +568,7 @@ open class OpcuaSource(
         this.setKeyPair(keyPair)
 
 
-        val uri = (certificate as? X509CertImpl?)?.subjectAlternativeApplicationUri
+        val uri = certificate?.subjectAlternativeApplicationUri
         if (uri == null) {
             log.warning("Application URI is not set in certificate")
         } else {

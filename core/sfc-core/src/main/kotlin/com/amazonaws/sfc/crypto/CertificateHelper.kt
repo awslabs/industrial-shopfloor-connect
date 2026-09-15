@@ -11,9 +11,6 @@ import com.amazonaws.sfc.system.DateTime.add
 import com.amazonaws.sfc.system.DateTime.systemDateUTC
 import com.amazonaws.sfc.util.constrainFilePermissions
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter
-import sun.security.x509.GeneralNameInterface
-import sun.security.x509.URIName
-import sun.security.x509.X509CertImpl
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileWriter
@@ -26,19 +23,18 @@ import java.time.Period
 import kotlin.io.path.Path
 import kotlin.io.path.exists
 
-val X509CertImpl.subjectAlternativeApplicationName: String?
-    get() {
-        val uri = this.subjectAlternativeApplicationUri
-        return uri?.schemeSpecificPart
-    }
+// GeneralName type tag for uniformResourceIdentifier, as returned by X509Certificate.getSubjectAlternativeNames()
+private const val SAN_TYPE_URI = 6
 
-val X509CertImpl.subjectAlternativeApplicationUri: URI?
+val X509Certificate.subjectAlternativeApplicationName: String?
+    get() = this.subjectAlternativeApplicationUri?.schemeSpecificPart
+
+val X509Certificate.subjectAlternativeApplicationUri: URI?
     get() {
-        val subjectNameUri =
-            this.subjectAlternativeNameExtension?.get("subject_name")?.names()?.firstOrNull {
-                it.name.type == GeneralNameInterface.NAME_URI
-            }
-        return (subjectNameUri?.name as URIName?)?.uri
+        val uriName = this.subjectAlternativeNames
+            ?.firstOrNull { (it.getOrNull(0) as? Int) == SAN_TYPE_URI }
+            ?.getOrNull(1) as? String
+        return uriName?.let { URI(it) }
     }
 
 open class CertificateHelper(protected val config: CertificateConfiguration, protected val logger: Logger) {

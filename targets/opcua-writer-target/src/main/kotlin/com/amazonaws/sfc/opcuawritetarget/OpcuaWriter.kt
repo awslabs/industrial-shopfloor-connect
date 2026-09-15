@@ -39,7 +39,6 @@ import org.eclipse.milo.opcua.stack.core.types.structured.EndpointDescription
 import org.eclipse.milo.opcua.stack.core.types.structured.ServiceFault
 import org.eclipse.milo.opcua.stack.core.types.structured.UserTokenPolicy
 import org.eclipse.milo.opcua.stack.core.util.EndpointUtil
-import sun.security.x509.X509CertImpl
 import java.net.URI
 import java.security.cert.X509Certificate
 import java.time.Instant
@@ -235,7 +234,7 @@ open class OpcuaWriter(
         this.setKeyPair(keyPair)
 
 
-        val uri = (certificate as? X509CertImpl?)?.subjectAlternativeApplicationUri
+        val uri = certificate?.subjectAlternativeApplicationUri
         if (uri == null) {
             log.warning("Application URI is not set in certificate")
         } else {

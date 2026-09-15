@@ -22,7 +22,7 @@ import io.grpc.netty.shaded.io.netty.handler.ssl.ApplicationProtocolConfig
 import io.grpc.netty.shaded.io.netty.handler.ssl.ApplicationProtocolNames
 import io.grpc.netty.shaded.io.netty.handler.ssl.ClientAuth
 import io.grpc.netty.shaded.io.netty.handler.ssl.SslContextBuilder
-import sun.security.rsa.RSAPrivateCrtKeyImpl
+import java.security.interfaces.RSAPrivateCrtKey
 import java.io.File
 import java.net.InetSocketAddress
 
@@ -101,7 +101,7 @@ abstract class IpcBaseService(val serverConfig: ServerConfiguration, val logger:
         if (serverCertificateFile == null) throw Exception("Required server certificate for server side TLS not specified")
         if (serverPrivateKeyFile == null) throw Exception("Required server private key for server side TLS not specified")
 
-        val serverKey: RSAPrivateCrtKeyImpl? = KeyHelpers.loadPrivateKey(serverPrivateKeyFile) as? RSAPrivateCrtKeyImpl?
+        val serverKey: RSAPrivateCrtKey? = KeyHelpers.loadPrivateKey(serverPrivateKeyFile) as? RSAPrivateCrtKey?
         val pkcs8Key = try {
             serverKey?.asPKCS8 ?: ByteArray(0)
         } catch (e: Exception) {
