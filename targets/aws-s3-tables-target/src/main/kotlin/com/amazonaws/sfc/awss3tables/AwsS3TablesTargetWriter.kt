@@ -284,6 +284,7 @@ class AwsS3TablesTargetWriter(
                 throw TargetException("Could not load table \"$tableIdentifier\"")
             } else {
                 log.info("Schema for table \"$tableIdentifier\" is \n${catalogTable.schema()}")
+                validateConfiguredSchema(tableIdentifier, tableConfiguration, catalogTable)
                 if (catalogTable.spec().isPartitioned) {
                     log.info("Partition specification for \"$tableIdentifier\" is ${catalogTable.spec()}")
                 }
@@ -293,6 +294,24 @@ class AwsS3TablesTargetWriter(
         }
     }
 
+
+    // Every configured column must exist in the table with the same type. Column order does not
+    // have to match because records are built by name, but a configured column the table does not
+    // have, or a type that differs, would fail at write time with an unhelpful error.
+    private fun validateConfiguredSchema(tableIdentifier: TableIdentifier, tableConfiguration: TableConfiguration, catalogTable: Table) {
+        val tableFields = catalogTable.schema().columns().associateBy { it.name() }
+        val problems = tableConfiguration.catalogSchema.columns().mapNotNull { configured ->
+            val actual = tableFields[configured.name()]
+            when {
+                actual == null -> "column \"${configured.name()}\" is not in the table"
+                actual.type() != configured.type() -> "column \"${configured.name()}\" is ${configured.type()} in the configuration but ${actual.type()} in the table"
+                else -> null
+            }
+        }
+        if (problems.isNotEmpty()) {
+            throw TargetException("Configured schema for table \"$tableIdentifier\" does not match the table: ${problems.joinToString("; ")}")
+        }
+    }
 
     private fun setupNamespace() {
         val log = logger.getCtxLoggers(className, "setupNamespace")
@@ -472,9 +491,12 @@ class AwsS3TablesTargetWriter(
         val tableBuffer = buffers.computeIfAbsent(table.tableName) { RecordBuffer() }
 
         var recordCount = 0
+        // Records are created from the schema of the loaded table, not the configured one, so
+        // values are placed by column name regardless of the order of the configured Schema.
+        val catalogTable = catalogTables[TableIdentifier.of(targetConfiguration.namespace, table.tableName)]
+            ?: throw TargetException("Table \"${table.tableName}\" is not loaded")
         recordsData.forEach { data ->
-            val record = GenericRecord.create(table.catalogSchema).copy(data)
-            // record = record.copy(data)
+            val record = GenericRecord.create(catalogTable.schema()).copy(data)
             log.trace("Created record $record")
             tableBuffer.addRecord(targetData.serial, record)
             recordCount += 1
