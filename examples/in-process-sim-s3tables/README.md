@@ -471,6 +471,11 @@ explorable without a SQL client. It exists because writing Iceberg is only half 
 can see the data, you cannot tell whether the schema mapping, the partitioning or the batching
 settings above were the right ones.
 
+| Sign in | Pick a table | Drill down |
+|:--:|:--:|:--:|
+| ![Sign-in page](./docs/login.png) | ![Table and series pickers with the stat tiles](./docs/ux1.png) | ![Chart and the rows behind it](./docs/ux2.png) |
+| Cognito managed login behind an authorization-code + PKCE redirect. The theme toggle applies here too. | Bucket, namespace and table are chosen at runtime; the series chips and the time axis come from the table's own schema. | Three tags at a 50 ms bucket width, with the 474 raw rows of the charted window listed beneath it. |
+
 Why it is worth deploying rather than just reading:
 
 - **It proves the data is queryable by anything.** The Lambda attaches the table bucket with the same
