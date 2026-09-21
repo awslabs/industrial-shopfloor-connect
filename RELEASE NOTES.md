@@ -1,5 +1,12 @@
 # Release Notes:
 
+## version 1.11.0, 21  Sept 2026
+
+- S3Tables adapter & core fixes by [mellerbeck](https://github.com/mellerbeck)
+- New [S3Tables example](./examples/in-process-sim-s3tables/README.md) plus demo CDK stack featuring DuckDB Iceberg query layer
+
+---
+
 ## version 1.10.3, 12  Aug 2025
 
 - Restored creation of the sfc deployment bundle
