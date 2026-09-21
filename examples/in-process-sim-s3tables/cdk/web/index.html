@@ -1,0 +1,150 @@
+<!doctype html>
+<!--
+  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+  SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SFC · Iceberg timeseries explorer</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Signed-out landing view. Shown first, before any token exists. -->
+    <main id="login-view" class="login" hidden>
+      <div class="login-card">
+        <h1>Shop Floor Connectivity</h1>
+        <p class="lede">Iceberg timeseries explorer</p>
+        <p class="blurb">
+          Query high-frequency industrial machine data that SFC wrote to Amazon S3 Tables, using
+          DuckDB in AWS Lambda. Drill into any numeric tag over any time window without moving the
+          data out of your Iceberg tables.
+        </p>
+        <button id="sign-in" class="primary" type="button">Sign in</button>
+        <p id="login-error" class="error" hidden></p>
+        <p class="fineprint">
+          Sign-in is handled by Amazon Cognito managed login. Accounts are created by an
+          administrator with <code>scripts/create-user.sh</code>.
+        </p>
+        <!--
+          Shown so that a Cognito error page - which never names the client it rejected - can be
+          matched against the stack's UserPoolClientId output.
+        -->
+        <p class="fineprint" id="login-client" hidden></p>
+      </div>
+    </main>
+
+    <!-- Signed-in application shell. -->
+    <div id="app-view" hidden>
+      <header class="topbar">
+        <div class="brand">
+          <strong>SFC</strong>
+          <span>Iceberg timeseries explorer</span>
+        </div>
+        <div class="session">
+          <span id="user-name" class="user-name" title="Signed-in subject"></span>
+          <button id="sign-out" class="ghost" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <div class="layout">
+        <aside class="sidebar">
+          <section class="panel">
+            <h2>Source</h2>
+
+            <label for="table-bucket">S3 Tables bucket</label>
+            <div class="row">
+              <input
+                id="table-bucket"
+                list="table-bucket-options"
+                type="text"
+                spellcheck="false"
+                autocomplete="off"
+                placeholder="sfc-industrial-data-bucket"
+              />
+              <datalist id="table-bucket-options"></datalist>
+            </div>
+            <p class="hint" id="bucket-hint"></p>
+
+            <label for="namespace">Namespace</label>
+            <select id="namespace"></select>
+
+            <label for="table">Table</label>
+            <select id="table"></select>
+
+            <button id="load-table" class="primary" type="button">Load table</button>
+          </section>
+
+          <section class="panel" id="shape-panel" hidden>
+            <h2>Chart</h2>
+
+            <label for="time-column">Time axis</label>
+            <select id="time-column"></select>
+
+            <label for="value-columns">Numeric columns</label>
+            <select id="value-columns" multiple size="6"></select>
+            <p class="hint">Cmd- or Ctrl-click to select several.</p>
+
+            <label for="dim-column">Split by (optional)</label>
+            <select id="dim-column">
+              <option value="">— none —</option>
+            </select>
+
+            <div id="dim-values-wrap" hidden>
+              <label for="dim-values">Values</label>
+              <select id="dim-values" multiple size="6"></select>
+              <p class="hint">
+                For narrow tables where one row is one tag reading, pick the tags to plot.
+              </p>
+            </div>
+
+            <label class="check">
+              <input id="show-band" type="checkbox" checked />
+              Show min/max band
+            </label>
+            <label class="check">
+              <input id="show-trend" type="checkbox" />
+              Fit a linear trend
+            </label>
+
+            <button id="draw" class="primary" type="button">Draw</button>
+          </section>
+
+          <section class="panel" id="schema-panel" hidden>
+            <h2>Columns</h2>
+            <table class="schema" id="schema-table">
+              <thead>
+                <tr><th>Column</th><th>Type</th><th>Role</th></tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
+        </aside>
+
+        <main class="content">
+          <div class="statusbar">
+            <span id="status" class="status"></span>
+            <span id="meta" class="meta"></span>
+          </div>
+          <div id="chart" class="chart"></div>
+          <div id="trend-badges" class="badges"></div>
+          <details id="rows-details" class="rows">
+            <summary>Row preview</summary>
+            <div id="rows" class="rows-body"></div>
+          </details>
+        </main>
+      </div>
+    </div>
+
+    <!--
+      Vendored rather than loaded from a CDN: cdn.plot.ly publishes no subresource-integrity hashes,
+      and self-hosting keeps the Content-Security-Policy free of third-party script hosts.
+      The `basic` bundle is used because the WebGL traces in the full bundle build kernels with the
+      Function constructor, which would force script-src 'unsafe-eval'.
+    -->
+    <script src="vendor/plotly-basic-4.1.1/plotly-basic.min.js"></script>
+    <script src="auth.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

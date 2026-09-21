@@ -1,0 +1,166 @@
+{
+  "AWSVersion": "2022-04-02",
+  "Name": "SFC-Simulator-to-AWS-S3-Tables",
+  "Description": "S3-Tables demo",
+  "LogLevel": "Info",
+  "Schedules": [
+    {
+      "Name": "SimSchedule",
+      "Interval": 250,
+      "Active": "true",
+      "TimestampLevel": "Both",
+      "Sources": {
+        "Simulator": [
+          "*"
+        ]
+      },
+      "Targets": [
+        "S3TablesTarget",
+        "#DEBUGTarget"
+      ]
+    }
+  ],
+  "Sources": {
+    "Simulator": {
+      "Name": "Sim",
+      "ProtocolAdapter": "SimulatorAdapter",
+      "Channels": {
+        "counter": {
+          "Simulation": {
+            "SimulationType": "Counter",
+            "DataType": "Int",
+            "Min": 0,
+            "Max": 100
+          }
+        },
+        "sinus": {
+          "Simulation": {
+            "SimulationType": "Sinus",
+            "DataType": "Byte",
+            "Min": 0,
+            "Max": 100
+          }
+        },
+        "triangle": {
+          "Simulation": {
+            "SimulationType": "Triangle",
+            "DataType": "Byte",
+            "Min": 0,
+            "Max": 100
+          }
+        }
+      }
+    }
+  },
+  "Targets": {
+    "S3TablesTarget": {
+      "Active": "True",
+      "TargetType": "AWS-S3-TABLES",
+      "Region": "${AWS_REGION}",
+      "TableBucket": "sfc-industrial-data-bucket",
+      "Namespace": "sfc",
+      "AutoCreate": true,
+      "Tables": [
+        {
+          "TableName": "sim",
+          "Schema": [
+            {
+              "Name": "event_time",
+              "Type": "timestamptz",
+              "Optional": false
+            },
+            {
+              "Name": "counter",
+              "Type": "float",
+              "Optional": false
+            },
+            {
+              "Name": "sinus",
+              "Type": "float",
+              "Optional": true
+            },
+            {
+              "Name": "triangle",
+              "Type": "float",
+              "Optional": true
+            },
+            {
+              "Name": "build_info",
+              "Type": [
+                {
+                  "Name": "number",
+                  "Type": "string"
+                },
+                {
+                  "Name": "version",
+                  "Type": "string"
+                }
+              ],
+              "Optional": false
+            }
+          ],
+          "Mappings": [
+            {
+              "event_time": {
+                "ValueQuery": "@.timestamp"
+              },
+              "counter": {
+                "ValueQuery": "@.sources.Sim.values.counter.value"
+              },
+              "sinus": {
+                "ValueQuery": "@.sources.Sim.values.sinus.value"
+              },
+              "triangle": {
+                "ValueQuery": "@.sources.Sim.values.triangle.value"
+              },
+              "build_info": {
+                "Mappings": {
+                  "number": {
+                    "ValueQuery": "@.sources.Sim.values.triangle.value"
+                  },
+                  "version": {
+                    "ValueQuery": "@.sources.Sim.values.triangle.value"
+                  }
+                }
+              }
+            }
+          ],
+          "Partition": {
+            "day": "event_time"
+          }
+        }
+      ]
+    },
+    "DEBUGTarget": {
+      "Active": "true",
+      "TargetType": "DEBUG-TARGET"
+    }
+  },
+  "TargetTypes": {
+    "DEBUG-TARGET": {
+      "JarFiles": [
+        "${SFC_MODULES_DIR}/debug-target/lib"
+      ],
+      "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+    },
+    "AWS-S3-TABLES": {
+      "JarFiles": [
+        "${SFC_MODULES_DIR}/aws-s3-tables-target/lib"
+      ],
+      "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
+    }
+  },
+  "AdapterTypes": {
+    "SIMULATOR": {
+      "JarFiles": [
+        "${SFC_MODULES_DIR}/simulator/lib"
+      ],
+      "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+    }
+  },
+  "ProtocolAdapters": {
+    "SimulatorAdapter": {
+      "AdapterType": "SIMULATOR"
+    }
+  }
+}

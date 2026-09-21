@@ -1,0 +1,9 @@
+# Deliberately does NOT ignore *.js or *.d.ts, which `cdk init`'s stock file does: the web app is
+# hand-written JavaScript and web/vendor/ holds a vendored Plotly bundle, all of which must be
+# committed.
+node_modules/
+cdk.out/
+.cdk.staging/
+cdk.context.json
+*.tsbuildinfo
+.jest-cache/

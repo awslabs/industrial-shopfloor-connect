@@ -1,0 +1,5 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Keep the offline test out of the image build context, so editing it does not churn the asset hash.
+test_handler.py

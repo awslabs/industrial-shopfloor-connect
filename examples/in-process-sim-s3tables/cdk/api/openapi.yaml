@@ -1,0 +1,1577 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Source of truth for the API surface of the SFC S3 Tables DuckDB query app.
+# `lib/openapi.ts` loads this file, substitutes the {{PLACEHOLDER}} tokens below,
+# and hands the resulting object to apigateway.ApiDefinition.fromInline().
+#
+# Placeholders substituted by CDK at synth time (nothing else is templated):
+#   {{LAMBDA_INVOKE_URI}}   full apigateway:lambda:path integration URI of the query function
+#   {{USER_POOL_ARN}}       ARN of the Cognito user pool backing the authorizer
+#   {{CORS_ALLOW_ORIGIN}}   single allowed origin, or the sentinel handled by lib/openapi.ts
+#   {{CORS_ALLOW_HEADERS}}  Access-Control-Allow-Headers value
+#   {{CORS_ALLOW_METHODS}}  Access-Control-Allow-Methods value
+#   {{CORS_MAX_AGE}}        Access-Control-Max-Age value
+#   {{SERVER_HOST}}         CloudFront distribution domain, no scheme
+#
+# INVARIANTS enforced by test/openapi.test.ts, not by API Gateway:
+#   * every path item declares exactly `post`, or `post` + `options`, and nothing else
+#   * every `post` carries `security: [{CognitoUserPool: []}]` with an EMPTY scope array
+#     (a non-empty array switches API Gateway to access-token mode and the SPA's ID token 401s)
+#   * every `options` carries NO security (a CORS preflight cannot be authenticated)
+#   * there is NO root-level `security:` — API Gateway IGNORES it on REST import, which would
+#     silently deploy every endpoint with no authorizer at all
+openapi: 3.0.1
+
+info:
+  title: SFC S3 Tables DuckDB Query API
+  version: 1.0.0
+  description: >-
+    Read-only SQL access to Apache Iceberg tables in Amazon S3 Tables, executed by DuckDB inside
+    AWS Lambda. Written for industrial timeseries produced by Shop Floor Connectivity (SFC):
+    high-frequency, mainly numeric float machine readings.
+
+    Every operation is a POST. The API is schema-agnostic: callers discover namespaces, tables and
+    columns through the catalog operations and the server composes SQL from validated identifiers.
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  contact:
+    name: Shop Floor Connectivity
+    url: https://github.com/awslabs/industrial-shopfloor-connect
+
+# Documentation only, so generators and API clients have a base URL. Deliberately not a base path:
+# API Gateway derives basePath from a server URL path, and with basepath=prepend that would silently
+# produce /api/api/....
+servers:
+  - url: 'https://{host}'
+    description: CloudFront distribution that serves both the web app and this API
+    variables:
+      host:
+        default: '{{SERVER_HOST}}'
+        description: CloudFront distribution domain, from the stack's SiteUrl output.
+
+tags:
+  - name: catalog
+    description: Discover table buckets, namespaces, tables and columns.
+  - name: query
+    description: Read timeseries data and fit trends.
+  - name: cors
+    description: Unauthenticated CORS preflight responses.
+
+# Validate request bodies at the edge. This is input hygiene only: it rejects malformed bodies
+# before a Lambda cold start. It is NOT the security boundary -- API Gateway skips validation
+# entirely when the request Content-Type matches no declared media type, so the Lambda re-validates
+# every identifier against the live Iceberg catalog and rejects non-JSON content types.
+x-amazon-apigateway-request-validators:
+  body-only:
+    validateRequestBody: true
+    validateRequestParameters: false
+x-amazon-apigateway-request-validator: body-only
+
+# Every error in this API -- from the authorizer, the validator, the throttle or the Lambda --
+# uses the ErrorEnvelope shape. Notes on the templates below:
+#   * $context.error.messageString is ALREADY quoted; adding quotes yields ""msg""
+#   * $context.error.validationErrorString is NOT quoted and can itself contain double quotes,
+#     so it is never interpolated -- these templates are not VTL and have no escape function
+#   * DEFAULT_4XX / DEFAULT_5XX carry templates ONLY. Setting statusCode on a DEFAULT rewrites
+#     the status code of every sibling response.
+x-amazon-apigateway-gateway-responses:
+  UNAUTHORIZED:
+    statusCode: 401
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"UNAUTHORIZED","message":$context.error.messageString,"requestId":"$context.requestId"}}'
+  ACCESS_DENIED:
+    statusCode: 403
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"ACCESS_DENIED","message":$context.error.messageString,"requestId":"$context.requestId"}}'
+  EXPIRED_TOKEN:
+    statusCode: 401
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"EXPIRED_TOKEN","message":$context.error.messageString,"requestId":"$context.requestId"}}'
+  INVALID_SIGNATURE:
+    statusCode: 403
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"INVALID_SIGNATURE","message":$context.error.messageString,"requestId":"$context.requestId"}}'
+  # POST-only means any GET/HEAD, or any path that is not in this document, is rejected here --
+  # BEFORE the authorizer runs, so it happens to signed-in users too. API Gateway's stock body is
+  # {"message":"Missing Authentication Token"}, which reads like a broken login. Remap it to a 404
+  # NO_SUCH_ROUTE. This hides nothing: a missing Authorization header on a path that IS defined
+  # yields UNAUTHORIZED above, not this type.
+  MISSING_AUTHENTICATION_TOKEN:
+    statusCode: 404
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"NO_SUCH_ROUTE","message":"No such route. Every operation in this API is a POST to a path under /api/.","requestId":"$context.requestId"}}'
+  BAD_REQUEST_BODY:
+    statusCode: 400
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"BAD_REQUEST_BODY","message":"Request body failed schema validation.","requestId":"$context.requestId"}}'
+  BAD_REQUEST_PARAMETERS:
+    statusCode: 400
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"BAD_REQUEST_PARAMETERS","message":"Request parameters failed validation.","requestId":"$context.requestId"}}'
+  UNSUPPORTED_MEDIA_TYPE:
+    statusCode: 415
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"UNSUPPORTED_MEDIA_TYPE","message":"Send Content-Type: application/json.","requestId":"$context.requestId"}}'
+  THROTTLED:
+    statusCode: 429
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"THROTTLED","message":"Too many requests. Retry shortly.","requestId":"$context.requestId"}}'
+  INTEGRATION_TIMEOUT:
+    statusCode: 504
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"INTEGRATION_TIMEOUT","message":"The query exceeded the 29 second API Gateway limit. Narrow the time window or widen bucketMs.","requestId":"$context.requestId"}}'
+  INTEGRATION_FAILURE:
+    statusCode: 502
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"INTEGRATION_FAILURE","message":"The query function did not return a valid response. It may have run out of memory; check its log group.","requestId":"$context.requestId"}}'
+  DEFAULT_4XX:
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"$context.error.responseType","message":$context.error.messageString,"requestId":"$context.requestId"}}'
+  DEFAULT_5XX:
+    responseParameters:
+      gatewayresponse.header.Content-Type: "'application/json'"
+      gatewayresponse.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+      gatewayresponse.header.Vary: "'Origin'"
+    responseTemplates:
+      application/json: '{"error":{"code":"$context.error.responseType","message":$context.error.messageString,"requestId":"$context.requestId"}}'
+
+paths:
+  /api/buckets:
+    post:
+      operationId: listBuckets
+      tags: [catalog]
+      summary: List the S3 Tables table buckets this deployment may query
+      description: >-
+        Returns the deploy-time allowlist. When the stack was deployed with allowAnyTableBucket,
+        returns every table bucket in the account and region instead.
+      security:
+        - CognitoUserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmptyRequest'
+      responses:
+        '200':
+          description: Table buckets
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BucketsResponse'
+        '400':
+          description: Malformed body, or an identifier that is not in the table's live schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, expired or invalid ID token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Table bucket is not in this deployment's allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Table bucket, namespace or table does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Unhandled error in the query function.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '504':
+          description: The query exceeded the integration timeout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: '{{LAMBDA_INVOKE_URI}}'
+        passthroughBehavior: never
+        timeoutInMillis: 29000
+    options:
+      operationId: preflightBuckets
+      tags: [cors]
+      summary: CORS preflight
+      description: Unauthenticated by design; a CORS preflight cannot carry credentials.
+      responses:
+        '204':
+          description: CORS preflight response. No body.
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Max-Age:
+              schema:
+                type: string
+            Vary:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode":204}'
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: '204'
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+              method.response.header.Access-Control-Allow-Headers: "'{{CORS_ALLOW_HEADERS}}'"
+              method.response.header.Access-Control-Allow-Methods: "'{{CORS_ALLOW_METHODS}}'"
+              method.response.header.Access-Control-Max-Age: "'{{CORS_MAX_AGE}}'"
+              method.response.header.Vary: "'Origin'"
+
+  /api/catalog:
+    post:
+      operationId: describeCatalog
+      tags: [catalog]
+      summary: List namespaces and tables in a table bucket
+      description: Attaches the table bucket read-only and returns the result of SHOW ALL TABLES.
+      security:
+        - CognitoUserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogRequest'
+      responses:
+        '200':
+          description: Namespaces and tables
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogResponse'
+        '400':
+          description: Malformed body, or an identifier that is not in the table's live schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, expired or invalid ID token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Table bucket is not in this deployment's allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Table bucket, namespace or table does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Unhandled error in the query function.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '504':
+          description: The query exceeded the integration timeout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: '{{LAMBDA_INVOKE_URI}}'
+        passthroughBehavior: never
+        timeoutInMillis: 29000
+    options:
+      operationId: preflightCatalog
+      tags: [cors]
+      summary: CORS preflight
+      description: Unauthenticated by design; a CORS preflight cannot carry credentials.
+      responses:
+        '204':
+          description: CORS preflight response. No body.
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Max-Age:
+              schema:
+                type: string
+            Vary:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode":204}'
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: '204'
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+              method.response.header.Access-Control-Allow-Headers: "'{{CORS_ALLOW_HEADERS}}'"
+              method.response.header.Access-Control-Allow-Methods: "'{{CORS_ALLOW_METHODS}}'"
+              method.response.header.Access-Control-Max-Age: "'{{CORS_MAX_AGE}}'"
+              method.response.header.Vary: "'Origin'"
+
+  /api/schema:
+    post:
+      operationId: describeTable
+      tags: [catalog]
+      summary: Describe an Iceberg table's columns
+      description: >-
+        Returns each column with its DuckDB type and a role the web app uses to build charts
+        without knowing the schema in advance: time, numeric, dimension or other.
+      security:
+        - CognitoUserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TableRequest'
+      responses:
+        '200':
+          description: Column list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SchemaResponse'
+        '400':
+          description: Malformed body, or an identifier that is not in the table's live schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, expired or invalid ID token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Table bucket is not in this deployment's allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Table bucket, namespace or table does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Unhandled error in the query function.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '504':
+          description: The query exceeded the integration timeout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: '{{LAMBDA_INVOKE_URI}}'
+        passthroughBehavior: never
+        timeoutInMillis: 29000
+    options:
+      operationId: preflightSchema
+      tags: [cors]
+      summary: CORS preflight
+      description: Unauthenticated by design; a CORS preflight cannot carry credentials.
+      responses:
+        '204':
+          description: CORS preflight response. No body.
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Max-Age:
+              schema:
+                type: string
+            Vary:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode":204}'
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: '204'
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+              method.response.header.Access-Control-Allow-Headers: "'{{CORS_ALLOW_HEADERS}}'"
+              method.response.header.Access-Control-Allow-Methods: "'{{CORS_ALLOW_METHODS}}'"
+              method.response.header.Access-Control-Max-Age: "'{{CORS_MAX_AGE}}'"
+              method.response.header.Vary: "'Origin'"
+
+  /api/extent:
+    post:
+      operationId: timeExtent
+      tags: [query]
+      summary: Minimum and maximum timestamp, and row count, for a table
+      description: >-
+        Epoch milliseconds. The web app uses this to pin the Plotly range slider to the full
+        history and to answer a double-click autorange reset, which carries no range values.
+      security:
+        - CognitoUserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtentRequest'
+      responses:
+        '200':
+          description: Extent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtentResponse'
+        '400':
+          description: Malformed body, or an identifier that is not in the table's live schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, expired or invalid ID token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Table bucket is not in this deployment's allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Table bucket, namespace or table does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Unhandled error in the query function.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '504':
+          description: The query exceeded the integration timeout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: '{{LAMBDA_INVOKE_URI}}'
+        passthroughBehavior: never
+        timeoutInMillis: 29000
+    options:
+      operationId: preflightExtent
+      tags: [cors]
+      summary: CORS preflight
+      description: Unauthenticated by design; a CORS preflight cannot carry credentials.
+      responses:
+        '204':
+          description: CORS preflight response. No body.
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Max-Age:
+              schema:
+                type: string
+            Vary:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode":204}'
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: '204'
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+              method.response.header.Access-Control-Allow-Headers: "'{{CORS_ALLOW_HEADERS}}'"
+              method.response.header.Access-Control-Allow-Methods: "'{{CORS_ALLOW_METHODS}}'"
+              method.response.header.Access-Control-Max-Age: "'{{CORS_MAX_AGE}}'"
+              method.response.header.Vary: "'Origin'"
+
+  /api/distinct:
+    post:
+      operationId: distinctValues
+      tags: [query]
+      summary: Distinct values of a dimension column
+      description: >-
+        Drives per-tag series for narrow (long) schemas, where one row is one tag reading rather
+        than one row per sample interval. Capped server-side.
+      security:
+        - CognitoUserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DistinctRequest'
+      responses:
+        '200':
+          description: Distinct values
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DistinctResponse'
+        '400':
+          description: Malformed body, or an identifier that is not in the table's live schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, expired or invalid ID token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Table bucket is not in this deployment's allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Table bucket, namespace or table does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Unhandled error in the query function.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '504':
+          description: The query exceeded the integration timeout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: '{{LAMBDA_INVOKE_URI}}'
+        passthroughBehavior: never
+        timeoutInMillis: 29000
+    options:
+      operationId: preflightDistinct
+      tags: [cors]
+      summary: CORS preflight
+      description: Unauthenticated by design; a CORS preflight cannot carry credentials.
+      responses:
+        '204':
+          description: CORS preflight response. No body.
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Max-Age:
+              schema:
+                type: string
+            Vary:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode":204}'
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: '204'
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+              method.response.header.Access-Control-Allow-Headers: "'{{CORS_ALLOW_HEADERS}}'"
+              method.response.header.Access-Control-Allow-Methods: "'{{CORS_ALLOW_METHODS}}'"
+              method.response.header.Access-Control-Max-Age: "'{{CORS_MAX_AGE}}'"
+              method.response.header.Vary: "'Origin'"
+
+  /api/series:
+    post:
+      operationId: downsampleSeries
+      tags: [query]
+      summary: Time-bucketed downsample of one or more numeric columns
+      description: >-
+        The drill-down workhorse. Buckets rows by integer epoch arithmetic and returns avg, min,
+        max and count per bucket per series, so a zoomed window is re-queried at a finer bucket
+        width rather than resampled in the browser.
+      security:
+        - CognitoUserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SeriesRequest'
+      responses:
+        '200':
+          description: Downsampled series
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeriesResponse'
+        '400':
+          description: Malformed body, or an identifier that is not in the table's live schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, expired or invalid ID token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Table bucket is not in this deployment's allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Table bucket, namespace or table does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Unhandled error in the query function.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '504':
+          description: The query exceeded the integration timeout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: '{{LAMBDA_INVOKE_URI}}'
+        passthroughBehavior: never
+        timeoutInMillis: 29000
+    options:
+      operationId: preflightSeries
+      tags: [cors]
+      summary: CORS preflight
+      description: Unauthenticated by design; a CORS preflight cannot carry credentials.
+      responses:
+        '204':
+          description: CORS preflight response. No body.
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Max-Age:
+              schema:
+                type: string
+            Vary:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode":204}'
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: '204'
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+              method.response.header.Access-Control-Allow-Headers: "'{{CORS_ALLOW_HEADERS}}'"
+              method.response.header.Access-Control-Allow-Methods: "'{{CORS_ALLOW_METHODS}}'"
+              method.response.header.Access-Control-Max-Age: "'{{CORS_MAX_AGE}}'"
+              method.response.header.Vary: "'Origin'"
+
+  /api/trend:
+    post:
+      operationId: linearTrend
+      tags: [query]
+      summary: Least-squares linear fit over the visible window
+      description: >-
+        Returns regr_slope, regr_intercept, regr_r2, corr and the sample count, plus the x-origin
+        the slope is relative to, so the web app can reconstruct the line on the same axis.
+      security:
+        - CognitoUserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrendRequest'
+      responses:
+        '200':
+          description: Fit coefficients per series
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrendResponse'
+        '400':
+          description: Malformed body, or an identifier that is not in the table's live schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, expired or invalid ID token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Table bucket is not in this deployment's allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Table bucket, namespace or table does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Unhandled error in the query function.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '504':
+          description: The query exceeded the integration timeout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: '{{LAMBDA_INVOKE_URI}}'
+        passthroughBehavior: never
+        timeoutInMillis: 29000
+    options:
+      operationId: preflightTrend
+      tags: [cors]
+      summary: CORS preflight
+      description: Unauthenticated by design; a CORS preflight cannot carry credentials.
+      responses:
+        '204':
+          description: CORS preflight response. No body.
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Max-Age:
+              schema:
+                type: string
+            Vary:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode":204}'
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: '204'
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+              method.response.header.Access-Control-Allow-Headers: "'{{CORS_ALLOW_HEADERS}}'"
+              method.response.header.Access-Control-Allow-Methods: "'{{CORS_ALLOW_METHODS}}'"
+              method.response.header.Access-Control-Max-Age: "'{{CORS_MAX_AGE}}'"
+              method.response.header.Vary: "'Origin'"
+
+  /api/rows:
+    post:
+      operationId: previewRows
+      tags: [query]
+      summary: Raw row preview
+      description: Most recent rows in the window, all columns, capped server-side.
+      security:
+        - CognitoUserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RowsRequest'
+      responses:
+        '200':
+          description: Rows
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RowsResponse'
+        '400':
+          description: Malformed body, or an identifier that is not in the table's live schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, expired or invalid ID token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Table bucket is not in this deployment's allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Table bucket, namespace or table does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Unhandled error in the query function.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '504':
+          description: The query exceeded the integration timeout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: '{{LAMBDA_INVOKE_URI}}'
+        passthroughBehavior: never
+        timeoutInMillis: 29000
+    options:
+      operationId: preflightRows
+      tags: [cors]
+      summary: CORS preflight
+      description: Unauthenticated by design; a CORS preflight cannot carry credentials.
+      responses:
+        '204':
+          description: CORS preflight response. No body.
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Max-Age:
+              schema:
+                type: string
+            Vary:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode":204}'
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: '204'
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+              method.response.header.Access-Control-Allow-Headers: "'{{CORS_ALLOW_HEADERS}}'"
+              method.response.header.Access-Control-Allow-Methods: "'{{CORS_ALLOW_METHODS}}'"
+              method.response.header.Access-Control-Max-Age: "'{{CORS_MAX_AGE}}'"
+              method.response.header.Vary: "'Origin'"
+
+  # DISABLED BY DEFAULT. lib/openapi.ts DELETES this path unless the stack is deployed with
+  # -c allowFreeSql=true, so it is absent from the API surface in a default deployment.
+  #
+  # Why it is off: DuckDB must keep enable_external_access at its default true, because Iceberg
+  # data file paths are discovered at query time and cannot be allowlisted. Arbitrary SQL through
+  # an authenticated endpoint therefore reaches read_text('/proc/self/environ'), which returns the
+  # Lambda execution role's credentials, and COPY ... TO 's3://...' / read_csv('http://...'), which
+  # are exfiltration and SSRF primitives. When enabled, the handler disables the local filesystem
+  # after loading extensions and accepts exactly one SELECT or WITH statement -- but an outbound
+  # HTTP GET remains reachable. Enable for local experimentation only.
+  /api/sql:
+    post:
+      operationId: runSql
+      tags: [query]
+      summary: Run arbitrary read-only SQL (disabled unless allowFreeSql=true)
+      description: >-
+        Present only when the stack was deployed with allowFreeSql=true. Accepts a single SELECT or
+        WITH statement against the attached read-only Iceberg catalog. Not for internet-facing use.
+      security:
+        - CognitoUserPool: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SqlRequest'
+      responses:
+        '200':
+          description: Result set
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RowsResponse'
+        '400':
+          description: Malformed body, or an identifier that is not in the table's live schema.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Missing, expired or invalid ID token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '403':
+          description: Table bucket is not in this deployment's allowlist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Table bucket, namespace or table does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Unhandled error in the query function.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '504':
+          description: The query exceeded the integration timeout.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+      x-amazon-apigateway-integration:
+        type: aws_proxy
+        httpMethod: POST
+        uri: '{{LAMBDA_INVOKE_URI}}'
+        passthroughBehavior: never
+        timeoutInMillis: 29000
+    options:
+      operationId: preflightSql
+      tags: [cors]
+      summary: CORS preflight
+      description: Unauthenticated by design; a CORS preflight cannot carry credentials.
+      responses:
+        '204':
+          description: CORS preflight response. No body.
+          headers:
+            Access-Control-Allow-Origin:
+              schema:
+                type: string
+            Access-Control-Allow-Headers:
+              schema:
+                type: string
+            Access-Control-Allow-Methods:
+              schema:
+                type: string
+            Access-Control-Max-Age:
+              schema:
+                type: string
+            Vary:
+              schema:
+                type: string
+      x-amazon-apigateway-integration:
+        type: mock
+        requestTemplates:
+          application/json: '{"statusCode":204}'
+        passthroughBehavior: when_no_match
+        responses:
+          default:
+            statusCode: '204'
+            responseParameters:
+              method.response.header.Access-Control-Allow-Origin: "'{{CORS_ALLOW_ORIGIN}}'"
+              method.response.header.Access-Control-Allow-Headers: "'{{CORS_ALLOW_HEADERS}}'"
+              method.response.header.Access-Control-Allow-Methods: "'{{CORS_ALLOW_METHODS}}'"
+              method.response.header.Access-Control-Max-Age: "'{{CORS_MAX_AGE}}'"
+              method.response.header.Vary: "'Origin'"
+
+components:
+  securitySchemes:
+    # `type: apiKey` is what API Gateway REST requires for a Cognito user pool authorizer on
+    # import. It does NOT mean an API key is required and no usage plan is involved. Linters flag
+    # this combination; .spectral.yaml disables that rule for this reason.
+    CognitoUserPool:
+      type: apiKey
+      name: Authorization
+      in: header
+      x-amazon-apigateway-authtype: cognito_user_pools
+      x-amazon-apigateway-authorizer:
+        type: cognito_user_pools
+        providerARNs:
+          - '{{USER_POOL_ARN}}'
+
+  schemas:
+    # ------------------------------------------------------------------------------------------
+    # Requests.
+    #
+    # Constraints are written out in full in each schema rather than shared through a nested $ref.
+    # API Gateway rewrites $ref to model URIs on import and a property-level $ref into another
+    # components.schemas entry is not reliably preserved, which would silently drop the pattern
+    # checks. test/openapi.test.ts asserts the duplicated constraint blocks stay identical.
+    #
+    # Note also what API Gateway request validation will NOT enforce, and which the Lambda
+    # therefore enforces itself: minItems/maxItems (parsed but ignored), default, and any
+    # cross-field rule such as t0Ms < t1Ms.
+    # ------------------------------------------------------------------------------------------
+    EmptyRequest:
+      type: object
+      additionalProperties: false
+      properties: {}
+
+    CatalogRequest:
+      type: object
+      additionalProperties: false
+      required: [tableBucket]
+      properties:
+        tableBucket:
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
+          description: S3 Tables table bucket name.
+
+    TableRequest:
+      type: object
+      additionalProperties: false
+      required: [tableBucket, namespace, table]
+      properties:
+        tableBucket:
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
+        namespace:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        table:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+
+    ExtentRequest:
+      type: object
+      additionalProperties: false
+      required: [tableBucket, namespace, table, timeColumn]
+      properties:
+        tableBucket:
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
+        namespace:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        table:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        timeColumn:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Must name a column the schema operation reported with role "time".
+
+    DistinctRequest:
+      type: object
+      additionalProperties: false
+      required: [tableBucket, namespace, table, dimensionColumn]
+      properties:
+        tableBucket:
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
+        namespace:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        table:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        dimensionColumn:
+          type: string
+          minLength: 1
+          maxLength: 255
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 1000
+
+    SeriesRequest:
+      type: object
+      additionalProperties: false
+      required: [tableBucket, namespace, table, timeColumn, valueColumns, t0Ms, t1Ms, bucketMs]
+      properties:
+        tableBucket:
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
+        namespace:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        table:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        timeColumn:
+          type: string
+          minLength: 1
+          maxLength: 255
+        valueColumns:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 255
+          description: Numeric columns to aggregate. At least one; the Lambda enforces the count.
+        dimensionColumn:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Optional. Pivots a narrow table into one series per dimension value.
+        dimensionValues:
+          type: array
+          items:
+            type: string
+            maxLength: 512
+        t0Ms:
+          type: integer
+          description: Window start, epoch milliseconds, inclusive.
+        t1Ms:
+          type: integer
+          description: Window end, epoch milliseconds, exclusive.
+        bucketMs:
+          type: integer
+          minimum: 1
+          description: Bucket width in milliseconds. Snapped server-side to a fixed ladder.
+        maxPoints:
+          type: integer
+          minimum: 1
+          maximum: 20000
+
+    TrendRequest:
+      type: object
+      additionalProperties: false
+      required: [tableBucket, namespace, table, timeColumn, valueColumns, t0Ms, t1Ms]
+      properties:
+        tableBucket:
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
+        namespace:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        table:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        timeColumn:
+          type: string
+          minLength: 1
+          maxLength: 255
+        valueColumns:
+          type: array
+          items:
+            type: string
+            minLength: 1
+            maxLength: 255
+        dimensionColumn:
+          type: string
+          minLength: 1
+          maxLength: 255
+        dimensionValues:
+          type: array
+          items:
+            type: string
+            maxLength: 512
+        t0Ms:
+          type: integer
+        t1Ms:
+          type: integer
+
+    RowsRequest:
+      type: object
+      additionalProperties: false
+      required: [tableBucket, namespace, table]
+      properties:
+        tableBucket:
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
+        namespace:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        table:
+          type: string
+          minLength: 1
+          maxLength: 255
+          pattern: '^[a-z0-9][a-z0-9_]{0,254}$'
+        timeColumn:
+          type: string
+          minLength: 1
+          maxLength: 255
+        t0Ms:
+          type: integer
+        t1Ms:
+          type: integer
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 5000
+
+    SqlRequest:
+      type: object
+      additionalProperties: false
+      required: [tableBucket, sql]
+      properties:
+        tableBucket:
+          type: string
+          minLength: 3
+          maxLength: 63
+          pattern: '^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$'
+        sql:
+          type: string
+          minLength: 1
+          maxLength: 20000
+          description: A single SELECT or WITH statement. The catalog is attached as "ice".
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 5000
+
+    # ------------------------------------------------------------------------------------------
+    # Responses.
+    # ------------------------------------------------------------------------------------------
+    BucketsResponse:
+      type: object
+      properties:
+        tableBuckets:
+          type: array
+          items:
+            type: string
+        allowAny:
+          type: boolean
+          description: True when any table bucket in the account may be queried.
+        region:
+          type: string
+
+    CatalogResponse:
+      type: object
+      properties:
+        tableBucket:
+          type: string
+        namespaces:
+          type: array
+          items:
+            type: object
+            properties:
+              namespace:
+                type: string
+              tables:
+                type: array
+                items:
+                  type: string
+
+    SchemaResponse:
+      type: object
+      properties:
+        tableBucket:
+          type: string
+        namespace:
+          type: string
+        table:
+          type: string
+        columns:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              type:
+                type: string
+              role:
+                type: string
+                enum: [time, numeric, dimension, other]
+
+    ExtentResponse:
+      type: object
+      properties:
+        minMs:
+          type: integer
+        maxMs:
+          type: integer
+        rowCount:
+          type: integer
+
+    DistinctResponse:
+      type: object
+      properties:
+        column:
+          type: string
+        values:
+          type: array
+          items:
+            type: string
+        truncated:
+          type: boolean
+
+    SeriesResponse:
+      type: object
+      properties:
+        bucketMs:
+          type: integer
+          description: The snapped bucket width actually used, which may differ from the request.
+        t0Ms:
+          type: integer
+        t1Ms:
+          type: integer
+        series:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+                description: Column name, or "column / dimensionValue" when pivoted.
+              column:
+                type: string
+              dimension:
+                type: string
+              points:
+                type: array
+                description: '[bucketStartMs, avg, min, max, count] per bucket, ascending.'
+                items:
+                  type: array
+                  items:
+                    type: number
+        truncated:
+          type: boolean
+
+    TrendResponse:
+      type: object
+      properties:
+        xOriginMs:
+          type: integer
+          description: Slopes are per second relative to this instant.
+        fits:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+              slopePerSecond:
+                type: number
+              intercept:
+                type: number
+              r2:
+                type: number
+              corr:
+                type: number
+              n:
+                type: integer
+
+    RowsResponse:
+      type: object
+      properties:
+        columns:
+          type: array
+          items:
+            type: string
+        rows:
+          type: array
+          description: Positional arrays aligned to `columns`. Index by name, not by position.
+          items:
+            type: array
+            items: {}
+        rowCount:
+          type: integer
+        truncated:
+          type: boolean
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: >-
+                Closed set. From API Gateway: UNAUTHORIZED, ACCESS_DENIED, EXPIRED_TOKEN,
+                INVALID_SIGNATURE, NO_SUCH_ROUTE, BAD_REQUEST_BODY, BAD_REQUEST_PARAMETERS,
+                UNSUPPORTED_MEDIA_TYPE, THROTTLED, INTEGRATION_TIMEOUT, INTEGRATION_FAILURE.
+                From the query function: BAD_REQUEST, FORBIDDEN_BUCKET, NOT_FOUND, QUERY_ERROR,
+                QUERY_TIMEOUT, SQL_DISABLED, INTERNAL.
+            message:
+              type: string
+            requestId:
+              type: string
+              description: API Gateway request id; matches the access log entry.
