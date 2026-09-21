@@ -1150,6 +1150,8 @@ open class OpcuaSource(
                             val nativeValue = opcuaDataTypesConverter.asNativeValue(response.results[i].value)
                             if (nativeValue != null) {
                                 yield(s to ChannelReadValue(nativeValue, value.sourceTime?.javaInstant))
+                            } else {
+                                log.trace("Value for channel \"$s\" from source \"$sourceID\" has status ${value.statusCode} but was not converted, variant value is ${response.results[i].value.value?.let { "${it::class.java.name}: $it" } ?: "null"}")
                             }
                         } else {
                             log.error("Error reading value for channel \"$s\" from source \"$sourceID\", ${value.statusCode}")
