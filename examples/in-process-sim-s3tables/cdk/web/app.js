@@ -612,6 +612,56 @@
     paint();
   }
 
+  /**
+   * Pull in data written since the last query: the table's extent, the curve, and the rows.
+   *
+   * The chart needs the extent re-read, not just a redraw. state.extent is captured when the table
+   * loads and bounds both the range slider and the "all" button, so rows written after that instant
+   * sit outside every window the UI can ask for -- which is why the table showed new samples while
+   * the curve stayed still.
+   *
+   * Whether to move the view is decided from where it already was. If the window ended at the old
+   * head, the user was watching live and the window advances to the new head, keeping its span. If
+   * they had zoomed into history, the window is left exactly where they put it. draw() reloads the
+   * row table itself, so this does not fetch rows separately.
+   */
+  async function refreshAll() {
+    if (!state.columns.length || !state.extent) return;
+    const timeColumn = el('time-column').value;
+    const previous = state.extent;
+
+    const extent = await callApi('/api/extent', { ...currentRef(), timeColumn });
+    if (extent.rowCount === 0 || extent.minMs === null) return;
+
+    // One bucket of tolerance, so a window that merely rounds short of the head still counts.
+    const tolerance = Math.max(state.lastSeries ? state.lastSeries.bucketMs : 0, 1000);
+    const wasAtHead = state.window && state.window.t1 >= previous.maxMs + 1 - tolerance;
+
+    state.extent = extent;
+    setTile(
+      'stat-rows',
+      formatCount(extent.rowCount),
+      `${formatUtc(extent.minMs, { millis: false })} → ${formatUtc(extent.maxMs, { millis: false })}`,
+    );
+
+    if (wasAtHead && state.window) {
+      const span = state.window.t1 - state.window.t0;
+      const t1 = extent.maxMs + 1;
+      // Keep the span unless the view covered everything, in which case keep covering everything.
+      const coveredAll = state.window.t0 <= previous.minMs;
+      state.window = { t0: coveredAll ? extent.minMs : Math.max(extent.minMs, t1 - span), t1 };
+    }
+
+    const added = extent.rowCount - previous.rowCount;
+    await draw();
+    setStatus(
+      added > 0
+        ? `${formatCount(added)} new row(s) · latest ${formatUtc(extent.maxMs)} UTC`
+        : `No new rows · latest ${formatUtc(extent.maxMs)} UTC`,
+      'ok',
+    );
+  }
+
   function setLatestAuto(on) {
     if (state.latestTimer) {
       clearInterval(state.latestTimer);
