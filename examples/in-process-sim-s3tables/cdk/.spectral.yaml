@@ -1,0 +1,22 @@
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Lint ruleset for api/openapi.yaml.
+#
+# Nothing is disabled here to silence noise. Note in particular that spectral is fine with the
+# Cognito authorizer's `type: apiKey` security scheme, which API Gateway REST requires on import --
+# it does not mean an API key is involved.
+extends: ['spectral:oas']
+
+rules:
+  # The document deliberately carries no per-response examples. API Gateway warns on the `example`
+  # keyword, and the stack sets failOnWarnings: true, so an example would roll the deploy back.
+  oas3-valid-media-example: off
+  oas3-valid-schema-example: off
+
+  # Keep these loud: they are what makes the committed document usable as documentation.
+  operation-operationId: error
+  operation-description: error
+  operation-tags: error
+  operation-tag-defined: error
+  oas3-unused-component: error

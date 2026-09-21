@@ -1,0 +1,831 @@
+/*
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/* --------------------------------------------------------------------------- tokens
+ *
+ * Both modes are selected rather than flipped: the dark series colours are the same eight hues
+ * stepped for the dark surface, and each set was validated against the surface it actually renders
+ * on (lightness band, chroma floor, adjacent-pair colour-vision separation, normal-vision floor,
+ * contrast). Series slots are assigned in fixed order and never cycled -- see SERIES in app.js.
+ */
+
+:root {
+  color-scheme: light;
+
+  --surface: #ffffff;
+  --plane: #f4f5f7;
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --ink-muted: #6f6e69;
+  --line: #e3e4e8;
+  --line-strong: #cfd1d6;
+  --grid: #ebecef;
+
+  --accent: #2a78d6;
+  --accent-ink: #ffffff;
+  --accent-soft: #eaf2fd;
+
+  --good: #0ca30c;
+  --critical: #d03b3b;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-7: #4a3aa7;
+  --series-8: #e34948;
+
+  --radius: 10px;
+  --radius-sm: 7px;
+  --shadow: 0 1px 2px rgb(11 11 11 / 5%), 0 4px 12px rgb(11 11 11 / 4%);
+  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) {
+    color-scheme: dark;
+
+    --surface: #16181d;
+    --plane: #0e1014;
+    --ink: #f4f5f7;
+    --ink-2: #b9bcc4;
+    --ink-muted: #8b8f99;
+    --line: #272b33;
+    --line-strong: #353a45;
+    --grid: #232730;
+
+    --accent: #3987e5;
+    --accent-ink: #0e1014;
+    --accent-soft: #17233a;
+
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-7: #9085e9;
+    --series-8: #e66767;
+
+    --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 30%);
+  }
+}
+
+/* The explicit toggle must win over the OS setting in both directions. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --surface: #16181d;
+  --plane: #0e1014;
+  --ink: #f4f5f7;
+  --ink-2: #b9bcc4;
+  --ink-muted: #8b8f99;
+  --line: #272b33;
+  --line-strong: #353a45;
+  --grid: #232730;
+
+  --accent: #3987e5;
+  --accent-ink: #0e1014;
+  --accent-soft: #17233a;
+
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
+
+  --shadow: 0 1px 2px rgb(0 0 0 / 40%), 0 6px 18px rgb(0 0 0 / 30%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/*
+ * Makes the `hidden` attribute authoritative, which the view switching in app.js depends on.
+ * `hidden` is implemented by the user-agent stylesheet as `[hidden] { display: none }`, and an
+ * author-origin `display` declaration beats it -- so `.login { display: grid }` below would keep the
+ * signed-out card on screen even with `hidden = true`, stacking it over the signed-in app.
+ */
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--plane);
+  color: var(--ink);
+  font:
+    14px/1.5 -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+code,
+.mono {
+  font-family: var(--mono);
+  font-size: 0.92em;
+}
+
+code {
+  background: var(--plane);
+  border: 1px solid var(--line);
+  padding: 0.08em 0.36em;
+  border-radius: 5px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------- login */
+
+.login {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  overflow: hidden;
+  /* Just the glow and the plane; the recession comes from the SVG grid below. */
+  background:
+    radial-gradient(52rem 24rem at 50% 6%, var(--accent-soft), transparent 70%),
+    var(--plane);
+}
+
+/*
+ * The perspective floor. Static geometry -- no animation -- anchored to the bottom of the viewport
+ * so the horizon sits behind the card. currentColor drives the strokes, so it follows the theme.
+ */
+.login-grid {
+  position: absolute;
+  inset: auto 0 0;
+  width: 100%;
+  height: min(76vh, 620px);
+  color: var(--accent);
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+.login-horizon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1;
+  opacity: 0.55;
+  vector-effect: non-scaling-stroke;
+}
+
+.login-theme {
+  position: absolute;
+  top: 18px;
+  right: 20px;
+}
+
+.login-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 34px 32px 30px;
+  width: min(100%, 420px);
+  box-shadow:
+    0 1px 2px rgb(11 11 11 / 6%),
+    0 18px 50px -12px rgb(11 11 11 / 18%);
+}
+
+.login-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  margin-bottom: 20px;
+}
+
+.login-card h1 {
+  margin: 0 0 12px;
+  font-size: 29px;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  font-weight: 650;
+}
+
+.login-accent {
+  color: var(--ink-muted);
+  font-weight: 450;
+}
+
+.blurb {
+  margin: 0 0 26px;
+  color: var(--ink-2);
+  font-size: 14.5px;
+}
+
+/*
+ * The two names the demo is about -- the engine and the storage -- carry the page's one highlight,
+ * and each links out to its own documentation. The accent underline replaces the default link
+ * decoration, so the highlight reads as emphasis first and a link second.
+ */
+.login-mark-term {
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
+  background: linear-gradient(transparent 62%, var(--accent-soft) 62%);
+  box-shadow: inset 0 -2px 0 var(--accent);
+  padding: 0 2px;
+  transition:
+    background-color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.login-mark-term:hover,
+.login-mark-term:focus-visible {
+  background: var(--accent-soft);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.login-arrow {
+  display: inline-block;
+  margin-left: 6px;
+  transition: transform 140ms ease;
+}
+
+.btn--primary:hover .login-arrow {
+  transform: translateX(3px);
+}
+
+.fineprint {
+  margin: 16px 0 0;
+  color: var(--ink-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* --------------------------------------------------------------------------- chrome */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  flex: 0 0 auto;
+}
+
+.brand-name {
+  color: var(--ink-2);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.user-name {
+  color: var(--ink-muted);
+  font-size: 13px;
+  max-width: 28ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * min-width:0 on every grid/flex child that can hold a wide table or a Plotly SVG. An `auto`
+ * minimum lets such a child widen its own track and push the whole layout past the viewport --
+ * which is what previously clipped the controls once the schema table appeared.
+ */
+.page {
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* ---------------------------------------------------------------------- filter bars */
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px 16px;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  flex: 0 0 auto;
+}
+
+.field--grow {
+  flex: 1 1 260px;
+  min-width: 0;
+  /* Keeps a lone text input from stretching across a wide viewport. */
+  max-width: 520px;
+}
+
+/* The chip rows are the one thing worth all the room it can get. */
+.field--chips {
+  flex: 1 1 320px;
+  max-width: none;
+}
+
+/* Sits inside the bar it explains, rather than floating on the page behind it. */
+.bar .hint {
+  flex: 1 1 100%;
+  margin: 0;
+  order: 99;
+}
+
+.field--action {
+  flex: 0 0 auto;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+}
+
+label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+input[type='text'],
+select {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+select {
+  min-width: 11ch;
+}
+
+input[type='text']:focus-visible,
+select:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------- chips
+ *
+ * Toggle chips instead of a multi-select: the selected series are visible at a glance, and each
+ * chip carries its series colour, so identity never rests on colour alone.
+ */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  border-color: var(--ink-muted);
+}
+
+.chip[aria-pressed='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.chip-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  flex: 0 0 auto;
+}
+
+.chip[aria-pressed='true'] .chip-swatch {
+  background: var(--chip-colour, var(--accent));
+}
+
+/* -------------------------------------------------------------------------- buttons */
+
+.btn {
+  font: inherit;
+  border-radius: var(--radius-sm);
+  padding: 7px 14px;
+  cursor: pointer;
+  border: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.btn:hover {
+  border-color: var(--ink-muted);
+}
+
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+
+.btn--primary:hover {
+  filter: brightness(1.06);
+}
+
+.btn--block {
+  width: 100%;
+  margin-top: 6px;
+  padding: 9px 14px;
+}
+
+.btn--small {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.btn--icon {
+  padding: 5px 9px;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* ---------------------------------------------------------------------------- tiles */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 12px;
+  min-width: 0;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 13px 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+.tile-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.tile-value {
+  font-size: 23px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.tile-note {
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------- cards */
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px 16px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+.card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+  min-width: 0;
+}
+
+.card-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.chart {
+  width: 100%;
+  min-width: 0;
+  min-height: 460px;
+}
+
+/* --------------------------------------------------------------------------- status */
+
+.status {
+  margin: 0 0 8px;
+  min-height: 20px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.status.ok {
+  color: var(--good);
+}
+
+.status.busy {
+  color: var(--ink-muted);
+}
+
+.status.error {
+  color: var(--critical);
+  font-weight: 500;
+}
+
+.error {
+  color: var(--critical);
+}
+
+.meta {
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-family: var(--mono);
+  text-align: right;
+  min-width: 0;
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+
+.hint:empty {
+  display: none;
+}
+
+/* --------------------------------------------------------------------------- badges */
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.badges:empty {
+  display: none;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--badge-colour, var(--line-strong));
+  border-radius: var(--radius-sm);
+  padding: 5px 11px;
+  font-size: 12.5px;
+  background: var(--plane);
+  font-variant-numeric: tabular-nums;
+}
+
+.badge .dim {
+  color: var(--ink-muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+/* --------------------------------------------------------------------------- tables */
+
+.table-scroll {
+  overflow: auto;
+  max-height: 340px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  min-width: 0;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+}
+
+.data-table th,
+.data-table td {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.data-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  z-index: 1;
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.data-table tbody tr:not(.filler):hover td {
+  background: var(--plane);
+}
+
+/* Spacer rows that give a virtualised body its scroll height; they hold no cells. */
+.data-table tbody tr.filler {
+  padding: 0;
+  border: 0;
+}
+
+.data-table td.num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table td.time {
+  font-family: var(--mono);
+  color: var(--ink);
+}
+
+.data-table td.time .ago {
+  color: var(--ink-muted);
+}
+
+.data-table td.null {
+  color: var(--ink-muted);
+}
+
+.data-table tr.role-time td:first-child,
+.data-table tr.role-numeric td:first-child {
+  font-weight: 600;
+}
+
+.data-table tr.role-other td {
+  color: var(--ink-muted);
+}
+
+.role-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  font-size: 11px;
+  color: var(--ink-2);
+}
+
+.role-pill.role-time {
+  border-color: var(--series-1);
+  color: var(--series-1);
+}
+
+.role-pill.role-numeric {
+  border-color: var(--series-3);
+  color: var(--series-3);
+}
+
+.role-pill.role-dimension {
+  border-color: var(--series-7);
+  color: var(--series-7);
+}

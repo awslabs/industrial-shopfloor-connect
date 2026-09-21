@@ -1,46 +1,126 @@
 # Examples
 
+Every example in [`examples/`](../../examples). The **Mode** column is the
+[deployment model](../sfc-deployment.md): *in-process* runs the adapters and targets inside the
+`sfc-main` JVM, *IPC* runs them as separate gRPC services — see
+[running adapters](../sfc-running-adapters.md) and [running targets](../sfc-running-targets.md).
 
-- [Quickstart Lab](../../README.md#quickstart-example)
+Most examples also wire up the [Debug target][debug] so you can see the data on the console; it is
+listed only where it is part of the point.
 
-**Greengrass**
+## Protocol to AWS pipelines
 
-- [Greengrass SFC In-Process step-by-step Lab](../../examples/greengrass-in-process/README.md)
-- [Greengrass SFC IPC step-by-step Lab](../../examples/greengrass-ipc/README.md)
+| Example | Gist | Protocol adapter | Target | Mode |
+|---|---|---|---|---|
+| [Simulator to S3 Tables][ex-sim-s3tables] | High-frequency simulated machine tags into Apache Iceberg on S3 Tables, with tuning guidance for sustained writes. Ships an optional Cognito-secured web app that queries the tables with DuckDB in Lambda. | [Simulator][simulator] | [S3 Tables][s3tables], [Debug][debug] | in-process |
+| [OPC-UA to SiteWise][ex-opcua-sitewise] | Step-by-step workshop: OPC-UA server on EC2 into SiteWise, including asset models, assets and SiteWise Monitor dashboards. | [OPC-UA][opcua] | [SiteWise][sitewise], [Debug][debug] | in-process |
+| [OPC-UA to SiteWise Edge][ex-opcua-swedge] | The same ingestion, but to SiteWise Edge on-premises, so it keeps working through intermittent connectivity. | [OPC-UA][opcua] | [SiteWise Edge][swedge], [Debug][debug] | in-process |
+| [OPC-UA to MSK][ex-opcua-msk] | OPC-UA into an Amazon MSK topic. | [OPC-UA][opcua] | [MSK][msk], [Debug][debug] | in-process |
+| [OPC-UA to MSK over IPC][ex-ipc-opcua-msk] | The same pipeline with the adapter and target split into separate gRPC services — the pattern for segregated OT/IT networks. | [OPC-UA][opcua] | [MSK][msk], [Debug][debug] | IPC |
+| [OPC-UA to IoT Core with filters][ex-filters] | Reads a public OPC-UA demo server and publishes to IoT Core, demonstrating [metadata](../README.md#metadata), [transformations](../sfc-data-processing-filtering.md#transformations) and all three filter types. | [OPC-UA][opcua] | [IoT Core][iotcore], [Debug][debug] | in-process |
+| [Siemens S7 to SiteWise][ex-s7-sitewise] | S7 tags into SiteWise, with a variant that auto-creates the models and assets. | [S7][s7] | [SiteWise][sitewise], [Debug][debug] | in-process |
+| [Siemens S7 to OPC-UA][ex-s7-opcua] | Republishes S7 tags as an OPC-UA server, either from an explicit data model or with an auto-created address space. | [S7][s7] | [OPC-UA][opcua-target], [Debug][debug] | in-process |
+| [Beckhoff ADS to S3][ex-ads-s3] | Reads a Beckhoff controller over ADS/TCP and writes to S3. Includes the `main.tmc` declaring the variables, and one channel per supported address type. | [ADS][ads] | [S3][s3], [Debug][debug] | in-process |
+| [Beckhoff ADS to S3 over IPC][ex-ipc-ads-s3] | The same pipeline as separate gRPC services. | [ADS][ads] | [S3][s3], [Debug][debug] | IPC |
+| [Rockwell PCCC to S3][ex-pccc-s3] | Reads an Allen-Bradley controller over PCCC and writes to S3. | [PCCC][pccc] | [S3][s3], [Debug][debug] | in-process |
+| [Mitsubishi SLMP to S3][ex-slmp-s3] | SLMP into S3, split across several configuration files — channels, structures, types and templates — and using the AWS IoT credentials provider rather than static keys. | [SLMP][slmp] | [S3][s3], [Debug][debug] | in-process |
+| [Mitsubishi SLMP to S3 over IPC][ex-ipc-slmp-s3] | The same, with the adapter and target as gRPC services declared in a separate `servers.json`. | [SLMP][slmp] | [S3][s3], [Debug][debug] | IPC |
 
-**Adapters**
+## Cloud to shop floor
 
-- [Rockwell PCCC to S3 sample](../../examples/in-process-pccc-s3/README.md)
-- [Beckhoff ADS to S3 sample](../../examples/in-process-ads-s3/README.md)
+| Example | Gist | Protocol adapter | Target | Mode |
+|---|---|---|---|---|
+| [IoT Core to OPC-UA write][ex-iot-opcua-write] | The reverse direction: subscribes to an MQTT topic and writes the received values to OPC-UA nodes on a server. | [MQTT][mqtt] | [OPC-UA Writer][opcua-writer], [Debug][debug] | in-process |
 
-- [Mitsubishi/Melsec SLMP in process sample](../../examples/in-process-slmp-s3/README.md)
-- [Mitsubishi/Melsec SLMP IPC sample](../../examples/ipc-slmp-s3/README.md)
-- [Siemens S7 to Sitewise sample](../../examples/in-process-s7-sitewise/README.md)
-- [Siemens S7 to OPCUA sample](../../examples/in-process-s7-opcua/README.md)
+## AWS IoT Greengrass deployments
 
-- [OPCUA to MSK In-Process sample](../../examples/in-process-opcua-msk/README.md)
-- [OPCUA to MSK IPC sample](../../examples/ipc-opcua-msk/README.md)
-- [OPCUA to SiteWise In-Process Example](../../examples/in-process-opcua-sitewise/README.md)
-- [OPCUA to SiteWise Edge In-Process Example](../../examples/in-process-opcua-sitewiseedge/README.md)
+| Example | Gist | Protocol adapter | Target | Mode |
+|---|---|---|---|---|
+| [Greengrass in-process][ex-gg-inproc] | Step-by-step lab deploying SFC as a Greengrass V2 component, with everything in one process. | [OPC-UA][opcua] | [S3][s3], [IoT Core][iotcore], [Debug][debug] | in-process |
+| [Greengrass IPC][ex-gg-ipc] | The same lab with the adapter and targets as separate Greengrass components talking over gRPC. | [OPC-UA][opcua] | [S3][s3], [IoT Core][iotcore], [Debug][debug] | IPC |
+| [Greengrass uberjar][ex-gg-uberjar] | Packages SFC as a single artifact jar, so the component runs on Windows and Linux with no container and nothing to unpack. | [MQTT][mqtt] | [Debug][debug] | in-process |
 
-- [IoT Core to OPCUA Write In-Process Example](../../examples/in-process-iot-core-opcua-write/README.md)
+## Configuration providers
 
-- [CSV File Adapter Example](../../examples/custom-adapter-csvfile/README.md)
+A [config provider](../sfc-extending.md) supplies or rewrites the configuration `sfc-main` runs.
 
-**Configuration**
+| Example | Gist | Protocol adapter | Target | Mode |
+|---|---|---|---|---|
+| [OPC-UA auto discovery][ex-opcua-discovery] | Browses the configured OPC-UA servers and generates the channel list for each source, so you do not have to enumerate nodes by hand. | [OPC-UA][opcua] | [Debug][debug] | in-process adapter, IPC target |
+| [HTTP API and web UI][ex-api-ui] | A local HTTP API and browser UI for CRUD on SFC configurations, backed by a file-based store — a blueprint for building your own UI. | [OPC-UA][opcua], [SQL][sql] | [S3][s3], [Debug][debug] | in-process |
+| [MQTT config provider][ex-mqtt-cfg] | Subscribes to an MQTT topic and accepts either a configuration payload or a pre-signed URL to download one — remote reconfiguration without touching the host. | — | — | — |
+| [YAML config provider][ex-yaml-cfg] | Lets you write SFC configurations in YAML instead of JSON; the bootstrap JSON only names the provider and the YAML file. | [OPC-UA][opcua] | [S3][s3], [IoT Core][iotcore], [Debug][debug] | in-process |
+| [Custom config provider template][ex-custom-cfg] | Minimal Kotlin skeleton to start your own provider from. | — | — | — |
 
-- [Contextualization & Filter Demo](../../examples/opcua-to-iot-using-filters/README.md)
-- [Configuration Signing](../../examples/sign-sfc-config/README.md)
-- [Custom Config Provider Template](../../examples/custom-config-provider/README.md)
-- [Custom User Interface and API Config Provider](../../examples/custom-api-ui-config-provider/README.md)
-- [J1939 DBC file](../../examples/j1939dbc/README.md)
-- [MQTT Config provider](../../examples/mqtt-config-provider/README.md)
-- [OPCUA Auto Discovery Configuration provider](../../examples/opcua-auto-discovery/README.md)
-- [YAML Custom Configuration Provider](../../examples/yaml-custom-config-provider/README.md)
+## Extending SFC
 
-**Other**
-- [Generate Self-Signed test certificates](../../examples/test-certificates/README.md)
-- [Transformation Templates](../../examples/transformation-templates/README.md)
+| Example | Gist | Protocol adapter | Target | Mode |
+|---|---|---|---|---|
+| [CSV file adapter][ex-csv] | A complete custom protocol adapter that reads CSV files with configurable delimiters — the template for adding a protocol SFC does not ship. | CSV file (custom) | [Debug][debug] | in-process |
+| [Custom target formatter][ex-formatter] | Kotlin project for a [custom formatter](../sfc-extending.md#custom-formatters), to control exactly how target data is serialised. | — | — | — |
+| [Custom log writer][ex-logwriter] | Template for routing SFC log output somewhere of your own choosing. | — | — | — |
 
-Logging
-- [Custom Log Writer Template](../../examples/custom-log-writer/README.md)
+## Reference material
+
+| Example | Gist | Protocol adapter | Target | Mode |
+|---|---|---|---|---|
+| [Transformation templates][ex-templates] | Ready-made target templates that turn SFC target data into CSV, XML and YAML, including an aggregated variant. | — | — | — |
+| [Configuration signing][ex-sign] | Application that signs an SFC configuration, for [securing the configuration](../sfc-configuration.md#securing-the-configuration). | — | — | — |
+| [Self-signed test certificates][ex-certs] | Script that generates certificates for testing OPC-UA and gRPC security. Testing only. | — | — | — |
+| [J1939 DBC file][ex-j1939] | An open-source J1939 DBC file to use with the [J1939 adapter][j1939]. | [J1939][j1939] | — | — |
+
+Also worth starting with: the [Quickstart lab](../../README.md#quickstart-example) in the root README,
+which walks OPC-UA to S3 end to end.
+
+<!-- examples -->
+[ex-sim-s3tables]: ../../examples/in-process-sim-s3tables/README.md
+[ex-opcua-sitewise]: ../../examples/in-process-opcua-sitewise/README.md
+[ex-opcua-swedge]: ../../examples/in-process-opcua-sitewiseedge/README.md
+[ex-opcua-msk]: ../../examples/in-process-opcua-msk/README.md
+[ex-ipc-opcua-msk]: ../../examples/ipc-opcua-msk/README.md
+[ex-filters]: ../../examples/opcua-to-iot-using-filters/README.md
+[ex-s7-sitewise]: ../../examples/in-process-s7-sitewise/README.md
+[ex-s7-opcua]: ../../examples/in-process-s7-opcua/README.md
+[ex-ads-s3]: ../../examples/in-process-ads-s3/README.md
+[ex-ipc-ads-s3]: ../../examples/ipc-ads-s3/README.md
+[ex-pccc-s3]: ../../examples/in-process-pccc-s3/README.md
+[ex-slmp-s3]: ../../examples/in-process-slmp-s3/README.md
+[ex-ipc-slmp-s3]: ../../examples/ipc-slmp-s3/README.md
+[ex-iot-opcua-write]: ../../examples/in-process-iot-core-opcua-write/README.md
+[ex-gg-inproc]: ../../examples/greengrass-in-process/README.md
+[ex-gg-ipc]: ../../examples/greengrass-ipc/README.md
+[ex-gg-uberjar]: ../../examples/greengrass-uberjar/README.md
+[ex-opcua-discovery]: ../../examples/opcua-auto-discovery/README.md
+[ex-api-ui]: ../../examples/custom-api-ui-config-provider/README.md
+[ex-mqtt-cfg]: ../../examples/mqtt-config-provider/README.md
+[ex-yaml-cfg]: ../../examples/yaml-custom-config-provider/README.md
+[ex-custom-cfg]: ../../examples/custom-config-provider/README.md
+[ex-csv]: ../../examples/custom-adapter-csvfile/README.md
+[ex-formatter]: ../../examples/custom-target-formatter/README.md
+[ex-logwriter]: ../../examples/custom-log-writer/README.md
+[ex-templates]: ../../examples/transformation-templates/README.md
+[ex-sign]: ../../examples/sign-sfc-config/README.md
+[ex-certs]: ../../examples/test-certificates/README.md
+[ex-j1939]: ../../examples/j1939dbc/README.md
+
+<!-- protocol adapters -->
+[ads]: ../adapters/ads.md
+[j1939]: ../adapters/j1939.md
+[mqtt]: ../adapters/mqtt.md
+[opcua]: ../adapters/opcua.md
+[pccc]: ../adapters/pccc.md
+[s7]: ../adapters/s7.md
+[simulator]: ../adapters/simulator.md
+[slmp]: ../adapters/slmp.md
+[sql]: ../adapters/sql.md
+
+<!-- targets -->
+[debug]: ../targets/debug.md
+[iotcore]: ../targets/aws-iot-core.md
+[msk]: ../targets/aws-msk.md
+[opcua-target]: ../targets/opcua.md
+[opcua-writer]: ../targets/opcua-writer.md
+[s3]: ../targets/aws-s3.md
+[s3tables]: ../targets/aws-s3-tables.md
+[sitewise]: ../targets/aws-sitewise.md
+[swedge]: ../targets/aws-sitewiseedge.md

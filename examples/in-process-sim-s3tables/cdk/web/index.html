@@ -1,0 +1,256 @@
+<!doctype html>
+<!--
+  Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+  SPDX-License-Identifier: Apache-2.0
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>SFC · Iceberg timeseries explorer</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Signed-out landing view. Shown first, before any token exists. -->
+    <main id="login-view" class="login" hidden>
+      <!--
+        Static perspective grid: a vanishing-point floor receding to a horizon. Pure geometry, no
+        animation -- the coordinates were computed once, with the horizontals compressing toward the
+        horizon so the recession reads correctly.
+      -->
+      <svg class="login-grid" viewBox="0 0 1200 600" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+        <defs>
+          <!-- Fades the floor out at the horizon and along both edges, so it has no hard borders. -->
+          <linearGradient id="grid-depth" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#fff" stop-opacity="0" />
+            <stop offset="22%" stop-color="#fff" stop-opacity="0.85" />
+            <stop offset="100%" stop-color="#fff" stop-opacity="0.12" />
+          </linearGradient>
+          <linearGradient id="grid-sides" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#fff" stop-opacity="0" />
+            <stop offset="28%" stop-color="#fff" stop-opacity="1" />
+            <stop offset="72%" stop-color="#fff" stop-opacity="1" />
+            <stop offset="100%" stop-color="#fff" stop-opacity="0" />
+          </linearGradient>
+          <mask id="grid-mask">
+            <rect x="0" y="0" width="1200" height="600" fill="url(#grid-depth)" />
+            <rect x="0" y="0" width="1200" height="600" fill="url(#grid-sides)" style="mix-blend-mode: multiply" />
+          </mask>
+        </defs>
+        <g mask="url(#grid-mask)" fill="none" stroke="currentColor" stroke-width="0.5" vector-effect="non-scaling-stroke">
+          <path d="M600 210L-1220 600 M600 210L-1155 600 M600 210L-1090 600 M600 210L-1025 600 M600 210L-960 600 M600 210L-895 600 M600 210L-830 600 M600 210L-765 600 M600 210L-700 600 M600 210L-635 600 M600 210L-570 600 M600 210L-505 600 M600 210L-440 600 M600 210L-375 600 M600 210L-310 600 M600 210L-245 600 M600 210L-180 600 M600 210L-115 600 M600 210L-50 600 M600 210L15 600 M600 210L80 600 M600 210L145 600 M600 210L210 600 M600 210L275 600 M600 210L340 600 M600 210L405 600 M600 210L470 600 M600 210L535 600 M600 210L600 600 M600 210L665 600 M600 210L730 600 M600 210L795 600 M600 210L860 600 M600 210L925 600 M600 210L990 600 M600 210L1055 600 M600 210L1120 600 M600 210L1185 600 M600 210L1250 600 M600 210L1315 600 M600 210L1380 600 M600 210L1445 600 M600 210L1510 600 M600 210L1575 600 M600 210L1640 600 M600 210L1705 600 M600 210L1770 600 M600 210L1835 600 M600 210L1900 600 M600 210L1965 600 M600 210L2030 600 M600 210L2095 600 M600 210L2160 600 M600 210L2225 600 M600 210L2290 600 M600 210L2355 600 M600 210L2420 600" />
+          <path d="M0 210.5H1200 M0 212.5H1200 M0 216.0H1200 M0 221.3H1200 M0 228.5H1200 M0 237.6H1200 M0 248.7H1200 M0 262.0H1200 M0 277.3H1200 M0 294.9H1200 M0 314.7H1200 M0 336.8H1200 M0 361.2H1200 M0 387.9H1200 M0 417.1H1200 M0 448.7H1200 M0 482.8H1200 M0 519.3H1200 M0 558.4H1200 M0 600.0H1200" />
+        </g>
+        <!-- The horizon itself, brighter, as the one deliberate accent line. -->
+        <path class="login-horizon" d="M0 210H1200" />
+      </svg>
+
+      <button id="theme-toggle-login" class="btn btn--icon login-theme" type="button" title="Switch light/dark">
+        <span aria-hidden="true">◐</span>
+        <span class="sr-only">Switch between light and dark</span>
+      </button>
+
+      <div class="login-card">
+        <div class="login-mark" aria-hidden="true">SFC</div>
+        <h1>Iceberg timeseries<br /><span class="login-accent">explorer</span></h1>
+        <p class="blurb">
+          High-frequency machine data in
+          <a
+            class="login-mark-term"
+            href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables.html"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Amazon S3&nbsp;Tables</a
+          >, queried from a
+          <a
+            class="login-mark-term"
+            href="https://duckdb.org/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >DuckDB</a
+          >-enabled AWS Lambda function.
+
+        </p>
+        <button id="sign-in" class="btn btn--primary btn--block" type="button">
+          Sign in
+          <span class="login-arrow" aria-hidden="true">&rarr;</span>
+        </button>
+        <p id="login-error" class="error" hidden></p>
+        <!--
+          Only shown alongside an error: a Cognito failure page never names the client it rejected,
+          so this is what it gets matched against.
+        -->
+        <p class="fineprint mono" id="login-client" hidden></p>
+      </div>
+
+    </main>
+
+    <!-- Signed-in application shell. -->
+    <div id="app-view" hidden>
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">SFC</span>
+          <span class="brand-name">Iceberg timeseries explorer</span>
+        </div>
+        <div class="session">
+          <button id="theme-toggle" class="btn btn--icon" type="button" title="Switch light/dark">
+            <span aria-hidden="true">◐</span>
+            <span class="sr-only">Switch between light and dark</span>
+          </button>
+          <span id="user-name" class="user-name" title="Signed-in subject"></span>
+          <button id="sign-out" class="btn" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <main class="page">
+        <!-- Filters in one row above the charts. -->
+        <section class="bar" aria-label="Source">
+          <div class="field field--grow">
+            <label for="table-bucket">S3 Tables bucket</label>
+            <input
+              id="table-bucket"
+              list="table-bucket-options"
+              type="text"
+              spellcheck="false"
+              autocomplete="off"
+              placeholder="sfc-industrial-data-bucket"
+            />
+            <datalist id="table-bucket-options"></datalist>
+          </div>
+          <div class="field">
+            <label for="namespace">Namespace</label>
+            <select id="namespace"></select>
+          </div>
+          <div class="field">
+            <label for="table">Table</label>
+            <select id="table"></select>
+          </div>
+          <div class="field field--action">
+            <button id="load-table" class="btn btn--primary" type="button">Load table</button>
+          </div>
+          <p class="hint" id="bucket-hint"></p>
+        </section>
+
+        <section class="bar" id="shape-panel" aria-label="Chart" hidden>
+          <div class="field">
+            <label for="time-column">Time axis</label>
+            <select id="time-column"></select>
+          </div>
+          <div class="field field--chips">
+            <label id="value-columns-label">Series</label>
+            <div id="value-columns" class="chips" role="group" aria-labelledby="value-columns-label"></div>
+          </div>
+          <div class="field">
+            <label for="dim-column">Split by</label>
+            <select id="dim-column">
+              <option value="">— none —</option>
+            </select>
+          </div>
+          <div class="field field--chips" id="dim-values-wrap" hidden>
+            <label id="dim-values-label">Values</label>
+            <div id="dim-values" class="chips" role="group" aria-labelledby="dim-values-label"></div>
+          </div>
+          <div class="field field--action">
+            <label class="check">
+              <input id="show-band" type="checkbox" checked />
+              <span>min/max band</span>
+            </label>
+            <label class="check">
+              <input id="show-trend" type="checkbox" />
+              <span>trend</span>
+            </label>
+            <button id="draw" class="btn btn--primary" type="button">Draw</button>
+          </div>
+        </section>
+
+        <!-- Headline numbers: these answer "what am I looking at" without reading the chart. -->
+        <section class="tiles" id="tiles" aria-label="Summary" hidden>
+          <div class="tile">
+            <span class="tile-label">Rows in table</span>
+            <strong class="tile-value" id="stat-rows">—</strong>
+            <span class="tile-note" id="stat-rows-note"></span>
+          </div>
+          <div class="tile">
+            <span class="tile-label">Window</span>
+            <strong class="tile-value" id="stat-window">—</strong>
+            <span class="tile-note" id="stat-window-note"></span>
+          </div>
+          <div class="tile">
+            <span class="tile-label">Bucket width</span>
+            <strong class="tile-value" id="stat-bucket">—</strong>
+            <span class="tile-note" id="stat-bucket-note"></span>
+          </div>
+          <div class="tile">
+            <span class="tile-label">Points drawn</span>
+            <strong class="tile-value" id="stat-points">—</strong>
+            <span class="tile-note" id="stat-points-note"></span>
+          </div>
+        </section>
+
+        <section class="card card--chart">
+          <div class="card-head">
+            <h2 id="chart-title">Signal</h2>
+            <div class="card-actions">
+              <span id="meta" class="meta"></span>
+              <button id="chart-refresh" class="btn btn--small" type="button" title="Re-read the table and redraw">
+                Refresh
+              </button>
+            </div>
+          </div>
+          <p id="status" class="status"></p>
+          <div id="chart" class="chart"></div>
+          <div id="trend-badges" class="badges"></div>
+          <p class="hint">
+            Zoom, pan or drag the range slider — each interaction re-queries the visible window at a
+            finer bucket width, server-side.
+          </p>
+        </section>
+
+        <div class="split">
+          <!-- Live tail of the newest rows, with timestamps rendered as readable UTC. -->
+          <section class="card" id="latest-card" hidden>
+            <div class="card-head">
+              <h2>Rows in view</h2>
+              <div class="card-actions">
+                <label class="check">
+                  <input id="latest-auto" type="checkbox" />
+                  <span>auto</span>
+                </label>
+                <button id="latest-refresh" class="btn btn--small" type="button">Refresh</button>
+              </div>
+            </div>
+            <p class="hint" id="latest-note">Newest rows of the charted window, times in UTC.</p>
+            <div id="latest" class="table-scroll"></div>
+          </section>
+
+          <section class="card" id="schema-panel" hidden>
+            <div class="card-head">
+              <h2>Columns</h2>
+              <span class="meta" id="schema-meta"></span>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table" id="schema-table">
+                <thead>
+                  <tr><th>Column</th><th>Type</th><th>Role</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <!--
+      Vendored rather than loaded from a CDN: cdn.plot.ly publishes no subresource-integrity hashes,
+      and self-hosting keeps the Content-Security-Policy free of third-party script hosts.
+      The `basic` bundle is used because the WebGL traces in the full bundle build kernels with the
+      Function constructor, which would force script-src 'unsafe-eval'.
+    -->
+    <script src="vendor/plotly-basic-4.1.1/plotly-basic.min.js"></script>
+    <script src="auth.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
