@@ -58,7 +58,6 @@ class SelfSignedCertificateGenerator {
 
         val (hostIpAddresses, hostDnsNames) = if (dnsNames == null || ipAddresses == null) getAddressesAndHostNames() else null to null
 
-        generalNames.add(GeneralName(GeneralName.uniformResourceIdentifier, applicationUri))
         val dnsNamesToAdd = if (dnsNames == null) hostDnsNames else if (dnsNames.isNotEmpty()) dnsNames else null
         dnsNamesToAdd?.toSet()?.let { generalNames.addAll(it.map { dns -> GeneralName(GeneralName.dNSName, dns) }) }
 
