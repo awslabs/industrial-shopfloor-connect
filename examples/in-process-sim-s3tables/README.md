@@ -66,7 +66,8 @@ Two directories:
 
 ## Prerequisites
 
-- A Java runtime, plus `curl`, `wget`, `jq` and `tar` for the installer.
+- A Java runtime. Plus `curl`, `jq`, `wget` and `tar` if you let `run.sh` download the
+  release bundles; not needed when you build from source.
 - AWS credentials resolvable by the
   [default provider chain](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html).
   Because the target uses `AutoCreate: true`, its first write creates the table bucket, the namespace
@@ -92,20 +93,25 @@ Two directories:
 
 ```shell
 cd examples/in-process-sim-s3tables/sfc-to-s3tables
-./install.sh            # downloads sfc-main, simulator, aws-s3-tables-target, debug-target
 ./run.sh
 ```
 
-`install.sh` fetches the four precompiled bundles for the latest release into `modules/` (gitignored)
-and extracts them. `run.sh` exports the two variables the configuration needs, then starts the core:
+That is the whole setup. `run.sh` finds the four modules this example needs — `sfc-main`, the
+`simulator` adapter, the `aws-s3-tables-target` and the `debug-target` — from whichever source is
+available, in this order:
 
-```shell
-export AWS_REGION="${AWS_REGION:-us-west-2}"
-export SFC_MODULES_DIR="${SFC_MODULES_DIR:-$(pwd)/modules}"
-"$SFC_MODULES_DIR/sfc-main/bin/sfc-main" -config simulator-to-s3tables.json
-```
+| Source | When it is used |
+|---|---|
+| `SFC_MODULES_DIR` | Whenever you set it, unchecked — the escape hatch for a deployment laid out some other way. |
+| `build/distribution` | Whenever this working copy has been built with `./gradlew build` from the repository root. **A local build wins**, so a change you just made to an adapter or target is what actually runs. |
+| `./modules` | Otherwise. The precompiled bundles for the latest release are downloaded here on first use and reused afterwards; the directory is gitignored. |
 
-`AWS_REGION` defaults to `us-west-2`; export it beforehand to write elsewhere.
+A module counts as present either extracted or as a `.tar.gz`, because `gradlew build` leaves both
+kinds side by side — anything still archived is unpacked in place, and reruns skip what is already
+there. Set `VERSION=vX.Y.Z` to pin the download to a specific release.
+
+`AWS_REGION` defaults to `us-west-2`; export it beforehand to write elsewhere. The download path
+needs `curl`, `jq`, `wget` and `tar`; building from source needs none of them.
 
 Nothing is printed per sample by default. To watch the data flow, delete the `#` from
 `"#DEBUGTarget"` in the schedule — the debug target prints each `TargetData` set to the console, and

@@ -775,22 +775,36 @@ def op_rows(cur: duckdb.DuckDBPyConnection, body: dict[str, Any], deadline: Dead
     )
 
     params: list[Any] = []
-    where = ""
+    where: list[str] = []
     order = ""
-    if body.get("t0Ms") is not None and body.get("t1Ms") is not None:
-        t0, t1 = _window(body)
+    time_col = None
+    if any(c["role"] == "time" for c in columns):
         time_col = _pick_time_column(columns, body.get("timeColumn"))
         ms = _epoch_ms_expr(time_col)
-        where = f"WHERE {ms} >= ? AND {ms} < ?"
-        order = f"ORDER BY {_quote_ident(time_col)} DESC"
-        params = [t0, t1]
-    elif any(c["role"] == "time" for c in columns):
-        time_col = _pick_time_column(columns, body.get("timeColumn"))
         order = f"ORDER BY {_quote_ident(time_col)} DESC"
 
+        if body.get("t0Ms") is not None and body.get("t1Ms") is not None:
+            t0, t1 = _window(body)
+            where += [f"{ms} >= ?", f"{ms} < ?"]
+            params += [t0, t1]
+
+        # Keyset cursor for paging a whole window out, newest first. Inclusive on purpose: rows that
+        # share the boundary timestamp -- ordinary in a narrow table, where one timestamp carries a
+        # row per tag -- would otherwise be skipped when a page boundary lands inside that timestamp.
+        # The caller drops the trailing rows it has already seen.
+        before_ms = body.get("beforeMs")
+        if before_ms is not None:
+            if not isinstance(before_ms, int):
+                raise ApiError(400, "BAD_REQUEST", "beforeMs must be an integer epoch millisecond.")
+            where.append(f"{ms} <= ?")
+            params.append(before_ms)
+
+    clause = f"WHERE {' AND '.join(where)}" if where else ""
     deadline.check()
-    cur.execute(f"SELECT {projection} FROM {ref} {where} {order} LIMIT {limit + 1}", params)
-    return _rows_payload(cur, limit)
+    cur.execute(f"SELECT {projection} FROM {ref} {clause} {order} LIMIT {limit + 1}", params)
+    payload = _rows_payload(cur, limit)
+    payload["timeColumn"] = time_col
+    return payload
 
 
 _FORBIDDEN_STATEMENTS = re.compile(

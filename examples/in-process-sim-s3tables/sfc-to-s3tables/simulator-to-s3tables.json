@@ -6,7 +6,7 @@
   "Schedules": [
     {
       "Name": "SimSchedule",
-      "Interval": 250,
+      "Interval": 50,
       "Active": "true",
       "TimestampLevel": "Both",
       "Sources": {

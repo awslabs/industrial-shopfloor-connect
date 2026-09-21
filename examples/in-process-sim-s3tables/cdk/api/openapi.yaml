@@ -917,8 +917,10 @@ paths:
     post:
       operationId: previewRows
       tags: [query]
-      summary: Raw row preview
-      description: Most recent rows in the window, all columns, capped server-side.
+      summary: Raw rows
+      description: >-
+        Rows in the window, newest first, all columns, capped by limit. Page through a whole
+        window by passing beforeMs from the oldest row of the previous page.
       security:
         - CognitoUserPool: []
       requestBody:
@@ -1382,6 +1384,12 @@ components:
           type: integer
           minimum: 1
           maximum: 5000
+        beforeMs:
+          type: integer
+          description: >-
+            Keyset cursor for paging a window out newest-first: returns rows at or before this epoch
+            millisecond. Inclusive, so rows sharing the boundary timestamp are not skipped when a
+            page ends inside one -- the caller drops the trailing rows it has already seen.
 
     SqlRequest:
       type: object
@@ -1539,6 +1547,9 @@ components:
     RowsResponse:
       type: object
       properties:
+        timeColumn:
+          type: string
+          description: The time column the rows were ordered by, if the table has one.
         columns:
           type: array
           items:

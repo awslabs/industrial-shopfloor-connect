@@ -238,6 +238,68 @@ def main():
                len(capped["series"][0]["points"]) <= 10,
                len(capped["series"][0]["points"]))
 
+    # The three intervals the viewer offers must come back exactly, not snapped to something else.
+    for interval in (10_000, 30_000, 60_000):
+        status, got = call(
+            "/api/series",
+            {**ref, "timeColumn": "event_time", "valueColumns": ["sinus"],
+             "t0Ms": t0, "t1Ms": t1, "bucketMs": interval, "maxPoints": 2000},
+        )
+        check(f"{interval // 1000}s interval honoured exactly", got["bucketMs"], interval)
+        check_that(
+            f"{interval // 1000}s buckets land on the grid",
+            all(p[0] % interval == 0 for p in got["series"][0]["points"]),
+            got["series"][0]["points"][:2],
+        )
+
+    # Paging a whole window out with the beforeMs cursor must return every row exactly once. The
+    # narrow table is the hard case: two rows share every timestamp, so a page boundary can land
+    # inside one.
+    for label, target, expected in (("wide", ref, 600), ("narrow", narrow, 600)):
+        time_col = "event_time"
+        seen = []
+        before = None
+        pages = 0
+        while True:
+            req = {**target, "timeColumn": time_col, "limit": 7}
+            if before is not None:
+                req["beforeMs"] = before
+            status, page = call("/api/rows", req)
+            if status != 200:
+                check(f"{label} paging page {pages} status", status, 200)
+                break
+            pages += 1
+            if not page["rows"]:
+                break
+            idx = page["columns"].index(time_col)
+            batch = page["rows"]
+            if page["truncated"]:
+                oldest = batch[-1][idx]
+                cut = len(batch)
+                while cut > 0 and batch[cut - 1][idx] == oldest:
+                    cut -= 1
+                if cut == 0:
+                    seen.extend(batch)
+                    before = oldest - 1
+                    continue
+                batch = batch[:cut]
+                before = oldest
+            seen.extend(batch)
+            if not page["truncated"]:
+                break
+            if pages > 400:
+                break
+        check(f"{label} table pages out every row", len(seen), expected)
+        check_that(
+            f"{label} table pages have no duplicates",
+            len(seen) == len({tuple(r) for r in seen}),
+            f"{len(seen)} rows, {len({tuple(r) for r in seen})} distinct",
+        )
+        check_that(
+            f"{label} rows stay newest-first across pages",
+            all(a[0] >= b[0] for a, b in zip(seen, seen[1:])),
+        )
+
     print()
     if FAILURES:
         print(f"{len(FAILURES)} check(s) failed: {', '.join(FAILURES)}")
