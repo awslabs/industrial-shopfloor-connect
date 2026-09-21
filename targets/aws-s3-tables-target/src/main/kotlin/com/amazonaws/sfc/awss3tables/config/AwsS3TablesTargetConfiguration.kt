@@ -68,7 +68,7 @@ class AwsS3TablesTargetConfiguration : AwsServiceConfig, TargetConfiguration() {
     @SerializedName(CONFIG_INTERVAL)
     private var _interval: Int = DEFAULT_INTERVAL
     val interval : Duration
-        get() = _interval.toDuration(DurationUnit.SECONDS)
+        get() = _interval.toDuration(DurationUnit.MILLISECONDS)
 
 
     /**

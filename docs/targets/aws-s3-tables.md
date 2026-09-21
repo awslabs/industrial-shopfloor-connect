@@ -101,11 +101,11 @@ https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-supp
 
 ### Interval
 
-The time interval in milliseconds that triggers writing buffered records to Timestream, even if the [BufferCount](#buffercount) hasn't been reached. If not specified, records are only written when the [BufferCount](#buffercount) is reached. 
+The time interval in milliseconds that triggers writing buffered records to the table, even if the [BufferCount](#buffercount) hasn't been reached. Default is 10000 (10 seconds).
 
 **Type**: Integer
 
-Optional, if not set only [BufferCount](#buffercount)#batch count is used.
+Optional.
 
 
 ---
@@ -236,7 +236,7 @@ Default value is true
       "TargetType": "AWS-S3-TABLES",
       "#TargetServer": "S3TablesServer",
       "CredentialProviderClient": "CredentialProviderClient",
-      "Interval": 60,
+      "Interval": 60000,
       "BufferCount": 100,
 
       "Region": "eu-west-1",
