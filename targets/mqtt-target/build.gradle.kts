@@ -8,14 +8,8 @@ version = "1.0.0"
 
 val sfcRelease = rootProject.extra.get("sfc_release")!!
 val module = "mqtt"
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-val reflectionVersion = "1.6.0"
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
-val log4jVersion = "2.17.2"
-val pahoVersion = "1.2.4"
-
 plugins {
     id("sfc.kotlin-application-conventions")
     java
@@ -24,13 +18,13 @@ plugins {
 dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("org.jetbrains.kotlin:kotlin-reflect:$reflectionVersion")
-    implementation("org.eclipse.paho:org.eclipse.paho.client.mqttv3:$pahoVersion")
-    implementation("org.apache.logging.log4j:log4j-api:$log4jVersion")
-    implementation("org.apache.logging.log4j:log4j-core:$log4jVersion")
-    implementation("org.apache.logging.log4j:log4j-slf4j-impl:$log4jVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlin.reflect)
+    implementation(libs.paho.mqttv3)
+    implementation(libs.log4j.api)
+    implementation(libs.log4j.core)
+    implementation(libs.log4j.slf4j2.impl)
 }
 
 application {
@@ -47,13 +41,11 @@ tasks.distTar {
     archiveFileName = "${project.name}.tar.gz"
 }
 
-
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))
     include("*.tar.gz")
     into(layout.buildDirectory.dir("../../../build/distribution/"))
 }
-
 
 tasks.register("generateBuildConfig") {
     val version = project.version.toString()

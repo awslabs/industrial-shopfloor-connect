@@ -10,12 +10,6 @@ val sfcRelease = rootProject.extra.get("sfc_release")!!
 val module = "opcua-auto-discovery"
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
-
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-val opcuaMiloVersion = "0.5.1"
-
-
 plugins {
     java
     id("sfc.kotlin-library-conventions")
@@ -25,12 +19,12 @@ plugins {
 dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":adapters:opcua"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation(libs.kotlinx.coroutines.core)
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("org.eclipse.milo:sdk-client:$opcuaMiloVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.milo.sdk.client)
 }
 
 tasks.getByName<Zip>("distZip").enabled = false
@@ -41,7 +35,6 @@ tasks.distTar {
     archiveExtension = "tar.gz"
     archiveFileName = "${project.name}.tar.gz"
 }
-
 
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))

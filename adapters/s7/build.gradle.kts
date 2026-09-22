@@ -10,15 +10,6 @@ val sfcRelease = rootProject.extra.get("sfc_release")!!
 val module = "s7"
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-val reflectionVersion = "1.6.0"
-val commonsCollectionsVersion = "3.1"
-val plc4jS7Version = "0.9.1"
-val slf4jApiVersion = "2.0.1"
-val nettyCodecVersion = "4.1.80.Final"
-val fasterXmlVersion = "2.14.2"
-
 plugins {
     id("sfc.kotlin-application-conventions")
     java
@@ -27,15 +18,15 @@ plugins {
 dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("org.jetbrains.kotlin:kotlin-reflect:$reflectionVersion")
-    implementation("commons-collections:commons-collections:$commonsCollectionsVersion")
-    implementation("com.fasterxml.jackson.core:jackson-databind:$fasterXmlVersion")
-    implementation("io.netty:netty-codec:$nettyCodecVersion")
-    implementation("org.apache.plc4x:plc4j-driver-s7:${plc4jS7Version}")
-    implementation("org.slf4j:slf4j-api:${slf4jApiVersion}")
-    implementation("org.slf4j:slf4j-nop:${slf4jApiVersion}")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlin.reflect)
+    implementation(libs.commons.collections)
+    implementation(libs.jackson.databind)
+    implementation(libs.netty.codec)
+    implementation(libs.plc4j.driver.s7)
+    implementation(libs.slf4j.api)
+    implementation(libs.slf4j.nop)
 }
 
 application {
@@ -51,7 +42,6 @@ tasks.distTar {
     archiveExtension = "tar.gz"
     archiveFileName = "${project.name}.tar.gz"
 }
-
 
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))

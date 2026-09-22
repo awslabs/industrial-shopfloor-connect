@@ -716,7 +716,9 @@ class AwsS3TablesTargetWriter(
         return try {
             val builder = Parquet.writeData(file)
                 .schema(table.schema())
-                .createWriterFunc(GenericParquetWriter::buildWriter)
+                // Iceberg 1.7 replaced buildWriter(MessageType) with the schema-aware
+                // create(Schema, MessageType), matching createWriterFunc's BiFunction overload.
+                .createWriterFunc(GenericParquetWriter::create)
                 .overwrite()
 
             if (table.spec().isPartitioned && partitionData != null) {

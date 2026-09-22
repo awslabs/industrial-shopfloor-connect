@@ -8,20 +8,10 @@ version = "1.0.1"
 
 val sfcRelease = rootProject.extra.get("sfc_release")!!
 val module = "awss3tables"
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
 // need this one for S3 Tables version
-val awsSdkVersion = "2.29.30"
 // pinned deliberately: newer AWS SDK versions exhibited S3 Tables service-API issues
-var icebergVersion = "1.6.1"
-var awsIcebergVersion = "1.9.0"
-var parquetVersion = "1.15.1"
-var parquetFormatsVersion = "2.11.0"
-var hadoopVersion = "3.4.1"
-var slf4jVersion = "2.0.17"
-
 plugins {
     id("sfc.kotlin-application-conventions")
     java
@@ -35,33 +25,32 @@ dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
 
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
 
+    implementation(libs.iceberg.core)
+    implementation(libs.iceberg.parquet)
+    implementation(libs.iceberg.data)
+    implementation(libs.iceberg.api)
+    implementation(libs.iceberg.aws)
+    implementation(libs.iceberg.aws.bundle)
 
-    implementation("org.apache.iceberg:iceberg-core:$icebergVersion")
-    implementation("org.apache.iceberg:iceberg-parquet:$icebergVersion")
-    implementation("org.apache.iceberg:iceberg-data:$icebergVersion")
-    implementation("org.apache.iceberg:iceberg-api:$icebergVersion")
-    implementation("org.apache.iceberg:iceberg-aws:$icebergVersion")
-    implementation("org.apache.iceberg:iceberg-aws-bundle:$awsIcebergVersion")
+    implementation(libs.awssdk.s3tables)
+    implementation(libs.awssdk.sts)
+    implementation(libs.awssdk.url.connection.client)
 
-    implementation("software.amazon.awssdk:s3tables:2.29.30")
-    implementation("software.amazon.awssdk:sts:2.29.30")
-    implementation("software.amazon.awssdk:url-connection-client:2.29.30")
+    implementation(libs.parquet.avro)
+    implementation(libs.parquet.column)
+    implementation(libs.parquet.common)
+    implementation(libs.parquet.encoding)
 
-    implementation("org.apache.parquet:parquet-avro:$parquetVersion")
-    implementation("org.apache.parquet:parquet-column:$parquetVersion")
-    implementation("org.apache.parquet:parquet-common:$parquetVersion")
-    implementation("org.apache.parquet:parquet-encoding:$parquetVersion")
+    implementation(libs.parquet.hadoop)
+    implementation(libs.parquet.format)
 
-    implementation("org.apache.parquet:parquet-hadoop:$parquetVersion")
-    implementation("org.apache.parquet:parquet-format:$parquetFormatsVersion")
+    implementation(libs.hadoop.common)
+    implementation(libs.hadoop.client)
 
-    implementation("org.apache.hadoop:hadoop-common:$hadoopVersion")
-    implementation("org.apache.hadoop:hadoop-client:$hadoopVersion")
-
-    implementation("org.slf4j:slf4j-nop:$slf4jVersion")
+    implementation(libs.slf4j.nop)
     
 }
 
@@ -79,13 +68,11 @@ tasks.distTar {
     archiveFileName = "${project.name}.tar.gz"
 }
 
-
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))
     include("*.tar.gz")
     into(layout.buildDirectory.dir("../../../build/distribution/"))
 }
-
 
 tasks.register("generateBuildConfig") {
     val version = project.version.toString()

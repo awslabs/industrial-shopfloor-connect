@@ -10,13 +10,6 @@ val sfcRelease = rootProject.extra.get("sfc_release")!!
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
 val module = "opcua"
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-val reflectionVersion = "1.6.0"
-val opcuaMiloVersion = "0.5.1"
-val jmesPathVersion = "0.5.1"
-val gsonVersion = "2.9.0"
-
 plugins {
     id("sfc.kotlin-application-conventions")
     idea
@@ -26,12 +19,12 @@ plugins {
 dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("org.jetbrains.kotlin:kotlin-reflect:$reflectionVersion")
-    implementation("com.google.code.gson:gson:$gsonVersion")
-    implementation("org.eclipse.milo:sdk-client:$opcuaMiloVersion")
-    implementation("io.burt:jmespath-core:$jmesPathVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlin.reflect)
+    implementation(libs.gson)
+    implementation(libs.milo.sdk.client)
+    implementation(libs.jmespath.core)
 }
 
 application {
@@ -47,7 +40,6 @@ tasks.distTar {
     archiveExtension = "tar.gz"
     archiveFileName = "${project.name}.tar.gz"
 }
-
 
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))

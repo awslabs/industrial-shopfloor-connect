@@ -4,9 +4,6 @@ version = "1.0.0"
 
 val sfcRelease = rootProject.extra.get("sfc_release")!!
 val sfcCoreVersion = sfcRelease
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-
 plugins {
     java
     id("sfc.kotlin-library-conventions")
@@ -19,10 +16,10 @@ repositories {
 
 dependencies {
     implementation(project(":core:sfc-core"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("net.java.dev.jna:jna:5.16.0")
-    implementation("com.nativelibs4java:jnaerator-runtime:0.12")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.jna)
+    implementation(libs.jnaerator.runtime)
 }
 
 publishing {
@@ -40,7 +37,6 @@ publishing {
 tasks.build {
     finalizedBy(tasks.publishToMavenLocal)
 }
-
 
 //
 //tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {

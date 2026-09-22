@@ -9,19 +9,6 @@ version = rootProject.extra.get("sfc_release")!!
 val module = "sfcmain"
 val sfcCoreVersion = version
 val sfcIpcVersion = version
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-val awsMskIamVersion = "1.1.6"
-val awsSdkVersion = "2.31.18"
-val awsSdkVersion2 = "2.29.30"
-var icebergVersion = "1.6.1"
-
-var awsIcebergVersion = "1.9.0"
-var parquetVersion = "1.15.1"
-var parquetFormatsVersion = "2.11.0"
-var hadoopVersion = "3.4.1"
-var slf4jVersion = "2.0.17"
-
 plugins {
     id("sfc.kotlin-application-conventions")
 }
@@ -29,20 +16,20 @@ plugins {
 dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
 
     // libraries required because of KAFKA class loading logic
-    implementation("software.amazon.msk:aws-msk-iam-auth:$awsMskIamVersion")
+    implementation(libs.msk.iam.auth)
 
     // s3 libraries required for s3 libraries dependencies for in process deployment of S3 adapter
-    implementation("software.amazon.awssdk:s3:$awsSdkVersion2")
+    implementation(libs.awssdk.s3)
 
     // s3Tables libraries required for s3Tables libraries dependencies for in process deployment of S3Tables adapter
-    implementation("org.apache.iceberg:iceberg-aws:${icebergVersion}")
-    implementation("software.amazon.awssdk:s3tables:$awsSdkVersion2")
+    implementation(libs.iceberg.aws)
+    implementation(libs.awssdk.s3tables)
 
-    implementation("org.slf4j:slf4j-nop:${slf4jVersion}")
+    implementation(libs.slf4j.nop)
 }
 
 application {
@@ -60,13 +47,11 @@ tasks.distTar {
 	archiveExtension = "tar.gz"
 }
 
-
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))
     include("*.tar.gz")
     into(layout.buildDirectory.dir("../../../build/distribution/"))
 }
-
 
 tasks.register("generateBuildConfig") {
     val version = project.version.toString()

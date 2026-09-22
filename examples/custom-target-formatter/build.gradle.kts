@@ -9,9 +9,7 @@ version = "1.0.0"
 val sfcRelease = rootProject.extra.get("sfc_release")!!
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
-val kotlinCoroutinesVersion = "1.6.2"
 val module = "custom-target-formatter"
-
 
 plugins {
     java
@@ -19,12 +17,10 @@ plugins {
     id("sfc.kotlin-library-conventions")
 }
 
-
 dependencies {
     implementation(project(":core:sfc-core"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation(libs.kotlinx.coroutines.core)
 }
-
 
 tasks.getByName<Zip>("distZip").enabled = false
 tasks.distTar {
@@ -34,7 +30,6 @@ tasks.distTar {
     archiveExtension = "tar.gz"
     archiveFileName = "${project.name}.tar.gz"
 }
-
 
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))

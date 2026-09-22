@@ -9,10 +9,6 @@ version = rootProject.extra.get("sfc_release")!!
 val module = "cloudwatch"
 val sfcCoreVersion = version
 val sfcIpcVersion = version
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-val awsSdkVersion = "2.31.18"
-
 plugins {
     id("sfc.kotlin-application-conventions")
 }
@@ -20,9 +16,9 @@ plugins {
 dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("software.amazon.awssdk:cloudwatch:$awsSdkVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.awssdk.cloudwatch)
 }
 
 application {
@@ -38,7 +34,6 @@ tasks.distTar {
     archiveExtension = "tar.gz"
     archiveFileName = "${project.name}.tar.gz"
 }
-
 
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))

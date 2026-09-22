@@ -10,10 +10,6 @@ val sfcRelease = rootProject.extra.get("sfc_release")!!
 val module = "filetarget"
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
-val awsServicesVersion = "1.0.0"
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-
 plugins {
     id("sfc.kotlin-application-conventions")
     java
@@ -22,8 +18,8 @@ plugins {
 dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
 }
 
 tasks.register("generateBuildConfig") {
@@ -68,11 +64,9 @@ tasks.distTar {
     archiveFileName = "${project.name}.tar.gz"
 }
 
-
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))
     include("*.tar.gz")
     into(layout.buildDirectory.dir("../../../build/distribution/"))
 }
-
 

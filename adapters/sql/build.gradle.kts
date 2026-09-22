@@ -10,17 +10,6 @@ val sfcRelease = rootProject.extra.get("sfc_release")!!
 val module = "sql"
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-val reflectionVersion = "1.6.0"
-val jmesPathVersion = "0.5.1"
-val gsonVersion = "2.9.0"
-val postgresClientVersion = "42.3.8"
-val mariadbClientVersion = "2.1.2"
-val oracleClientVersion = "23.2.0.0"
-val sqlServerClientVersion = "12.2.0.jre8"
-val mysqlClientVersion = "8.0.33"
-
 plugins {
     id("sfc.kotlin-application-conventions")
     java
@@ -29,15 +18,19 @@ plugins {
 dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("org.jetbrains.kotlin:kotlin-reflect:$reflectionVersion")
-    implementation("org.postgresql:postgresql:$postgresClientVersion")
-    implementation("org.mariadb.jdbc:mariadb-java-client:$mariadbClientVersion")
-    implementation("com.oracle.database.jdbc:ojdbc8:$oracleClientVersion")
-    implementation("com.microsoft.sqlserver:mssql-jdbc:${sqlServerClientVersion}")
-    implementation("mysql:mysql-connector-java:$mysqlClientVersion")
-    implementation("com.google.code.gson:gson:$gsonVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlin.reflect)
+    implementation(libs.postgresql)
+    implementation(libs.mariadb.java.client)
+    implementation(libs.ojdbc8)
+    implementation(libs.mssql.jdbc)
+    implementation(libs.mysql.connector.j) {
+        // Only needed for the X DevAPI, which SFC does not use. Left in, it drags
+        // protobuf 4.x in and conflicts with the protobuf that gRPC is built against.
+        exclude(group = "com.google.protobuf", module = "protobuf-java")
+    }
+    implementation(libs.gson)
 }
 
 application {
@@ -54,13 +47,11 @@ tasks.distTar {
     archiveFileName = "${project.name}.tar.gz"
 }
 
-
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))
     include("*.tar.gz")
     into(layout.buildDirectory.dir("../../../build/distribution/"))
 }
-
 
 tasks.register("generateBuildConfig") {
     val version = project.version.toString()

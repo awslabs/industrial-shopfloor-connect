@@ -8,13 +8,8 @@ version = "1.0.0"
 
 val sfcRelease = rootProject.extra.get("sfc_release")!!
 val module = "opcuatarget"
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
-val miloVersion = "0.6.14"
-val gsonVersion = "2.9.0"
-
 plugins {
     id("sfc.kotlin-application-conventions")
     java
@@ -23,11 +18,11 @@ plugins {
 dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
-    implementation("org.eclipse.milo:opc-ua-sdk:$miloVersion")
-    implementation("org.eclipse.milo:sdk-server:$miloVersion")
-    api("com.google.code.gson:gson:$gsonVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.milo.opc.ua.sdk)
+    implementation(libs.milo.sdk.server)
+    api(libs.gson)
 }
 
 application {
@@ -44,13 +39,11 @@ tasks.distTar {
     archiveFileName = "${project.name}.tar.gz"
 }
 
-
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))
     include("*.tar.gz")
     into(layout.buildDirectory.dir("../../../build/distribution/"))
 }
-
 
 tasks.register("generateBuildConfig") {
     val version = project.version.toString()

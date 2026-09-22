@@ -2,15 +2,8 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-
 group = "com.amazonaws.sfc"
 version = "1.0.0"
-
-val kotlinVersion = "2.4.20"
-
-
-val sfcCoreVersion = "1.0.0"
-
 plugins {
     id("sfc.kotlin-application-conventions")
 
@@ -20,7 +13,7 @@ plugins {
 dependencies {
 
     implementation(project(":core:sfc-core"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
 
 }
 

@@ -5,12 +5,6 @@
 group = "com.amazonaws.sfc"
 
 version = "1.0.0"
-
-val sfcCoreVersion = "1.0.0"
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-
-
 plugins {
 
     java
@@ -22,7 +16,7 @@ plugins {
 dependencies {
 
     implementation(project(":core:sfc-core"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation(libs.kotlinx.coroutines.core)
 
 }
 

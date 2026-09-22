@@ -10,12 +10,6 @@ val sfcRelease = rootProject.extra.get("sfc_release")!!
 val module = "uberjar"
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.4.20"
-val reflectionVersion = "1.6.0"
-val jmesPathVersion = "0.5.1"
-val gsonVersion = "2.9.0"
-
 val mergedJar by configurations.creating<Configuration> {
     // we're going to resolve this config here, in this project
     isCanBeResolved = true
@@ -52,8 +46,8 @@ dependencies {
         project.logger.lifecycle(adapterProject.name)
         mergedJar(adapterProject)
     }
-    mergedJar("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    mergedJar("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    mergedJar(libs.kotlin.stdlib.jdk8)
+    mergedJar(libs.kotlinx.coroutines.core)
 }
 
 tasks.jar {
@@ -88,7 +82,6 @@ tasks.distTar {
     archiveExtension = "tar.gz"
     archiveFileName = "${project.name}.tar.gz"
 }
-
 
 tasks.register<Copy>("copyDist") {
     from(layout.buildDirectory.dir("distributions"))
