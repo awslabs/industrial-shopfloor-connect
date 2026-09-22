@@ -114,8 +114,10 @@ Shop Floor Connectivity (SFC) is a data ingestion technology for collecting indu
 
 **SFC Deployment**
 
-- [Greengrass CDK](../deployment/README.md)
+- [Deployment models](sfc-deployment.md) — in-process, IPC, mixed, and the
+  [single-jar uberjar](sfc-deployment.md#single-file-deployments)
 - [Greengrass Lab](../examples/greengrass-in-process/README.md)
+- [Greengrass uberjar component](../examples/greengrass-uberjar/README.md)
 
 
 

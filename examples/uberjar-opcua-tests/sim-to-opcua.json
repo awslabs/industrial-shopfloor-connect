@@ -7,7 +7,7 @@
   "Schedules": [
     {
       "Name": "SimSchedule",
-      "Interval": 1000,
+      "Interval": 100,
       "Active": true,
       "TimestampLevel": "Both",
       "Sources": { "Simulator": [ "*" ] },

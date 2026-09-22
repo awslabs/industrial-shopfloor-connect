@@ -178,7 +178,8 @@ $SFC_DEPLOYMENT_DIR/sfc-uberjar/bin/sfc-uberjar -config $SFC_DEPLOYMENT_DIR/simu
 
 ```bat
 :: Windows (cmd)
-"%SFC_DEPLOYMENT_DIR%\sfc-uberjar\bin\sfc-uberjar.bat" -config "%SFC_DEPLOYMENT_DIR%\simulator.json" -info
+for %%j in ("%SFC_DEPLOYMENT_DIR%\sfc-uberjar\lib\sfc-uberjar-*.jar") do set "SFC_JAR=%%~fj"
+java -jar "%SFC_JAR%" -config "%SFC_DEPLOYMENT_DIR%\simulator.json" -info
 ```
 
 Six simulated signals now print once per second. `Ctrl-C` to stop. That is the whole loop — read a
@@ -306,7 +307,8 @@ $SFC_DEPLOYMENT_DIR/sfc-uberjar/bin/sfc-uberjar -config $SFC_DEPLOYMENT_DIR/exam
 ```bat
 :: Windows (cmd)
 docker run -d -p 4840:4840 ghcr.io/umati/sample-server:main
-"%SFC_DEPLOYMENT_DIR%\sfc-uberjar\bin\sfc-uberjar.bat" -config "%SFC_DEPLOYMENT_DIR%\example.json" -info
+for %%j in ("%SFC_DEPLOYMENT_DIR%\sfc-uberjar\lib\sfc-uberjar-*.jar") do set "SFC_JAR=%%~fj"
+java -jar "%SFC_JAR%" -config "%SFC_DEPLOYMENT_DIR%\example.json" -info
 ```
 
 Check what landed in your bucket:

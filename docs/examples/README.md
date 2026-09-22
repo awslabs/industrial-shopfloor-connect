@@ -1,9 +1,14 @@
 # Examples
 
-Every example in [`examples/`](../../examples). The **Mode** column is the
-[deployment model](../sfc-deployment.md): *in-process* runs the adapters and targets inside the
-`sfc-main` JVM, *IPC* runs them as separate gRPC services — see
-[running adapters](../sfc-running-adapters.md) and [running targets](../sfc-running-targets.md).
+Every example in [`examples/`](../../examples). The **Mode** column links to the
+[deployment model](../sfc-deployment.md) each one uses:
+
+- **[in-process][m-inproc]** — adapters and targets run inside the `sfc-main` JVM, loaded from the
+  `JarFiles` paths in the configuration
+- **[IPC][m-ipc]** — they run as separate gRPC services; see
+  [running adapters](../sfc-running-adapters.md) and [running targets](../sfc-running-targets.md)
+- **[uberjar][m-uberjar]** — in-process from one jar that already contains every component, so the
+  configuration needs no `JarFiles` at all
 
 Most examples also wire up the [Debug target][debug] so you can see the data on the console; it is
 listed only where it is part of the point.
@@ -12,34 +17,34 @@ listed only where it is part of the point.
 
 | Example | Gist | Protocol adapter | Target | Mode |
 |---|---|---|---|---|
-| [Simulator to S3 Tables][ex-sim-s3tables] | High-frequency simulated machine tags into Apache Iceberg on S3 Tables, with tuning guidance for sustained writes. Ships an optional Cognito-secured web app that queries the tables with DuckDB in Lambda. | [Simulator][simulator] | [S3 Tables][s3tables], [Debug][debug] | in-process |
-| [OPC-UA to SiteWise][ex-opcua-sitewise] | Step-by-step workshop: OPC-UA server on EC2 into SiteWise, including asset models, assets and SiteWise Monitor dashboards. | [OPC-UA][opcua] | [SiteWise][sitewise], [Debug][debug] | in-process |
-| [OPC-UA to SiteWise Edge][ex-opcua-swedge] | The same ingestion, but to SiteWise Edge on-premises, so it keeps working through intermittent connectivity. | [OPC-UA][opcua] | [SiteWise Edge][swedge], [Debug][debug] | in-process |
-| [OPC-UA to MSK][ex-opcua-msk] | OPC-UA into an Amazon MSK topic. | [OPC-UA][opcua] | [MSK][msk], [Debug][debug] | in-process |
-| [OPC-UA to MSK over IPC][ex-ipc-opcua-msk] | The same pipeline with the adapter and target split into separate gRPC services — the pattern for segregated OT/IT networks. | [OPC-UA][opcua] | [MSK][msk], [Debug][debug] | IPC |
-| [OPC-UA to IoT Core with filters][ex-filters] | Reads a public OPC-UA demo server and publishes to IoT Core, demonstrating [metadata](../README.md#metadata), [transformations](../sfc-data-processing-filtering.md#transformations) and all three filter types. | [OPC-UA][opcua] | [IoT Core][iotcore], [Debug][debug] | in-process |
-| [Siemens S7 to SiteWise][ex-s7-sitewise] | S7 tags into SiteWise, with a variant that auto-creates the models and assets. | [S7][s7] | [SiteWise][sitewise], [Debug][debug] | in-process |
-| [Uberjar OPC-UA tests][ex-uberjar-opcua] | Runs the OPC-UA target and adapter straight from the uberjar on simulated data — the one example whose configuration has **no** `JarFiles`, showing how components are found on the single jar's own classpath. Needs no external system. | [Simulator][simulator] | [OPC-UA][opcua-target] | in-process, uberjar |
-| [Siemens S7 to OPC-UA][ex-s7-opcua] | Republishes S7 tags as an OPC-UA server, either from an explicit data model or with an auto-created address space. | [S7][s7] | [OPC-UA][opcua-target], [Debug][debug] | in-process |
-| [Beckhoff ADS to S3][ex-ads-s3] | Reads a Beckhoff controller over ADS/TCP and writes to S3. Includes the `main.tmc` declaring the variables, and one channel per supported address type. | [ADS][ads] | [S3][s3], [Debug][debug] | in-process |
-| [Beckhoff ADS to S3 over IPC][ex-ipc-ads-s3] | The same pipeline as separate gRPC services. | [ADS][ads] | [S3][s3], [Debug][debug] | IPC |
-| [Rockwell PCCC to S3][ex-pccc-s3] | Reads an Allen-Bradley controller over PCCC and writes to S3. | [PCCC][pccc] | [S3][s3], [Debug][debug] | in-process |
-| [Mitsubishi SLMP to S3][ex-slmp-s3] | SLMP into S3, split across several configuration files — channels, structures, types and templates — and using the AWS IoT credentials provider rather than static keys. | [SLMP][slmp] | [S3][s3], [Debug][debug] | in-process |
-| [Mitsubishi SLMP to S3 over IPC][ex-ipc-slmp-s3] | The same, with the adapter and target as gRPC services declared in a separate `servers.json`. | [SLMP][slmp] | [S3][s3], [Debug][debug] | IPC |
+| [Simulator to S3 Tables][ex-sim-s3tables] | High-frequency simulated machine tags into Apache Iceberg on S3 Tables, with tuning guidance for sustained writes. Ships an optional Cognito-secured web app that queries the tables with DuckDB in Lambda. Runnable either way — `run-inprocess.sh` with per-module `JarFiles`, or `run-uberjar.sh` with none — so the two deployment shapes sit side by side on one pipeline. | [Simulator][simulator] | [S3 Tables][s3tables], [Debug][debug] | [in-process][m-inproc] or [uberjar][m-uberjar] |
+| [OPC-UA to SiteWise][ex-opcua-sitewise] | Step-by-step workshop: OPC-UA server on EC2 into SiteWise, including asset models, assets and SiteWise Monitor dashboards. | [OPC-UA][opcua] | [SiteWise][sitewise], [Debug][debug] | [in-process][m-inproc] |
+| [OPC-UA to SiteWise Edge][ex-opcua-swedge] | The same ingestion, but to SiteWise Edge on-premises, so it keeps working through intermittent connectivity. | [OPC-UA][opcua] | [SiteWise Edge][swedge], [Debug][debug] | [in-process][m-inproc] |
+| [OPC-UA to MSK][ex-opcua-msk] | OPC-UA into an Amazon MSK topic. | [OPC-UA][opcua] | [MSK][msk], [Debug][debug] | [in-process][m-inproc] |
+| [OPC-UA to MSK over IPC][ex-ipc-opcua-msk] | The same pipeline with the adapter and target split into separate gRPC services — the pattern for segregated OT/IT networks. | [OPC-UA][opcua] | [MSK][msk], [Debug][debug] | [IPC][m-ipc] |
+| [OPC-UA to IoT Core with filters][ex-filters] | Reads a public OPC-UA demo server and publishes to IoT Core, demonstrating [metadata](../README.md#metadata), [transformations](../sfc-data-processing-filtering.md#transformations) and all three filter types. | [OPC-UA][opcua] | [IoT Core][iotcore], [Debug][debug] | [in-process][m-inproc] |
+| [Siemens S7 to SiteWise][ex-s7-sitewise] | S7 tags into SiteWise, with a variant that auto-creates the models and assets. | [S7][s7] | [SiteWise][sitewise], [Debug][debug] | [in-process][m-inproc] |
+| [Uberjar OPC-UA tests][ex-uberjar-opcua] | Both OPC-UA directions run straight from the uberjar with a single `java -jar`, so neither configuration carries any `JarFiles`. `run-uberjar.sh server` publishes simulated signals as an OPC-UA server on port 4841 and needs no external system; `run-uberjar.sh client` reads the umati sample server in Docker and prints to the console. | [Simulator][simulator], [OPC-UA][opcua] | [OPC-UA][opcua-target], [Debug][debug] | [uberjar][m-uberjar] |
+| [Siemens S7 to OPC-UA][ex-s7-opcua] | Republishes S7 tags as an OPC-UA server, either from an explicit data model or with an auto-created address space. | [S7][s7] | [OPC-UA][opcua-target], [Debug][debug] | [in-process][m-inproc] |
+| [Beckhoff ADS to S3][ex-ads-s3] | Reads a Beckhoff controller over ADS/TCP and writes to S3. Includes the `main.tmc` declaring the variables, and one channel per supported address type. | [ADS][ads] | [S3][s3], [Debug][debug] | [in-process][m-inproc] |
+| [Beckhoff ADS to S3 over IPC][ex-ipc-ads-s3] | The same pipeline as separate gRPC services. | [ADS][ads] | [S3][s3], [Debug][debug] | [IPC][m-ipc] |
+| [Rockwell PCCC to S3][ex-pccc-s3] | Reads an Allen-Bradley controller over PCCC and writes to S3. | [PCCC][pccc] | [S3][s3], [Debug][debug] | [in-process][m-inproc] |
+| [Mitsubishi SLMP to S3][ex-slmp-s3] | SLMP into S3, split across several configuration files — channels, structures, types and templates — and using the AWS IoT credentials provider rather than static keys. | [SLMP][slmp] | [S3][s3], [Debug][debug] | [in-process][m-inproc] |
+| [Mitsubishi SLMP to S3 over IPC][ex-ipc-slmp-s3] | The same, with the adapter and target as gRPC services declared in a separate `servers.json`. | [SLMP][slmp] | [S3][s3], [Debug][debug] | [IPC][m-ipc] |
 
 ## Cloud to shop floor
 
 | Example | Gist | Protocol adapter | Target | Mode |
 |---|---|---|---|---|
-| [IoT Core to OPC-UA write][ex-iot-opcua-write] | The reverse direction: subscribes to an MQTT topic and writes the received values to OPC-UA nodes on a server. | [MQTT][mqtt] | [OPC-UA Writer][opcua-writer], [Debug][debug] | in-process |
+| [IoT Core to OPC-UA write][ex-iot-opcua-write] | The reverse direction: subscribes to an MQTT topic and writes the received values to OPC-UA nodes on a server. | [MQTT][mqtt] | [OPC-UA Writer][opcua-writer], [Debug][debug] | [in-process][m-inproc] |
 
 ## AWS IoT Greengrass deployments
 
 | Example | Gist | Protocol adapter | Target | Mode |
 |---|---|---|---|---|
-| [Greengrass in-process][ex-gg-inproc] | Step-by-step lab deploying SFC as a Greengrass V2 component, with everything in one process. | [OPC-UA][opcua] | [S3][s3], [IoT Core][iotcore], [Debug][debug] | in-process |
-| [Greengrass IPC][ex-gg-ipc] | The same lab with the adapter and targets as separate Greengrass components talking over gRPC. | [OPC-UA][opcua] | [S3][s3], [IoT Core][iotcore], [Debug][debug] | IPC |
-| [Greengrass uberjar][ex-gg-uberjar] | Packages SFC as a single artifact jar, so the component runs on Windows and Linux with no container and nothing to unpack. | [MQTT][mqtt] | [Debug][debug] | in-process |
+| [Greengrass in-process][ex-gg-inproc] | Step-by-step lab deploying SFC as a Greengrass V2 component, with everything in one process. | [OPC-UA][opcua] | [S3][s3], [IoT Core][iotcore], [Debug][debug] | [in-process][m-inproc] |
+| [Greengrass IPC][ex-gg-ipc] | The same lab with the adapter and targets as separate Greengrass components talking over gRPC. | [OPC-UA][opcua] | [S3][s3], [IoT Core][iotcore], [Debug][debug] | [IPC][m-ipc] |
+| [Greengrass uberjar][ex-gg-uberjar] | Packages SFC as a single artifact jar, so the component runs on Windows and Linux with no container and nothing to unpack. | [MQTT][mqtt] | [Debug][debug] | [uberjar][m-uberjar] |
 
 ## Configuration providers
 
@@ -47,9 +52,9 @@ A [config provider](../sfc-extending.md) supplies or rewrites the configuration 
 
 | Example | Gist | Protocol adapter | Target | Mode |
 |---|---|---|---|---|
-| [OPC-UA auto discovery][ex-opcua-discovery] | Browses the configured OPC-UA servers and generates the channel list for each source, so you do not have to enumerate nodes by hand. | [OPC-UA][opcua] | [Debug][debug] | in-process adapter, IPC target |
+| [OPC-UA auto discovery][ex-opcua-discovery] | Browses the configured OPC-UA servers and generates the channel list for each source, so you do not have to enumerate nodes by hand. | [OPC-UA][opcua] | [Debug][debug] | [in-process][m-inproc] adapter, [IPC][m-ipc] target |
 | [MQTT config provider][ex-mqtt-cfg] | Subscribes to an MQTT topic and accepts either a configuration payload or a pre-signed URL to download one — remote reconfiguration without touching the host. | — | — | — |
-| [YAML config provider][ex-yaml-cfg] | Lets you write SFC configurations in YAML instead of JSON; the bootstrap JSON only names the provider and the YAML file. | [OPC-UA][opcua] | [S3][s3], [IoT Core][iotcore], [Debug][debug] | in-process |
+| [YAML config provider][ex-yaml-cfg] | Lets you write SFC configurations in YAML instead of JSON; the bootstrap JSON only names the provider and the YAML file. | [OPC-UA][opcua] | [S3][s3], [IoT Core][iotcore], [Debug][debug] | [in-process][m-inproc] |
 | [Custom config provider template][ex-custom-cfg] | Minimal Kotlin skeleton to start your own provider from. | — | — | — |
 
 ## Extending SFC
@@ -100,6 +105,11 @@ which walks OPC-UA to S3 end to end.
 [ex-sign]: ../../examples/sign-sfc-config/README.md
 [ex-certs]: ../../examples/test-certificates/README.md
 [ex-j1939]: ../../examples/j1939dbc/README.md
+
+<!-- deployment models -->
+[m-inproc]: ../sfc-deployment.md#in-process-and-ipc-deployment-models
+[m-ipc]: ../sfc-deployment.md#in-process-and-ipc-deployment-models
+[m-uberjar]: ../sfc-deployment.md#single-file-deployments
 
 <!-- protocol adapters -->
 [ads]: ../adapters/ads.md

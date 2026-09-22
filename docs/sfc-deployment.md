@@ -3,6 +3,7 @@
 - [Deployment types](#deployment-options)
 - [In-process and IPC deployment models](#in-process-and-ipc-deployment-models)
 - [Mixed models](#mixed-models)
+- [Single file deployments](#single-file-deployments) — the uberjar
 
 ## Deployment options
 
@@ -83,8 +84,79 @@ It is possible to mix instances of in-process and IPC adapters and targets in a 
 
 ## Single file deployments
 
-As an alternative deployment scenario for both in process as well as with IPC communication we have SFC also available
-as a single uber jar that contains all SFC code including dependencies. That helps 
+SFC is also published as a single **uberjar** containing the core, every protocol adapter, every
+target, the metrics writers and the example components — all with their dependencies included. It
+works for both of the models above, and removes the step of deciding which module bundles a host
+needs and unpacking them side by side.
 
+The release asset is `sfc-uberjar.tar.gz`. It unpacks to a launcher and one jar:
 
+```
+sfc-uberjar/
+├── bin/sfc-uberjar        # and sfc-uberjar.bat on Windows
+└── lib/sfc-uberjar-<version>.jar
+```
+
+### Running it
+
+In-process, either through the launcher or by calling the jar directly — it is executable, with
+`com.amazonaws.sfc.MainController` as its `Main-Class`:
+
+```shell
+sfc-uberjar/bin/sfc-uberjar -config example.json
+java -jar sfc-uberjar/lib/sfc-uberjar-<version>.jar -config example.json
+```
+
+For IPC, the same jar carries every adapter and target service, so a service is started by naming its
+class instead:
+
+```shell
+java -cp sfc-uberjar/lib/sfc-uberjar-<version>.jar com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000
+```
+
+### Configuration differences
+
+Because every component is already on the jar's own classpath, an `AdapterTypes` or `TargetTypes`
+entry needs **no `JarFiles`** — the `FactoryClassName` is enough to locate it:
+
+```json
+"TargetTypes": {
+  "DEBUG-TARGET": {
+    "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+  }
+}
+```
+
+That is the only configuration change. Everything else — schedules, sources, channels, transformations
+— is identical to the per-module deployments.
+
+### The trade-off
+
+One jar means **one flat classpath**, and therefore exactly one version of every shared dependency.
+That is a deliberate constraint, not an oversight: a fat jar can hold only one copy of a class, so
+components cannot each bring their own version of a library.
+
+A component whose dependencies cannot be reconciled with the rest of the product is therefore not
+eligible for the uberjar, and should be deployed from its own module bundle with `JarFiles`, or in its
+own process over IPC. The per-module bundles keep their jars separate, so each one is internally
+consistent by construction.
+
+The jar is also large — a few hundred MB — since it carries every protocol implementation whether a
+given deployment uses it or not.
+
+### When to use which
+
+| | Uberjar | Per-module bundles |
+|---|---|---|
+| Artifacts to deploy | one | one per adapter and target in use |
+| `JarFiles` in the configuration | none | one path per component |
+| Dependency versions | one set, shared | independent per component |
+| Download size | the whole product | only what is used |
+| Best for | getting started, single-host deployments, Greengrass components, CI | production images tuned to a site, and components with conflicting dependencies |
+
+See Also
+
+- [Running the core process from a single jar](./sfc-running-core-process.md#running-the-process-from-a-single-jar-file)
+- [Uberjar OPC-UA tests example](../examples/uberjar-opcua-tests/README.md) — both directions run from the uberjar
+- [Greengrass uberjar example](../examples/greengrass-uberjar/README.md) — the uberjar as a Greengrass V2 component
 

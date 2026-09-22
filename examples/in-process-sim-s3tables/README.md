@@ -66,7 +66,7 @@ Two directories:
 
 ## Prerequisites
 
-- A Java runtime. Plus `curl`, `jq`, `wget` and `tar` if you let `run.sh` download the
+- A Java runtime. Plus `curl`, `jq`, `wget` and `tar` if you let `run-inprocess.sh` download the
   release bundles; not needed when you build from source.
 - AWS credentials resolvable by the
   [default provider chain](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html).
@@ -93,10 +93,10 @@ Two directories:
 
 ```shell
 cd examples/in-process-sim-s3tables/sfc-to-s3tables
-./run.sh
+./run-inprocess.sh
 ```
 
-That is the whole setup. `run.sh` finds the four modules this example needs — `sfc-main`, the
+That is the whole setup. `run-inprocess.sh` finds the four modules this example needs — `sfc-main`, the
 `simulator` adapter, the `aws-s3-tables-target` and the `debug-target` — from whichever source is
 available, in this order:
 
@@ -505,7 +505,7 @@ Deployment, configuration and teardown: [`cdk/README.md`](./cdk/README.md).
 
 ## Clean up
 
-Stop `run.sh` with Ctrl-C. That is a graceful shutdown, which flushes whatever is still buffered — a
+Stop `run-inprocess.sh` with Ctrl-C. That is a graceful shutdown, which flushes whatever is still buffered — a
 hard kill loses it. Then, if you deployed the query app, `npx cdk destroy` in `cdk/`.
 
 The table bucket belongs to neither half, and it refuses deletion while it still holds tables:

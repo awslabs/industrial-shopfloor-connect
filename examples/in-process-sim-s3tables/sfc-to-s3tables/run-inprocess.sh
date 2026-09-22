@@ -11,6 +11,9 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Resolved against the script rather than the working directory, so this runs from anywhere.
+CONFIG="$HERE/simulator-to-s3tables.json"
+
 # The modules this example needs: the core, a stand-in for a machine, the Iceberg target, and the
 # console target that "#DEBUGTarget" in the config enables.
 SFC_REQUIRED_MODULES=(sfc-main simulator aws-s3-tables-target debug-target)
@@ -34,7 +37,7 @@ require_tools() {
     echo "Missing prerequisite(s) for ${reason}: ${missing[*]}" >&2
     for tool in "${missing[@]}"; do
       case "$tool" in
-        java) echo "  java  a Java 1.8+ runtime, e.g. 'brew install --cask temurin' or your distro's JDK" >&2 ;;
+        java) echo "  java  a Java 17+ runtime, e.g. 'brew install --cask temurin' or your distro's JDK" >&2 ;;
         curl) echo "  curl  used to resolve the latest release tag" >&2 ;;
         jq)   echo "  jq    used to read that tag out of the GitHub API response" >&2 ;;
         wget) echo "  wget  used to download the module bundles" >&2 ;;
@@ -87,7 +90,7 @@ download_modules() {
   local version module
   require_tools "downloading the release bundles" curl jq wget tar || {
     echo "  Alternatively build from source: ./gradlew build in the repository root, which" >&2
-    echo "  run.sh prefers over the downloads anyway." >&2
+    echo "  run-inprocess.sh prefers over the downloads anyway." >&2
     exit 1
   }
 
@@ -137,4 +140,4 @@ if [ ! -x "$SFC_MODULES_DIR/sfc-main/bin/sfc-main" ]; then
   exit 1
 fi
 
-"$SFC_MODULES_DIR/sfc-main/bin/sfc-main" -config simulator-to-s3tables.json
+exec "$SFC_MODULES_DIR/sfc-main/bin/sfc-main" -config "$CONFIG"
