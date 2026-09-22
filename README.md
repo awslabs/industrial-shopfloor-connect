@@ -106,43 +106,34 @@ Read more in the [SFC documentation](./docs/README.md)
 Two steps: the first needs **nothing but a JVM** and puts live data on your screen in under a minute;
 the second connects a real OPC-UA server and streams to S3.
 
-Both run from **one download**. The uberjar bundle ships the SFC core with every adapter and target
+Both run from **one install**. The uberjar bundle ships the SFC core with every adapter and target
 included, so a component is named by its `FactoryClassName` alone — there are no `JarFiles` paths to
 wire up. *SFC speaks many more industrial protocols — [see the adapter docs](docs/adapters/README.md).*
 
 ### 1. Install
 
->**Requirements**: a Java 17 (or newer) runtime, and `jq` (used to read the latest release tag).
+>**Requirements**: a Java 17 (or newer) runtime.
 
 **Linux / macOS**
 
 ```shell
-export VERSION=$(curl -s "https://api.github.com/repos/awslabs/industrial-shopfloor-connect/tags" | jq -r '.[0].name')
-export SFC_DEPLOYMENT_DIR="$(pwd)/sfc"
-
-mkdir -p $SFC_DEPLOYMENT_DIR && cd $SFC_DEPLOYMENT_DIR
-curl -L -O https://github.com/awslabs/industrial-shopfloor-connect/releases/download/$VERSION/sfc-uberjar.tar.gz
-tar -xf sfc-uberjar.tar.gz && rm sfc-uberjar.tar.gz
-cd -
+curl -fsSL https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.sh | bash
 ```
 
-**Windows (cmd)** — `curl` and `tar` ship with Windows 10 and later.
+**Windows (PowerShell)**
 
-```bat
-:: set VERSION to the latest release tag
-set VERSION=v1.11.0
-set SFC_DEPLOYMENT_DIR=%CD%\sfc
-
-mkdir "%SFC_DEPLOYMENT_DIR%" && cd /d "%SFC_DEPLOYMENT_DIR%"
-curl -L -O https://github.com/awslabs/industrial-shopfloor-connect/releases/download/%VERSION%/sfc-uberjar.tar.gz
-tar -xf sfc-uberjar.tar.gz && del sfc-uberjar.tar.gz
-cd /d "%SFC_DEPLOYMENT_DIR%\.."
+```powershell
+irm https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.ps1 | iex
 ```
+
+That installs the latest release into `~/.sfc` and puts `sfc` on your `PATH` — start a new shell, or
+`. "$HOME/.sfc/env"` to use it right away. Re-run `sfcup` any time to upgrade, `sfcup --uninstall` to
+remove it. See [`sfcup.sh --help`](./sfcup.sh) for pinning a version or choosing another directory.
 
 ### 2. First data — no hardware, no cloud
 
 The **simulator adapter** generates signals in-process, so you can watch SFC work before connecting
-anything. Save this as `sfc/simulator.json`:
+anything. Save this as `simulator.json`:
 
 ```json
 {
@@ -192,14 +183,7 @@ anything. Save this as `sfc/simulator.json`:
 Run it:
 
 ```shell
-# Linux / macOS
-$SFC_DEPLOYMENT_DIR/sfc-uberjar/bin/sfc-uberjar -config $SFC_DEPLOYMENT_DIR/simulator.json -info
-```
-
-```bat
-:: Windows (cmd)
-for %%j in ("%SFC_DEPLOYMENT_DIR%\sfc-uberjar\lib\sfc-uberjar-*.jar") do set "SFC_JAR=%%~fj"
-java -jar "%SFC_JAR%" -config "%SFC_DEPLOYMENT_DIR%\simulator.json" -info
+sfc -config simulator.json -info
 ```
 
 Six simulated signals now print once per second. `Ctrl-C` to stop. That is the whole loop — read a
@@ -319,16 +303,8 @@ sends them to S3 — note again that no `JarFiles` appear anywhere.
 Start the OPC-UA server and SFC:
 
 ```shell
-# Linux / macOS
 docker run -d -p 4840:4840 ghcr.io/umati/sample-server:main
-$SFC_DEPLOYMENT_DIR/sfc-uberjar/bin/sfc-uberjar -config $SFC_DEPLOYMENT_DIR/example.json -info
-```
-
-```bat
-:: Windows (cmd)
-docker run -d -p 4840:4840 ghcr.io/umati/sample-server:main
-for %%j in ("%SFC_DEPLOYMENT_DIR%\sfc-uberjar\lib\sfc-uberjar-*.jar") do set "SFC_JAR=%%~fj"
-java -jar "%SFC_JAR%" -config "%SFC_DEPLOYMENT_DIR%\example.json" -info
+sfc -config example.json -info
 ```
 
 Check what landed in your bucket:
