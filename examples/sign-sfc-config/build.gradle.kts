@@ -6,7 +6,7 @@
 group = "com.amazonaws.sfc"
 version = "1.0.0"
 
-val kotlinVersion = "2.2.0"
+val kotlinVersion = "2.4.20"
 
 
 val sfcCoreVersion = "1.0.0"

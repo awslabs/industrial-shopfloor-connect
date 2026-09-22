@@ -28,7 +28,7 @@ val velocityToolsVersion = "3.1"
 val mockkVersion = "1.12.0"
 val kotlinCoroutinesVersion = "1.6.2"
 val kotlinReflectionVersion = "1.6.0"
-val kotlinVersion = "2.2.0"
+val kotlinVersion = "2.4.20"
 val pahoVersion = "1.2.5"
 val ktorVersion = "2.3.10"
 

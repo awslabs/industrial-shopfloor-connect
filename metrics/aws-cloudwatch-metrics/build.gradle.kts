@@ -10,7 +10,7 @@ val module = "cloudwatch"
 val sfcCoreVersion = version
 val sfcIpcVersion = version
 val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.2.0"
+val kotlinVersion = "2.4.20"
 val awsSdkVersion = "2.31.18"
 
 plugins {

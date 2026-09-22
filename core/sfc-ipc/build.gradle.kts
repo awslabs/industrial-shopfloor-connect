@@ -41,13 +41,6 @@ dependencies {
     compileOnly("javax.annotation:javax.annotation-api:$kotlinAnnotationVersion")
 }
 
-tasks.withType<KotlinCompile> {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
-        freeCompilerArgs.set(listOf("-opt-in=kotlin.time.ExperimentalTime", "-opt-in=kotlin.ExperimentalUnsignedTypes"))
-    }
-}
-
 protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:$protobufVersion"

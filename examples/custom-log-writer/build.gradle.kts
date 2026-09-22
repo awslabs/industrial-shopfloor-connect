@@ -8,7 +8,7 @@ version = "1.0.0"
 
 val sfcCoreVersion = "1.0.0"
 val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.2.0"
+val kotlinVersion = "2.4.20"
 
 
 plugins {

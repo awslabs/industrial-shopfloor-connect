@@ -232,7 +232,7 @@ additional coding.
 
 Shop Floor Connectivity  is a versatile data ingestion solution that can be deployed in a variety of environments,
 including standalone applications, Docker containers, and Kubernetes pods. With no additional requirements beyond a Java
-JVM 1.8 runtime, SFC can be deployed on Linux and Windows systems. To optimize hardware utilization, SFC uses parallel
+JVM 17 runtime, SFC can be deployed on Linux and Windows systems. To optimize hardware utilization, SFC uses parallel
 and non-blocking async patterns in its software.
 
 SFC protocol and target adapters can be implemented as a JVM component or as an external microservices using the gRPC

@@ -25,5 +25,5 @@ fun UInt.asHexString(): String =
 
 fun Short.asHexString(): String =
     arrayOf(
-       this.toInt() shr 8, this
-    ).map { (it.toInt() and 0xFF).toByte() }.toByteArray().asHexString()
+       this.toInt() shr 8, this.toInt()
+    ).map { (it and 0xFF).toByte() }.toByteArray().asHexString()

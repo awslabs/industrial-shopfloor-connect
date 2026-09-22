@@ -9,12 +9,12 @@ version = "1.0.1"
 val sfcRelease = rootProject.extra.get("sfc_release")!!
 val module = "awss3tables"
 val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.2.0"
+val kotlinVersion = "2.4.20"
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
 // need this one for S3 Tables version
 val awsSdkVersion = "2.29.30"
-// need this version for jvm 1,8
+// pinned deliberately: newer AWS SDK versions exhibited S3 Tables service-API issues
 var icebergVersion = "1.6.1"
 var awsIcebergVersion = "1.9.0"
 var parquetVersion = "1.15.1"

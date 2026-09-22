@@ -11,7 +11,7 @@ val module = "debugtarget"
 val sfcCoreVersion = sfcRelease
 val sfcIpcVersion = sfcRelease
 val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.2.0"
+val kotlinVersion = "2.4.20"
 
 plugins {
     id("sfc.kotlin-application-conventions")

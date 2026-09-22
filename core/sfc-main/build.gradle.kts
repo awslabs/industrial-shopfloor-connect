@@ -10,7 +10,7 @@ val module = "sfcmain"
 val sfcCoreVersion = version
 val sfcIpcVersion = version
 val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.2.0"
+val kotlinVersion = "2.4.20"
 val awsMskIamVersion = "1.1.6"
 val awsSdkVersion = "2.31.18"
 val awsSdkVersion2 = "2.29.30"
@@ -67,13 +67,6 @@ tasks.register<Copy>("copyDist") {
     into(layout.buildDirectory.dir("../../../build/distribution/"))
 }
 
-
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
-        freeCompilerArgs.set(listOf("-opt-in=kotlin.time.ExperimentalTime", "-opt-in=kotlin.ExperimentalUnsignedTypes"))
-    }
-}
 
 tasks.register("generateBuildConfig") {
     val version = project.version.toString()

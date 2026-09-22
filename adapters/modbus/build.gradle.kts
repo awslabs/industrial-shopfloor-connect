@@ -6,7 +6,7 @@ version = "1.0.0"
 val sfcRelease = rootProject.extra.get("sfc_release")!!
 val sfcCoreVersion = sfcRelease
 val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.2.0"
+val kotlinVersion = "2.4.20"
 
 
 plugins {
