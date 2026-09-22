@@ -36,7 +36,6 @@ velocity-tools = "3.1"
 
 # Big data
 iceberg = "1.11.0"
-iceberg-aws-bundle = "1.11.0"
 parquet = "1.18.1"
 parquet-format = "2.14.0"
 hadoop = "3.5.0"
@@ -112,7 +111,6 @@ log4j-api = { module = "org.apache.logging.log4j:log4j-api", version.ref = "log4
 log4j-core = { module = "org.apache.logging.log4j:log4j-core", version.ref = "log4j" }
 log4j-slf4j2-impl = { module = "org.apache.logging.log4j:log4j-slf4j2-impl", version.ref = "log4j" }
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
-slf4j-nop = { module = "org.slf4j:slf4j-nop", version.ref = "slf4j" }
 
 # Serialization / data
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
@@ -134,7 +132,6 @@ iceberg-aws = { module = "org.apache.iceberg:iceberg-aws", version.ref = "iceber
 iceberg-core = { module = "org.apache.iceberg:iceberg-core", version.ref = "iceberg" }
 iceberg-data = { module = "org.apache.iceberg:iceberg-data", version.ref = "iceberg" }
 iceberg-parquet = { module = "org.apache.iceberg:iceberg-parquet", version.ref = "iceberg" }
-iceberg-aws-bundle = { module = "org.apache.iceberg:iceberg-aws-bundle", version.ref = "iceberg-aws-bundle" }
 parquet-avro = { module = "org.apache.parquet:parquet-avro", version.ref = "parquet" }
 parquet-column = { module = "org.apache.parquet:parquet-column", version.ref = "parquet" }
 parquet-common = { module = "org.apache.parquet:parquet-common", version.ref = "parquet" }
@@ -190,3 +187,7 @@ iceberg = ["iceberg-api", "iceberg-aws", "iceberg-core", "iceberg-data", "iceber
 parquet = ["parquet-avro", "parquet-column", "parquet-common", "parquet-encoding", "parquet-hadoop"]
 grpc = ["grpc-netty-shaded", "grpc-protobuf", "grpc-stub"]
 jdbc-drivers = ["postgresql", "mariadb-java-client", "ojdbc8", "mssql-jdbc", "mysql-connector-j"]
+
+[plugins]
+# Gradle API floor 9.2.0, satisfied by the 9.7.1 wrapper
+shadow = { id = "com.gradleup.shadow", version = "9.6.1" }

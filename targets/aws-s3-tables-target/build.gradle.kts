@@ -33,7 +33,10 @@ dependencies {
     implementation(libs.iceberg.data)
     implementation(libs.iceberg.api)
     implementation(libs.iceberg.aws)
-    implementation(libs.iceberg.aws.bundle)
+    // iceberg-aws-bundle deliberately omitted: it is a 61 MB fat jar shipping ~19,800
+    // UNRELOCATED software.amazon.awssdk classes for environments that lack the AWS SDK.
+    // SFC declares the SDK explicitly, so the bundle only duplicated it at iceberg's pinned
+    // version - 8,891 colliding class paths in the uberjar.
 
     implementation(libs.awssdk.s3tables)
     implementation(libs.awssdk.sts)
@@ -50,7 +53,10 @@ dependencies {
     implementation(libs.hadoop.common)
     implementation(libs.hadoop.client)
 
-    implementation(libs.slf4j.nop)
+    // slf4j-nop deliberately removed: it registers an SLF4JServiceProvider that competes with
+    // log4j-slf4j2-impl. In the uberjar the NOP provider used to win, silently discarding every
+    // log line from the AWS SDK, netty, hadoop, kafka, milo and plc4x. Noisy third-party logging
+    // is now controlled by log4j2 levels instead.
     
 }
 

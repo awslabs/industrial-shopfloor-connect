@@ -29,7 +29,10 @@ dependencies {
     implementation(libs.iceberg.aws)
     implementation(libs.awssdk.s3tables)
 
-    implementation(libs.slf4j.nop)
+    // slf4j-nop deliberately removed: it registers an SLF4JServiceProvider that competes with
+    // log4j-slf4j2-impl. In the uberjar the NOP provider used to win, silently discarding every
+    // log line from the AWS SDK, netty, hadoop, kafka, milo and plc4x. Noisy third-party logging
+    // is now controlled by log4j2 levels instead.
 }
 
 application {

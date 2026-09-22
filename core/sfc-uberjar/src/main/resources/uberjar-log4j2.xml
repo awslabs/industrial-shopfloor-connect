@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+ ~    Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ ~    SPDX-License-Identifier: MIT-0
+ ~
+ ~    The single log4j2 configuration for the SFC uberjar.
+ ~
+ ~    Library modules also ship a log4j2.xml at the classpath root. Those are excluded from the
+ ~    uberjar merge, because with 36 of them present the effective configuration was whichever
+ ~    one happened to be merged first. This file is renamed to log4j2.xml when the jar is built.
+-->
+<Configuration status="WARN">
+
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%d{YYYY-MM-dd HH:mm:ss.SSS} %-5p - %msg%n"/>
+        </Console>
+    </Appenders>
+
+    <Loggers>
+        <Root level="info">
+            <AppenderRef ref="Console"/>
+        </Root>
+    </Loggers>
+</Configuration>
