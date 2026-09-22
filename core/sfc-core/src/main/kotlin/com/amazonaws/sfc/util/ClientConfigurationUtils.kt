@@ -12,7 +12,7 @@ import com.amazonaws.sfc.config.ConfigurationException
 import com.amazonaws.sfc.crypto.CertificateHelper
 import com.amazonaws.sfc.crypto.CryptoException
 import com.amazonaws.sfc.crypto.KeyHelpers
-import software.amazon.awssdk.http.apache.ApacheHttpClient
+import software.amazon.awssdk.http.apache5.Apache5HttpClient
 import java.io.File
 import java.io.IOException
 import java.security.GeneralSecurityException
@@ -25,7 +25,7 @@ import javax.net.ssl.TrustManagerFactory
 
 object ClientConfigurationUtils {
     @JvmStatic
-    fun getConfiguredClientBuilder(deviceConfiguration: ClientConfiguration): ApacheHttpClient.Builder {
+    fun getConfiguredClientBuilder(deviceConfiguration: ClientConfiguration): Apache5HttpClient.Builder {
         val httpClient = ProxyUtils.sdkHttpClientBuilder
         try {
             configureClientMutualTLS(httpClient, deviceConfiguration)
@@ -36,7 +36,7 @@ object ClientConfigurationUtils {
     }
 
     private fun configureClientMutualTLS(
-        httpBuilder: ApacheHttpClient.Builder,
+        httpBuilder: Apache5HttpClient.Builder,
         clientConfiguration: ClientConfiguration) {
 
         if (!clientConfiguration.hasMTLSRequiredCertificatesAndKey()) {

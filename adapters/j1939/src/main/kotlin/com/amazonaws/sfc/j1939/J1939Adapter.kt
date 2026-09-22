@@ -671,7 +671,7 @@ class J1939Adapter(
                             } else {
                                 val signal = pgn.signals.find { it.name == spn.name }
                                 if (signal == null) {
-                                    errLog("SPN \"$it\" not found in PNG \"${pgn.name}\" (${pgn.canId}) for channel \"$channelName\", available channels are ${j1939Dbc!!.spnListForPgn(pgn.canId)}")
+                                    errLog("SPN \"$it\" not found in PNG \"${pgn.name}\" (${pgn.canId}) for channel \"$channelName\", available channels are ${j1939Dbc.spnListForPgn(pgn.canId)}")
                                 } else yield(signal)
                             }
                         } else null
@@ -712,7 +712,7 @@ class J1939Adapter(
             val canId = ((b[0].toUInt() and 0xFFu) shl 24) or
                     ((b[1].toUInt() and 0xFFu) shl 16) or
                     ((b[2].toUInt() and 0xFFu) shl 8) or
-                    (b[3].toUInt() and 0xFFu).toUInt()
+                    (b[3].toUInt() and 0xFFu)
             return canId
         }
 

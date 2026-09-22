@@ -41,7 +41,7 @@ import org.eclipse.milo.opcua.sdk.server.nodes.UaNode
 import org.eclipse.milo.opcua.sdk.server.nodes.UaVariableNode
 import org.eclipse.milo.opcua.sdk.server.nodes.filters.AttributeFilter
 import org.eclipse.milo.opcua.sdk.server.util.HostnameUtil
-import org.eclipse.milo.opcua.stack.core.Identifiers
+import org.eclipse.milo.opcua.stack.core.NodeIds
 import org.eclipse.milo.opcua.stack.core.StatusCodes
 import org.eclipse.milo.opcua.stack.core.UaRuntimeException
 import org.eclipse.milo.opcua.stack.core.security.DefaultCertificateManager
@@ -464,13 +464,13 @@ class OpcuaTargetServer(private val targetConfiguration: OpcuaTargetConfiguratio
         val log = logger.getCtxLoggers(className, "raiseDataModelChangedEvent")
 
         if (server != null) {
-            val serverNode = server!!.addressSpaceManager.getManagedNode(Identifiers.Server).get()
-            val event = server!!.eventFactory.createEvent(NodeId(0, UUID.randomUUID()), Identifiers.BaseModelChangeEventType) as BaseModelChangeEventTypeNode
+            val serverNode = server!!.addressSpaceManager.getManagedNode(NodeIds.Server).get()
+            val event = server!!.eventFactory.createEvent(NodeId(0, UUID.randomUUID()), NodeIds.BaseModelChangeEventType) as BaseModelChangeEventTypeNode
             event.message = LocalizedText("Model changed")
             event.browseName = QualifiedName(0, "ModelChanged")
             event.displayName = LocalizedText("Model changed")
             event.eventId = ByteString.of(DateTime.now().toString().encodeToByteArray())
-            event.eventType = Identifiers.GeneralModelChangeEventType
+            event.eventType = NodeIds.GeneralModelChangeEventType
             event.sourceNode = serverNode.nodeId
             event.sourceName = serverNode.displayName.text
             event.time = DateTime(System.currentTimeMillis())

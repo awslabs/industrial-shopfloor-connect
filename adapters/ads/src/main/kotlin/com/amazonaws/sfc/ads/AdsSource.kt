@@ -206,7 +206,7 @@ class AdsSource(
             if (previousReadRequest == null || previousReadChannels == null || previousReadChannels != channels) {
                 val readAllChannels = (channels == null || (channels.size == 1 && channels[0] == WILD_CARD))
                 val tr = if (readAllChannels) sourceConfiguration.channels else sourceConfiguration.channels.filter {
-                    channels?.contains(it.key) == true
+                    channels.contains(it.key)
                 }
                 val rs = sequence {
                     tr.keys.forEach { channelID ->

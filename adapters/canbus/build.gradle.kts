@@ -27,7 +27,7 @@ publishing {
         create<MavenPublication>("maven") {
             from(components["kotlin"])
             groupId = group as String
-            artifactId = "modbus"
+            artifactId = "canbus"
             version = version
         }
     }

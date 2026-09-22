@@ -38,7 +38,7 @@ import org.eclipse.milo.opcua.sdk.client.subscriptions.OpcUaSubscription
 import org.eclipse.milo.opcua.sdk.client.subscriptions.MonitoredItemSynchronizationException
 import org.eclipse.milo.opcua.stack.core.security.DefaultClientCertificateValidator
 import org.eclipse.milo.opcua.stack.core.AttributeId
-import org.eclipse.milo.opcua.stack.core.Identifiers
+import org.eclipse.milo.opcua.stack.core.NodeIds
 import org.eclipse.milo.opcua.stack.core.StatusCodes
 import org.eclipse.milo.opcua.stack.core.UaException
 import org.eclipse.milo.opcua.stack.core.channel.EncodingLimits
@@ -257,7 +257,7 @@ open class OpcuaSource(
                         withTimeout(opcuaServerConfiguration.readTimeout) {
                             _opcuaClient?.readAsync(
                                 0.0, TimestampsToReturn.Source, mutableListOf(
-                                    ReadValueId(Identifiers.Server_ServerStatus_State, AttributeId.Value.uid(), null, QualifiedName.NULL_VALUE)
+                                    ReadValueId(NodeIds.Server_ServerStatus_State, AttributeId.Value.uid(), null, QualifiedName.NULL_VALUE)
                                 )
                             )?.await()
                         }
@@ -581,7 +581,7 @@ open class OpcuaSource(
         this.setKeyPair(keyPair)
 
 
-        val uri = certificate?.subjectAlternativeApplicationUri
+        val uri = certificate.subjectAlternativeApplicationUri
         if (uri == null) {
             log.warning("Application URI is not set in certificate")
         } else {
@@ -891,7 +891,7 @@ open class OpcuaSource(
 
             val log = logger.getCtxLoggers(className, "onSubscribedDataReceived")
             try {
-                if ((value.statusCode ?: StatusCode.GOOD).isGood) {
+                if (value.statusCode.isGood) {
                     val nativeValue = OpcuaDataTypesConverter(encodingContext).asNativeValue(value.value)
 
                     try {
@@ -930,7 +930,7 @@ open class OpcuaSource(
                     if ((item.createResult.getOrNull() ?: StatusCode.GOOD).isGood) {
                         if (node != null) {
 
-                            val properties = node.eventProperties ?: eventsHelper.findEvent(Identifiers.BaseEventType)?.properties
+                            val properties = node.eventProperties ?: eventsHelper.findEvent(NodeIds.BaseEventType)?.properties
 
                             if (properties != null) {
 
@@ -1165,7 +1165,7 @@ open class OpcuaSource(
                     // map the read values to the nodes
                     batchOfNodes.keys.mapIndexed { i, s ->
                         val value = response.results!![i]
-                        if (value.statusCode?.isGood == true) {
+                        if (value.statusCode.isGood) {
                             val nativeValue = opcuaDataTypesConverter.asNativeValue(response.results!![i].value)
                             if (nativeValue != null) {
                                 yield(s to ChannelReadValue(nativeValue, value.sourceTime?.javaInstant))

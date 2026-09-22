@@ -16,8 +16,8 @@ class Floor : TransformationImpl<Nothing>() {
     @TransformerMethod
     fun apply(target: Number): Number =
         when (target) {
-            is Float -> floor(target.toFloat())
-            is Double -> floor(target.toDouble())
+            is Float -> floor(target)
+            is Double -> floor(target)
             else -> target
         }
 

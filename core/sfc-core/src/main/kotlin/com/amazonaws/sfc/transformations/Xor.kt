@@ -21,7 +21,7 @@ class Xor(operand: Number?) : TransformationImpl<Number>(operand) {
             is Int -> target xor operand.toInt()
             is Byte -> (target.toInt() xor operand.toInt()).toByte()
             is Short -> (target.toInt() xor operand.toInt()).toShort()
-            is Long -> target.toLong() xor operand.toLong()
+            is Long -> target xor operand.toLong()
             else -> null
         }
 

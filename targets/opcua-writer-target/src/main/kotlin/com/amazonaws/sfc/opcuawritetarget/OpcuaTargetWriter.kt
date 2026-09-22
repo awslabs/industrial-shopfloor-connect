@@ -252,7 +252,7 @@ class OpcuaTargetWriter(
                 }
             }
 
-            else -> value.toVariant(dimensions = node.dimensions.map { it.toInt() }, dataTypeIdentifier = node.dataType?.identifier, logger = logger)
+            else -> value.toVariant(dimensions = node.dimensions.map { it }, dataTypeIdentifier = node.dataType?.identifier, logger = logger)
         }
         return DataValue(variant, StatusCode.GOOD, DateTime(sourceTimeStamp), DateTime.now())
     }

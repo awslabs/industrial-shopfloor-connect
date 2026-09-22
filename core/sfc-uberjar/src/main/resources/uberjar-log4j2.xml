@@ -8,7 +8,19 @@
  ~    Library modules also ship a log4j2.xml at the classpath root. Those are excluded from the
  ~    uberjar merge, because with 36 of them present the effective configuration was whichever
  ~    one happened to be merged first. This file is renamed to log4j2.xml when the jar is built.
+ ~
+ ~    Scope: this configuration governs THIRD-PARTY logging only. SFC's own log output does not go
+ ~    through log4j2 at all - com.amazonaws.sfc.log.ConsoleLogWriter writes directly to
+ ~    System.out/System.err - so the -info / -trace / -warning / -error command line options are
+ ~    unaffected by anything set here.
+ ~
+ ~    Root is WARN rather than INFO because SFC binds SLF4J to log4j2 (log4j-slf4j2-impl), and
+ ~    several bundled libraries are extremely chatty at INFO: Iceberg logs a full CommitReport for
+ ~    every commit, Hadoop logs a line per compressor allocated. WARN keeps the diagnostically
+ ~    useful warnings and errors from those libraries while dropping the per-operation noise.
+ ~    Raise a specific logger below if you need more detail from one library.
 -->
+
 <Configuration status="WARN">
 
     <Appenders>
@@ -18,7 +30,16 @@
     </Appenders>
 
     <Loggers>
-        <Root level="info">
+
+        <!-- Expected on platforms without the Hadoop native libraries; the Java fallback is fine,
+             and the warning is emitted on every start. -->
+        <Logger name="org.apache.hadoop.util.NativeCodeLoader" level="error"/>
+
+        <!-- Milo logs the bound OPC UA endpoint URLs and SDK version at startup only. That is
+             the operationally useful "which URL do I connect to" output, so keep it at INFO. -->
+        <Logger name="org.eclipse.milo" level="info"/>
+
+        <Root level="warn">
             <AppenderRef ref="Console"/>
         </Root>
     </Loggers>

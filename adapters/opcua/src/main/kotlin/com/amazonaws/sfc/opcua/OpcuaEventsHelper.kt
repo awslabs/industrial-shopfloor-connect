@@ -8,7 +8,7 @@ package com.amazonaws.sfc.opcua
 import com.amazonaws.sfc.opcua.OpcuaAdapter.Companion.OPC_UA_NAMESPACE
 import org.eclipse.milo.opcua.sdk.client.model.objects.BaseEventType
 import org.eclipse.milo.opcua.sdk.core.QualifiedProperty
-import org.eclipse.milo.opcua.stack.core.Identifiers
+import org.eclipse.milo.opcua.stack.core.NodeIds
 import org.eclipse.milo.opcua.stack.core.encoding.EncodingContext
 import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId
 import org.eclipse.milo.opcua.stack.core.types.builtin.QualifiedName
@@ -101,7 +101,9 @@ class OpcuaEventsHelper : EventsHelper {
         // regex to select event and alarm names by name
         val r = """^[a-zA-Z]*(Event|Alarm|Condition)Type${'$'}""".toRegex()
         val allEventAndAlarmIdentifiers = sequence {
-            Identifiers::class.members.filter { member ->
+            // NodeIds and the deprecated Identifiers both extend the same generated
+            // NodeIds0..NodeIds4 chain, so reflecting over either yields the same members.
+            NodeIds::class.members.filter { member ->
                 r.matches(member.name) && member.visibility == KVisibility.PUBLIC
             }.forEach {
                 this.yield(it)

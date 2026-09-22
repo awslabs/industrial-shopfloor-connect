@@ -8,8 +8,8 @@ package com.amazonaws.sfc.util
 import com.amazonaws.sfc.config.ClientProxyConfiguration
 import software.amazon.awssdk.crt.http.HttpProxyOptions
 import software.amazon.awssdk.http.SdkHttpClient
-import software.amazon.awssdk.http.apache.ApacheHttpClient
-import software.amazon.awssdk.http.apache.ProxyConfiguration
+import software.amazon.awssdk.http.apache5.Apache5HttpClient
+import software.amazon.awssdk.http.apache5.ProxyConfiguration
 import java.net.URI
 
 object ProxyUtils {
@@ -172,7 +172,7 @@ object ProxyUtils {
 
     /**
      *
-     * Boilerplate for providing a proxy configured ApacheHttpClient to AWS SDK v2 client builders.
+     * Boilerplate for providing a proxy configured Apache5HttpClient to AWS SDK v2 client builders.
      *
      * If you need to customize the HttpClient, but still need proxy support, use `ProxyUtils.getProxyConfiguration()`
      *
@@ -183,19 +183,19 @@ object ProxyUtils {
         get() = sdkHttpClientBuilder.build()
 
     /**
-     * Boilerplate for providing a proxy configured ApacheHttpClient builder to AWS SDK v2 client builders.
+     * Boilerplate for providing a proxy configured Apache5HttpClient builder to AWS SDK v2 client builders.
      *
      * If you need to customize the HttpClient, but still need proxy support, use `ProxyUtils.getProxyConfiguration()`
      *
      * @return httpClient built with a ProxyConfiguration or null if no proxy is configured (null is ignored in AWS
      * SDK clients)
      */
-    val sdkHttpClientBuilder: ApacheHttpClient.Builder
+    val sdkHttpClientBuilder: Apache5HttpClient.Builder
         get() {
             val proxyConfiguration = proxyConfiguration
             return if (proxyConfiguration != null) {
-                ApacheHttpClient.builder().proxyConfiguration(proxyConfiguration)
-            } else ApacheHttpClient.builder()
+                Apache5HttpClient.builder().proxyConfiguration(proxyConfiguration)
+            } else Apache5HttpClient.builder()
         }
 
     private fun removeAuthFromProxyUrl(proxyUrl: String): String {
@@ -221,7 +221,7 @@ object ProxyUtils {
 
     /**
      *
-     * Boilerplate for providing a `ProxyConfiguration` to AWS SDK v2 `ApacheHttpClient`s.
+     * Boilerplate for providing a `ProxyConfiguration` to AWS SDK v2 `Apache5HttpClient`s.
      *
      * @return ProxyConfiguration built with user proxy values or null if no proxy is configured (null is ignored in
      * the SDK)
@@ -279,8 +279,8 @@ object ProxyUtils {
         if (clientProxyConfiguration?.proxyUrl.isNullOrEmpty()) {
             return ""
         }
-        return if (!clientProxyConfiguration?.noProxyAddresses.isNullOrEmpty()) {
-            "localhost," + clientProxyConfiguration?.noProxyAddresses
+        return if (!clientProxyConfiguration.noProxyAddresses.isNullOrEmpty()) {
+            "localhost," + clientProxyConfiguration.noProxyAddresses
         } else "localhost"
     }
 }

@@ -164,7 +164,7 @@ class AwsS3TablesTargetWriter(
             log.info("Using default AWS credentials provider")
             // The default provider has no worker to signal readiness, so signal it here
             credentialsAvailableChannel.trySend(true)
-            DefaultCredentialsProvider.create()
+            DefaultCredentialsProvider.builder().build()
         } else {
             log.info("Using SFC credential provider client ${targetConfiguration.credentialProviderClient}")
             AwsIoTCredentialSessionProvider(credentialClientConfig, logger)

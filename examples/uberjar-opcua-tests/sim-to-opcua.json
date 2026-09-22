@@ -1,0 +1,49 @@
+{
+  "AWSVersion": "2022-04-02",
+  "Name": "Simulator to OPC UA target",
+  "Description": "Exposes simulated signals on SFC's own OPC UA server. No external system required.",
+  "Version": 1,
+  "LogLevel": "Info",
+  "Schedules": [
+    {
+      "Name": "SimSchedule",
+      "Interval": 1000,
+      "Active": true,
+      "TimestampLevel": "Both",
+      "Sources": { "Simulator": [ "*" ] },
+      "Targets": [ "OpcuaTarget" ]
+    }
+  ],
+  "Sources": {
+    "Simulator": {
+      "Name": "Sim",
+      "ProtocolAdapter": "SimulatorAdapter",
+      "Description": "Simulated signals feeding the SFC OPC UA server",
+      "Channels": {
+        "sinus":    { "Simulation": { "SimulationType": "Sinus",    "DataType": "Double", "Min": 0, "Max": 100 } },
+        "triangle": { "Simulation": { "SimulationType": "Triangle", "DataType": "Double", "Min": 0, "Max": 100 } },
+        "sawtooth": { "Simulation": { "SimulationType": "Sawtooth", "DataType": "Double", "Min": 0, "Max": 100 } },
+        "square":   { "Simulation": { "SimulationType": "Square",   "DataType": "Double", "Min": 0, "Max": 100 } },
+        "random":   { "Simulation": { "SimulationType": "Random",   "DataType": "Byte",   "Min": 0, "Max": 100 } },
+        "counter":  { "Simulation": { "SimulationType": "Counter",  "DataType": "Int",    "Min": 0, "Max": 1000 } }
+      }
+    }
+  },
+  "Targets": {
+    "OpcuaTarget": {
+      "LogLevel": "Info",
+      "TargetType": "OPCUA-TARGET",
+      "AutoCreate": true,
+      "ServerTcpPort": 4841
+    }
+  },
+  "TargetTypes": {
+    "OPCUA-TARGET": { "FactoryClassName": "com.amazonaws.sfc.opcuatarget.OpcuaTargetWriter" }
+  },
+  "AdapterTypes": {
+    "SIMULATOR": { "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter" }
+  },
+  "ProtocolAdapters": {
+    "SimulatorAdapter": { "AdapterType": "SIMULATOR" }
+  }
+}

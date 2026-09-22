@@ -23,7 +23,7 @@ import org.eclipse.milo.opcua.sdk.server.nodes.UaVariableNode
 import org.eclipse.milo.opcua.sdk.server.nodes.UaVariableNode.UaVariableNodeBuilder
 import org.eclipse.milo.opcua.sdk.server.nodes.filters.AttributeFilter
 import org.eclipse.milo.opcua.sdk.server.util.SubscriptionModel
-import org.eclipse.milo.opcua.stack.core.Identifiers
+import org.eclipse.milo.opcua.stack.core.NodeIds
 import org.eclipse.milo.opcua.stack.core.types.builtin.DataValue
 import org.eclipse.milo.opcua.stack.core.types.builtin.ExpandedNodeId
 import org.eclipse.milo.opcua.stack.core.types.builtin.LocalizedText
@@ -34,7 +34,7 @@ import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.UInteger
 
 class OpcuaNamespaceBuilder(server: OpcUaServer,
                             private val modelConfiguration: DataModelConfiguration,
-                            private val root: ExpandedNodeId = Identifiers.ObjectsFolder.expanded(),
+                            private val root: ExpandedNodeId = NodeIds.ObjectsFolder.expanded(),
                             private val attributeFilter: AttributeFilter?,
                             private val initializeValuesWithNull : Boolean,
                             private val logger: Logger) : ManagedNamespaceWithLifecycle(server, modelConfiguration.nameSpace) {
@@ -43,7 +43,7 @@ class OpcuaNamespaceBuilder(server: OpcUaServer,
 
     init {
         modelConfiguration.nameSpaceIndex = namespaceIndex.toInt()
-        val serverNode = server.addressSpaceManager.getManagedNode(Identifiers.Server).get()
+        val serverNode = server.addressSpaceManager.getManagedNode(NodeIds.Server).get()
         if (serverNode is ServerTypeNode) serverNode.eventNotifier = UByte.valueOf(1)
     }
 
@@ -99,7 +99,7 @@ class OpcuaNamespaceBuilder(server: OpcUaServer,
         folderNode.description = LocalizedText(nodeConfig.description)
         nodeManager.addNode(folderNode)
 
-        folderNode.addReference((Reference(folderNode.nodeId, Identifiers.Organizes, parent, false)))
+        folderNode.addReference((Reference(folderNode.nodeId, NodeIds.Organizes, parent, false)))
         onFolderNodeCreated?.invoke(nodeConfig, folderNode)
 
         log.trace("Created folder node ${nodeConfig.nodeID?.toParseableString()}, Display name: \"${nodeConfig.displayName}\", Browse name: \"${nodeConfig.browseName}\", within folder ${parent.toParseableString()}")
@@ -129,7 +129,7 @@ class OpcuaNamespaceBuilder(server: OpcUaServer,
             .setBrowseName(QualifiedName(namespaceIndex, nodeConfig.browseName))
             .setDisplayName(LocalizedText(nodeConfig.displayName))
             .setDataType(nodeConfig.dataTypeIdentifier)
-            .setTypeDefinition(Identifiers.BaseVariableType)
+            .setTypeDefinition(NodeIds.BaseVariableType)
             .setMinimumSamplingInterval(0.0)
             .setHistorizing(false)
 

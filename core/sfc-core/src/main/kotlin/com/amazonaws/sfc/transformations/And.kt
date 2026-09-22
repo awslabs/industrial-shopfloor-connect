@@ -20,7 +20,7 @@ class And(operand: Number) : TransformationImpl<Number>(operand) {
             is Int -> target and operand.toInt()
             is Byte -> (target.toInt() and operand.toInt()).toByte()
             is Short -> (target.toInt() and operand.toInt()).toShort()
-            is Long -> target.toLong() and operand.toLong()
+            is Long -> target and operand.toLong()
             is Double -> (target.toLong() and operand.toLong()).toDouble()
             is Float -> (target.toLong() and operand.toLong()).toFloat()
             else -> null

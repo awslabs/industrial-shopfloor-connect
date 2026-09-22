@@ -1,0 +1,102 @@
+{
+  "AWSVersion": "2022-04-02",
+  "Name": "OPC UA server to DebugTarget (uberjar)",
+  "Description": "Reads the umati OPC UA sample server and prints the data to the console. Run from the uberjar, so no JarFiles are needed. Switch SourceReadingMode to Subscription to have the server push changes instead.",
+  "Version": 1,
+  "LogLevel": "Info",
+  "Schedules": [
+    {
+      "Name": "OpcuaSchedule",
+      "Interval": 1000,
+      "Active": true,
+      "TimestampLevel": "Both",
+      "Sources": {
+        "OPCUA-SOURCE": [
+          "*"
+        ]
+      },
+      "Targets": [
+        "DebugTarget"
+      ]
+    }
+  ],
+  "Sources": {
+    "OPCUA-SOURCE": {
+      "Name": "OPCUA-SOURCE",
+      "ProtocolAdapter": "OPC-UA",
+      "AdapterOpcuaServer": "OPCUA-SERVER-1",
+      "Description": "umati OPC UA sample server",
+      "SourceReadingMode": "Polling",
+      "SubscribePublishingInterval": 100,
+      "Channels": {
+        "ServerStatus": {
+          "Name": "ServerStatus",
+          "NodeId": "ns=0;i=2256"
+        },
+        "ServerTime": {
+          "Name": "ServerTime",
+          "NodeId": "ns=0;i=2256",
+          "Selector": "@.currentTime"
+        },
+        "State": {
+          "Name": "State",
+          "NodeId": "ns=0;i=2259"
+        },
+        "Machine1AbsoluteErrorTime": {
+          "Name": "AbsoluteErrorTime",
+          "NodeId": "ns=20;i=59217"
+        },
+        "Machine1AbsoluteLength": {
+          "Name": "AbsoluteLength",
+          "NodeId": "ns=20;i=59235"
+        },
+        "Machine1AbsoluteMachineOffTime": {
+          "Name": "AbsoluteMachineOffTime",
+          "NodeId": "ns=20;i=59210"
+        },
+        "Machine1AbsoluteMachineOnTime": {
+          "Name": "AbsoluteMachineOnTime",
+          "NodeId": "ns=20;i=59219"
+        },
+        "Machine1AbsolutePiecesIn": {
+          "Name": "AbsolutePiecesIn",
+          "NodeId": "ns=20;i=59237"
+        },
+        "Machine1FeedSpeed": {
+          "Name": "FeedSpeed",
+          "NodeId": "ns=20;i=59208"
+        }
+      }
+    }
+  },
+  "Targets": {
+    "DebugTarget": {
+      "Active": true,
+      "TargetType": "DEBUG-TARGET"
+    }
+  },
+  "TargetTypes": {
+    "DEBUG-TARGET": {
+      "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+    }
+  },
+  "AdapterTypes": {
+    "OPCUA": {
+      "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter"
+    }
+  },
+  "ProtocolAdapters": {
+    "OPC-UA": {
+      "AdapterType": "OPCUA",
+      "OpcuaServers": {
+        "OPCUA-SERVER-1": {
+          "Address": "opc.tcp://localhost",
+          "Path": "/",
+          "Port": 4840,
+          "ConnectTimeout": "10000",
+          "ReadBatchSize": 500
+        }
+      }
+    }
+  }
+}

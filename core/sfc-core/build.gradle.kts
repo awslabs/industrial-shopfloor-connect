@@ -22,7 +22,7 @@ dependencies {
 
     implementation(libs.aws.encryption.sdk)
     implementation(libs.awssdk.crt)
-    implementation(libs.awssdk.apache.client)
+    implementation(libs.awssdk.apache5.client)
     implementation(libs.awssdk.auth)
     implementation(libs.awssdk.aws.core)
     api(libs.awssdk.secretsmanager)

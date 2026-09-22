@@ -30,7 +30,7 @@ object SimulationHelper {
             DataType.BOOLEAN -> when (value) {
                 is Boolean -> value
                 is String -> {
-                    when (value.toString().lowercase()) {
+                    when (value.lowercase()) {
                         "true" -> true
                         "false" -> false
                         else -> null

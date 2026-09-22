@@ -241,7 +241,7 @@ open class OpcuaWriter(
         this.setKeyPair(keyPair)
 
 
-        val uri = certificate?.subjectAlternativeApplicationUri
+        val uri = certificate.subjectAlternativeApplicationUri
         if (uri == null) {
             log.warning("Application URI is not set in certificate")
         } else {

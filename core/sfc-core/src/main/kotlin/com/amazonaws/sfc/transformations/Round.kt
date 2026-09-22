@@ -16,8 +16,8 @@ class Round : TransformationImpl<Nothing>() {
     @TransformerMethod
     fun apply(target: Number): Number =
         when (target) {
-            is Float -> round(target.toFloat())
-            is Double -> round(target.toDouble())
+            is Float -> round(target)
+            is Double -> round(target)
             else -> target
         }
 

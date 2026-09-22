@@ -84,7 +84,7 @@ object  IncludeResolver {
                     val search = jmesPath.search(includedData.second)
                     if (search == null) {
                         val hint = if ("^[a-zA-B0-9_]".toRegex()
-                                .containsMatchIn(selector.toString())
+                                .containsMatchIn(selector)
                         ) ", selector may contain restricted characters, see https://jmespath.org/specification.html for more info" else ""
                         throw IncludeResolverException("Selector \"$selector\" in \"$node\" is invalid or returns no selected data $hint")
                     }

@@ -33,9 +33,12 @@ abstract class CommandLine(val args: Array<String>) {
     open fun options(): Options = commonOptions()
 
     private fun printHelp() {
-        val helpFormatter = HelpFormatter()
-        helpFormatter.width = 132
-        helpFormatter.printHelp(" ", options())
+        // commons-cli 1.9 deprecated org.apache.commons.cli.HelpFormatter in favour of
+        // org.apache.commons.cli.help.HelpFormatter, where the output width is a property of the
+        // HelpAppendable rather than of the formatter.
+        val out = org.apache.commons.cli.help.TextHelpAppendable(System.out).apply { maxWidth = HELP_WIDTH }
+        val helpFormatter = org.apache.commons.cli.help.HelpFormatter.builder().setHelpAppendable(out).get()
+        helpFormatter.printHelp(" ", null, options(), null, false)
     }
 
     val noColor = cmd.hasOption(OPTION_NO_COLOR)
@@ -59,6 +62,10 @@ abstract class CommandLine(val args: Array<String>) {
 
     companion object {
 
+        /** Width used when rendering command line help. */
+        const val HELP_WIDTH = 132
+
+
         const val OPTION_CONFIG_FILE = "config"
         const val OPTION_CONFIG_VERIFY_PUBLIC_KEY_FILE = "verify"
         private const val OPTION_HELP = "help"
@@ -72,8 +79,7 @@ abstract class CommandLine(val args: Array<String>) {
         private val helpOption: Option = Option.builder("h")
             .argName(OPTION_HELP)
             .longOpt(OPTION_HELP)
-            .desc("Displays this help")
-            .build()
+            .desc("Displays this help").get()
 
         val configOption: Option.Builder = Option.builder(OPTION_CONFIG_FILE)
             .type(String::class.java)
@@ -85,8 +91,7 @@ abstract class CommandLine(val args: Array<String>) {
             .type((Boolean::class.java))
             .argName(OPTION_NO_COLOR)
             .desc("Turn off color loglevel values")
-            .hasArg(false)
-            .build()
+            .hasArg(false).get()
 
 
         val configVerificationPublicKeyFile: Option = Option.builder(OPTION_CONFIG_VERIFY_PUBLIC_KEY_FILE)
@@ -94,32 +99,27 @@ abstract class CommandLine(val args: Array<String>) {
             .argName(OPTION_CONFIG_VERIFY_PUBLIC_KEY_FILE)
             .desc("Public key file for configuration verification")
             .hasArg(true)
-            .required(false)
-            .build()
+            .required(false).get()
 
         private val traceLevelOption: Option = Option.builder(OPTION_LOGLEVEL_TRACE)
             .argName(OPTION_LOGLEVEL_TRACE)
             .desc("Enable trace level logging")
-            .hasArg(false)
-            .build()
+            .hasArg(false).get()
 
         private val infoLogLevel: Option = Option.builder(OPTION_LOGLEVEL_INFO)
             .argName(OPTION_LOGLEVEL_INFO)
             .desc("Enable info level logging")
-            .hasArg(false)
-            .build()
+            .hasArg(false).get()
 
         private val warningLogLevel: Option = Option.builder(OPTION_LOGLEVEL_WARNING)
             .argName(OPTION_LOGLEVEL_WARNING)
             .desc("Enable warning level logging")
-            .hasArg(false)
-            .build()
+            .hasArg(false).get()
 
         private val errorLogLevel: Option = Option.builder(OPTION_LOGLEVEL_ERROR)
             .argName(OPTION_LOGLEVEL_ERROR)
             .desc("Enable error level logging")
-            .hasArg(false)
-            .build()
+            .hasArg(false).get()
 
 
         fun commonOptions(): Options {

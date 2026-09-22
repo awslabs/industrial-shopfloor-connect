@@ -314,7 +314,7 @@ class OpcuaTargetWriter(
 
             writeCount.addAndGet(1)
 
-            if (logger.level == LogLevel.TRACE && value.value != null) {
+            if (logger.level == LogLevel.TRACE) {
                 logger.getCtxTraceLog(
                     className,
                     "getAttribute")("Writing value ${value.valueStr}${value.valueTypeStr} to node ${ctx.node.nodeId.toParseableString()}")

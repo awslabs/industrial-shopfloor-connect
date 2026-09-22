@@ -41,7 +41,7 @@ open class TransformationImpl<T>(val operand: T? = null) : TransformationOperato
             val valueNameStr = if (valueName != "") "$valueName :" else ""
             val noParams = (operand == null)
             val targetStr = "${if(target is String) "\"$target\"" else target}:${target::class.java.simpleName}"
-            val paramStr = if (noParams) "$targetStr" else "$targetStr, $operand:${operand!!::class.java.simpleName}"
+            val paramStr = if (noParams) "$targetStr" else "$targetStr, $operand:${operand::class.java.simpleName}"
             val thread = Thread.currentThread().name
             var resultStr = (if (result is String) "\"$result\"" else "$result")
             resultStr = "$resultStr${if (result != null)":${result::class.java.simpleName}" else ""} on thread $thread"

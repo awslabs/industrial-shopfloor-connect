@@ -7,12 +7,14 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 group = "com.amazonaws.sfc"
 version = rootProject.extra.get("sfc_release")!!
 
-val protobufVersion = "3.21.7"
-val grpcKotlinVersion = "1.3.0"
-val grpcVersion = "1.54.1"
+// The protoc / protoc-gen versions MUST match the runtime libraries, so they come from the
+// same catalog entries rather than being repeated here.
+val protobufVersion = libs.versions.protobuf.get()
+val grpcKotlinVersion = libs.versions.grpcKotlin.get()
+val grpcVersion = libs.versions.grpc.get()
 val sfcCoreVersion = version
 plugins {
-    id("com.google.protobuf") version "0.9.4"
+    alias(libs.plugins.protobuf)
     id("sfc.kotlin-library-conventions")
     idea
     `maven-publish`

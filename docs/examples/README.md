@@ -19,6 +19,7 @@ listed only where it is part of the point.
 | [OPC-UA to MSK over IPC][ex-ipc-opcua-msk] | The same pipeline with the adapter and target split into separate gRPC services — the pattern for segregated OT/IT networks. | [OPC-UA][opcua] | [MSK][msk], [Debug][debug] | IPC |
 | [OPC-UA to IoT Core with filters][ex-filters] | Reads a public OPC-UA demo server and publishes to IoT Core, demonstrating [metadata](../README.md#metadata), [transformations](../sfc-data-processing-filtering.md#transformations) and all three filter types. | [OPC-UA][opcua] | [IoT Core][iotcore], [Debug][debug] | in-process |
 | [Siemens S7 to SiteWise][ex-s7-sitewise] | S7 tags into SiteWise, with a variant that auto-creates the models and assets. | [S7][s7] | [SiteWise][sitewise], [Debug][debug] | in-process |
+| [Uberjar OPC-UA tests][ex-uberjar-opcua] | Runs the OPC-UA target and adapter straight from the uberjar on simulated data — the one example whose configuration has **no** `JarFiles`, showing how components are found on the single jar's own classpath. Needs no external system. | [Simulator][simulator] | [OPC-UA][opcua-target] | in-process, uberjar |
 | [Siemens S7 to OPC-UA][ex-s7-opcua] | Republishes S7 tags as an OPC-UA server, either from an explicit data model or with an auto-created address space. | [S7][s7] | [OPC-UA][opcua-target], [Debug][debug] | in-process |
 | [Beckhoff ADS to S3][ex-ads-s3] | Reads a Beckhoff controller over ADS/TCP and writes to S3. Includes the `main.tmc` declaring the variables, and one channel per supported address type. | [ADS][ads] | [S3][s3], [Debug][debug] | in-process |
 | [Beckhoff ADS to S3 over IPC][ex-ipc-ads-s3] | The same pipeline as separate gRPC services. | [ADS][ads] | [S3][s3], [Debug][debug] | IPC |
@@ -88,6 +89,7 @@ which walks OPC-UA to S3 end to end.
 [ex-gg-inproc]: ../../examples/greengrass-in-process/README.md
 [ex-gg-ipc]: ../../examples/greengrass-ipc/README.md
 [ex-gg-uberjar]: ../../examples/greengrass-uberjar/README.md
+[ex-uberjar-opcua]: ../../examples/uberjar-opcua-tests/README.md
 [ex-opcua-discovery]: ../../examples/opcua-auto-discovery/README.md
 [ex-mqtt-cfg]: ../../examples/mqtt-config-provider/README.md
 [ex-yaml-cfg]: ../../examples/yaml-custom-config-provider/README.md

@@ -21,7 +21,7 @@ class Or(operand: Number?) : TransformationImpl<Number>(operand) {
             is Int -> target or operand.toInt()
             is Byte -> (target.toInt() or operand.toInt()).toByte()
             is Short -> (target.toInt() or operand.toInt()).toShort()
-            is Long -> target.toLong() or operand.toLong()
+            is Long -> target or operand.toLong()
             is Double -> (target.toLong() or operand.toLong()).toDouble()
             is Float -> (target.toLong() or operand.toLong()).toFloat()
             else -> null

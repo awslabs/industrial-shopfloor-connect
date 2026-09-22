@@ -40,7 +40,7 @@ class IpcMetricsServerCommandLine(args: Array<String>) : ServiceCommandLineOptio
         val options = super.options()
 
         val portOrConfig = OptionGroup()
-        portOrConfig.addOption(configOption.required(false).build())
+        portOrConfig.addOption(configOption.required(false).get())
         portOrConfig.addOption(portOption)
         portOrConfig.addOption(envPortOption)
         options.addOptionGroup(portOrConfig)
@@ -57,8 +57,7 @@ class IpcMetricsServerCommandLine(args: Array<String>) : ServiceCommandLineOptio
             .type(String::class.java)
             .argName(OPTION_TARGET)
             .desc("Target ID for the service")
-            .hasArg()
-            .build()
+            .hasArg().get()
     }
 
 

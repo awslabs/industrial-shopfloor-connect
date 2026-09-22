@@ -27,6 +27,10 @@ dependencies {
 
     // s3Tables libraries required for s3Tables libraries dependencies for in process deployment of S3Tables adapter
     implementation(libs.iceberg.aws)
+    // iceberg-aws reflectively loads ApacheHttpClient$Builder (HttpClientProperties), so the
+    // HttpClient 4 based client must be on the runtime classpath even though nothing references
+    // it at compile time. Without it: NoClassDefFoundError when S3FileIO creates an output file.
+    runtimeOnly(libs.awssdk.apache.client)
     implementation(libs.awssdk.s3tables)
 
     // slf4j-nop deliberately removed: it registers an SLF4JServiceProvider that competes with

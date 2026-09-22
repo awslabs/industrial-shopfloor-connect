@@ -272,7 +272,7 @@ class IpcTargetWriter(private val targetID: String,
     private fun buildTargetServersMap(usedTargetIDs: Set<String>): Map<String?, ServerConfiguration?> {
         val targetServers = usedTargetIDs.mapNotNull {
             val c: TargetConfiguration? = configuration.targets[it]
-            if (!c?.server.isNullOrEmpty()) c?.server to configuration.targetServers[c?.server] else null
+            if (!c?.server.isNullOrEmpty()) c.server to configuration.targetServers[c.server] else null
         }.toMap()
         return targetServers
     }
@@ -398,7 +398,7 @@ class IpcTargetWriter(private val targetID: String,
             }
         }
 
-        if (ex != null) throw (ex as Throwable)
+        if (ex != null) throw ex
     }
 
     override val isInitialized: Boolean

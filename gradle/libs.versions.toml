@@ -29,7 +29,7 @@ gson = "2.14.0"
 jackson = "2.22.3"
 protobuf = "3.25.9"      # aligned with what grpc declares; see grpc-protobuf POM
 grpc = "1.84.0"
-grpc-kotlin = "1.5.0"
+grpcKotlin = "1.5.0"
 jmespath = "0.6.0"
 velocity-engine = "2.4.1"
 velocity-tools = "3.1"
@@ -84,6 +84,10 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 
 # AWS SDK v2
 awssdk-bom = { module = "software.amazon.awssdk:bom", version.ref = "awssdk" }
+awssdk-apache5-client = { module = "software.amazon.awssdk:apache5-client", version.ref = "awssdk" }
+# Required at RUNTIME by iceberg-aws: HttpClientProperties.loadHttpClientConfigurations reflectively
+# looks up software.amazon.awssdk.http.apache.ApacheHttpClient$Builder, so removing this artifact
+# fails at runtime with NoClassDefFoundError even though nothing references it at compile time.
 awssdk-apache-client = { module = "software.amazon.awssdk:apache-client", version.ref = "awssdk" }
 awssdk-auth = { module = "software.amazon.awssdk:auth", version.ref = "awssdk" }
 awssdk-aws-core = { module = "software.amazon.awssdk:aws-core", version.ref = "awssdk" }
@@ -121,7 +125,7 @@ protobuf-java-util = { module = "com.google.protobuf:protobuf-java-util", versio
 grpc-netty-shaded = { module = "io.grpc:grpc-netty-shaded", version.ref = "grpc" }
 grpc-protobuf = { module = "io.grpc:grpc-protobuf", version.ref = "grpc" }
 grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
-grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpc-kotlin" }
+grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpcKotlin" }
 jmespath-core = { module = "io.burt:jmespath-core", version.ref = "jmespath" }
 velocity-engine-core = { module = "org.apache.velocity:velocity-engine-core", version.ref = "velocity-engine" }
 velocity-tools-generic = { module = "org.apache.velocity.tools:velocity-tools-generic", version.ref = "velocity-tools" }
@@ -191,3 +195,5 @@ jdbc-drivers = ["postgresql", "mariadb-java-client", "ojdbc8", "mssql-jdbc", "my
 [plugins]
 # Gradle API floor 9.2.0, satisfied by the 9.7.1 wrapper
 shadow = { id = "com.gradleup.shadow", version = "9.6.1" }
+# 0.9.4 declared protoc dependencies with the multi-string notation Gradle 10 removes
+protobuf = { id = "com.google.protobuf", version = "0.9.6" }

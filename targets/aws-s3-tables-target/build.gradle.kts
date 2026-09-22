@@ -33,6 +33,10 @@ dependencies {
     implementation(libs.iceberg.data)
     implementation(libs.iceberg.api)
     implementation(libs.iceberg.aws)
+    // iceberg-aws reflectively loads ApacheHttpClient$Builder (HttpClientProperties), so the
+    // HttpClient 4 based client must be present at runtime even though SFC's own code uses
+    // apache5-client. Without it: NoClassDefFoundError when S3FileIO creates an output file.
+    runtimeOnly(libs.awssdk.apache.client)
     // iceberg-aws-bundle deliberately omitted: it is a 61 MB fat jar shipping ~19,800
     // UNRELOCATED software.amazon.awssdk classes for environments that lack the AWS SDK.
     // SFC declares the SDK explicitly, so the bundle only duplicated it at iceberg's pinned
