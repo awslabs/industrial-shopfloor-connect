@@ -1,3 +1,5 @@
+# BuildConfig.kt is generated into build/generated; kept ignored so that the copies older working
+# trees still have under src/main/kotlin are never committed.
 **/BuildConfig.kt
 
 build/

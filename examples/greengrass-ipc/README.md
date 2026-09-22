@@ -19,8 +19,7 @@ SFC `IPC` setup in Greengrass V2
 
 # Preconditions
 
->**Important!** <br> If you already installed SFC Greengrass components using 
-[local sfc-build with python tool](../../deployment/greengrass-sfc-components/local-build-as-components-py/README.md) or [auto-installed via CDK](../../deployment/greengrass-sfc-components/release-version-as-components-cdk/README.md), then 
+>**Important!** <br> If the SFC Greengrass components are already installed on your device, then 
 you should start with [Step 3](#step-3-creating-greengrass-recipes) and *only* create a custom recipe and custom 
 sfc-config for `sfc-main`. You can query the AWS IoT Greengrass API and fetch the current recipe for `sfc-main` using:
 ```sh

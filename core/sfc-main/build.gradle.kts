@@ -1,16 +1,21 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import java.time.LocalDate
-
 group = "com.amazonaws.sfc"
+// Do not clear this to shorten the release archive name: sfc.dist-conventions pins
+// archiveFileName, so sfc-main.tar.gz no longer depends on the version being empty. Emptying it
+// leaked into every other task in the project and made this module's own jar name
+// (sfc-main.jar vs sfc-main-1.11.0.jar) depend on task realization order.
 version = rootProject.extra.get("sfc_release")!!
 
-val module = "sfcmain"
-val sfcCoreVersion = version
-val sfcIpcVersion = version
 plugins {
-    id("sfc.kotlin-application-conventions")
+    id("sfc.module-conventions")
+}
+
+sfcModule {
+    buildConfigPackage = "sfcmain"
+    // sfc-main and sfc-uberjar name the constant MODULE_VERSION; adapters and targets use VERSION.
+    versionConstant = "MODULE_VERSION"
 }
 
 dependencies {
@@ -42,49 +47,4 @@ dependencies {
 application {
     // Define the main class for the application.
     mainClass.set("com.amazonaws.sfc.MainController")
-    applicationName = project.name
-}
-
-tasks.getByName<Zip>("distZip").enabled = false
-
-tasks.distTar {
-	project.version = ""
-	archiveBaseName = "${project.name}"
-	compression = Compression.GZIP
-	archiveExtension = "tar.gz"
-}
-
-tasks.register<Copy>("copyDist") {
-    from(layout.buildDirectory.dir("distributions"))
-    include("*.tar.gz")
-    into(layout.buildDirectory.dir("../../../build/distribution/"))
-}
-
-tasks.register("generateBuildConfig") {
-    val version = project.version.toString()
-
-    val versionSource = resources.text.fromString(
-        """
-          |package com.amazonaws.sfc.$module
-          |
-          |object BuildConfig {
-          |  const val CORE_VERSION = "$sfcCoreVersion" 
-          |  const val IPC_VERSION = "$sfcIpcVersion"
-          |  const val MODULE_VERSION = "$version"
-          |    override fun toString() = "SFC_MODULE ${project.name.uppercase()}: VERSION=${'$'}MODULE_VERSION, SFC_CORE_VERSION=${'$'}CORE_VERSION, SFC_IPC_VERSION=${'$'}IPC_VERSION, BUILD_DATE=${LocalDate.now()}"
-          |}
-          |
-        """.trimMargin()
-    )
-
-    copy {
-        from(versionSource)
-        into("src/main/kotlin/com/amazonaws/sfc/$module")
-        rename { "BuildConfig.kt" }
-    }
-}
-
-tasks.named("build") {
-    dependsOn("generateBuildConfig")
-    finalizedBy("copyDist")
 }

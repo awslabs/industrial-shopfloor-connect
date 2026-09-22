@@ -26,7 +26,7 @@ cd core/sfc-uberjar
 bash ../../gradlew build
 ```
 
-This will produce an executable uberjar in `build/libs` like `build/libs/sfc-uberjar-1.9.3.jar`.
+This will produce an executable uberjar in `build/libs` like `build/libs/sfc-uberjar-1.11.0.jar`.
 
 ## Step 2: Create an Amazon S3 bucket if it doesn't exist
 
@@ -38,8 +38,8 @@ with an artefact link to a different region)
 
 ## Step 3: Upload the jar to the Amazon S3 bucket
 
-Upload the uberjar e.g. `core/uberjar/build/libs/sfc-uberjar-1.9.3.jar` to the S3 bucket. Feel free to put it into a folder if you want. 
-Please copy the S3 URL e.g. `s3://my-s3-bucket/sfc-uberjar-1.9.3.jar` which you will need in the next step.
+Upload the uberjar e.g. `core/uberjar/build/libs/sfc-uberjar-1.11.0.jar` to the S3 bucket. Feel free to put it into a folder if you want. 
+Please copy the S3 URL e.g. `s3://my-s3-bucket/sfc-uberjar-1.11.0.jar` which you will need in the next step.
 
 ## Step 4: Create a Greengrass Component
 
@@ -130,7 +130,7 @@ Please copy the S3 URL e.g. `s3://my-s3-bucket/sfc-uberjar-1.9.3.jar` which you 
       "Lifecycle": {
         "Run": {
           "RequiresPrivilege": true,
-          "Script": "java -jar {artifacts:path}/sfc-uberjar-1.9.3.jar -trace",
+          "Script": "java -jar {artifacts:path}/sfc-uberjar-1.11.0.jar -trace",
           "Setenv": {
             "SFC_CONFIG": "{configuration:/SFC_CONFIG}"
           }
@@ -138,7 +138,7 @@ Please copy the S3 URL e.g. `s3://my-s3-bucket/sfc-uberjar-1.9.3.jar` which you 
       },
       "Artifacts": [
         {
-          "Uri": "s3://[REPLACE WITH YOUR S3 BUCKET]/sfc-uberjar-1.9.3.jar"
+          "Uri": "s3://[REPLACE WITH YOUR S3 BUCKET]/sfc-uberjar-1.11.0.jar"
         }
       ]
     }

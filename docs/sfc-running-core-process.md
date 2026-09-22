@@ -27,11 +27,18 @@ IoT Greengrass component)
 
 ## Running the process from a single jar file
 
-The build process also creates an uber jar for SFC that contains the SFC core, all adaapters, targets, metrics and
-examples in a single jar file. It is an executable jar that call the sfc-main application `com.amazonaws.sfc.MainController`.
-This jar allow to 
-* run the core process from a single executable e.g. `java - jar sfc-uberjar-1.x.x.jar -config xxx.json`
-* load additional adapters, targets or other code included in the SFC project directly form that jar instead of loading it from different directories 
+The build process also creates an uber jar for SFC that contains the SFC core, all adapters, targets, metrics and
+examples in a single jar file. It is an executable jar that calls the sfc-main application `com.amazonaws.sfc.MainController`.
+
+The released `sfc-uberjar.tar.gz` unpacks to `sfc-uberjar/bin/` plus `sfc-uberjar/lib/`, where `lib/` holds
+exactly that one jar. So either entry point works:
+* the launcher, which is the documented way — `sfc-uberjar/bin/sfc-uberjar -config xxx.json`
+  (`sfc-uberjar\bin\sfc-uberjar.bat` on Windows)
+* the jar directly — `java -jar sfc-uberjar/lib/sfc-uberjar-1.x.x.jar -config xxx.json`
+
+This jar allows to
+* run the core process from a single executable
+* load additional adapters, targets or other code included in the SFC project directly from that jar instead of loading it from different directories 
 
 To load another component from the same jar (e.g. the same class path just omit the `JarFiles` entry in the configuration
 for this component).

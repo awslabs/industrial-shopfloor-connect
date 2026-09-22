@@ -150,8 +150,13 @@ object SimulationHelper {
 
     fun minValueForType(clazz: KClass<*>): Double {
         return when (clazz) {
-            Double::class -> Double.MIN_VALUE
-            Float::class -> Float.MIN_VALUE.toDouble()
+            // For the floating point types MIN_VALUE is the smallest POSITIVE value (4.9E-324 for
+            // Double), not the most negative one. Callers use this as a lower clamp on a configured
+            // Min, so returning MIN_VALUE here made maxOf() discard any configured Min <= 0 - a
+            // "Min": 0 square wave oscillated between 4.9E-324 and its Max instead of between 0 and
+            // Max. The most negative finite value is -MAX_VALUE.
+            Double::class -> -Double.MAX_VALUE
+            Float::class -> (-Float.MAX_VALUE).toDouble()
             Int::class -> Int.MIN_VALUE.toDouble()
             Long::class -> Long.MIN_VALUE.toDouble()
             Short::class -> Short.MIN_VALUE.toDouble()
@@ -160,7 +165,7 @@ object SimulationHelper {
             UShort::class -> UShort.MIN_VALUE.toDouble()
             UInt::class -> UInt.MIN_VALUE.toDouble()
             ULong::class -> ULong.MIN_VALUE.toDouble()
-            else -> Double.MIN_VALUE
+            else -> -Double.MAX_VALUE
         }
     }
 

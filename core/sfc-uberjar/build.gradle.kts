@@ -2,20 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import com.github.jengelman.gradle.plugins.shadow.transformers.Log4j2PluginsCacheFileTransformer
-import java.time.LocalDate
 
 plugins {
-    id("sfc.kotlin-application-conventions")
+    id("sfc.module-conventions")
     alias(libs.plugins.shadow)
 }
 
 group = "com.amazonaws.sfc"
 version = rootProject.extra.get("sfc_release")!!
 
-val sfcRelease = rootProject.extra.get("sfc_release")!!
-val module = "uberjar"
-val sfcCoreVersion = sfcRelease
-val sfcIpcVersion = sfcRelease
+sfcModule {
+    buildConfigPackage = "uberjar"
+    // sfc-main and sfc-uberjar name the constant MODULE_VERSION; adapters and targets use VERSION.
+    versionConstant = "MODULE_VERSION"
+}
 
 // Modules whose code is bundled into the single executable jar.
 //
@@ -48,20 +48,22 @@ dependencies {
 
 application {
     mainClass.set("com.amazonaws.sfc.MainController")
-    applicationName = project.name
 }
 
-// The plain jar holds only this module's generated BuildConfig. It is what distTar and
-// startScripts consume, so it is given a classifier to leave the documented
-// "sfc-uberjar-<version>.jar" filename to the fat jar below
-// (docs/sfc-running-core-process.md tells users to run `java -jar sfc-uberjar-1.x.x.jar`).
+// The plain jar holds only this module's generated BuildConfig and is not released (the shadow
+// distribution below is). It still needs a classifier, because without one it would collide with
+// the fat jar over the "sfc-uberjar-<version>.jar" name and break startScripts.
 tasks.jar {
     archiveClassifier.set("thin")
 }
 
-// The single executable jar. Shadow resolves from runtimeClasspath, so the uberjar now contains
-// exactly the versions each module was compiled against - the previous hand-rolled `mergedJar`
-// configuration had no attributes and pooled all modules into one newest-wins resolution.
+// The single executable jar. Shadow resolves from runtimeClasspath, which carries the normal
+// variant-aware attributes the old hand-rolled `mergedJar` configuration lacked - that
+// configuration set no attributes at all and so fell back to the legacy `default` variant.
+// This does NOT mean each module gets the versions it was compiled against: one flat jar can hold
+// only one copy of a class, so newest-wins still applies across modules. It means the resolution is
+// now the same one the per-module distributions use, and the repo keeps a single version per
+// dependency in gradle/libs.versions.toml so that the two agree.
 tasks.shadowJar {
     isZip64 = true
 
@@ -114,54 +116,36 @@ tasks.shadowJar {
     isReproducibleFileOrder = true
 }
 
-tasks.named("build") {
-    dependsOn("shadowJar")
+// This module releases the SHADOW distribution, not the main one. The shadow plugin registers a
+// second distribution whose lib/ holds just the fat jar; the main distribution would instead ship
+// the 3 KB thin jar next to 363 loose dependency jars. That difference is not cosmetic:
+//   - it changes the shape of the published artifact (v1.11.0 and earlier shipped the fat jar),
+//   - it generates a bin/sfc-uberjar.bat whose single `set CLASSPATH=` line is ~15,300 characters,
+//     well past cmd.exe's 8,191-character limit, so the Windows launcher cannot run at all,
+//   - and it puts 34 competing root log4j2.xml files on the classpath, so first-on-classpath wins
+//     and the single deliberate config installed above is never read.
+// So: disable the main distribution, and give the shadow tar the released name.
+tasks.distTar {
+    enabled = false
 }
 
-// Every other module disables distZip; this one did not, so a ~235 MB zip was built and thrown
-// away on every CI run alongside the tar.gz that copyDist actually consumes.
-tasks.getByName<Zip>("distZip").enabled = false
+tasks.named<Zip>("shadowDistZip") {
+    enabled = false
+}
 
-tasks.distTar {
-    project.version = version
-    archiveBaseName = "${project.name}"
+tasks.named<Tar>("shadowDistTar") {
+    archiveBaseName = project.name
     compression = Compression.GZIP
     archiveExtension = "tar.gz"
     archiveFileName = "${project.name}.tar.gz"
 }
 
-tasks.register<Copy>("copyDist") {
-    from(layout.buildDirectory.dir("distributions"))
-    include("*.tar.gz")
-    into(layout.buildDirectory.dir("../../../build/distribution/"))
-}
-
-tasks.register("generateBuildConfig") {
-    val version = project.version.toString()
-
-    val versionSource = resources.text.fromString(
-        """
-          |package com.amazonaws.sfc.$module
-          |
-          |object BuildConfig {
-          |  const val CORE_VERSION = "$sfcCoreVersion"
-          |  const val IPC_VERSION = "$sfcIpcVersion"
-          |  const val MODULE_VERSION = "$version"
-          |    override fun toString() = "SFC_MODULE ${project.name.uppercase()}: VERSION=${'$'}MODULE_VERSION, SFC_CORE_VERSION=${'$'}CORE_VERSION, SFC_IPC_VERSION=${'$'}IPC_VERSION, BUILD_DATE=${LocalDate.now()}"
-          |}
-          |
-        """.trimMargin()
-    )
-
-    copy {
-        from(versionSource)
-        into("src/main/kotlin/com/amazonaws/sfc/$module")
-        rename { "BuildConfig.kt" }
-    }
+// Add the shadow tar to the convention plugin's copyDist. from() is additive, but the main distTar
+// it already points at is disabled above and so never produces a file, making this the only source.
+tasks.named<Copy>("copyDist") {
+    from(tasks.named<Tar>("shadowDistTar").flatMap { it.archiveFile })
 }
 
 tasks.named("build") {
-    dependsOn("generateBuildConfig")
-    finalizedBy("copyDist")
+    dependsOn("shadowDistTar")
 }
-

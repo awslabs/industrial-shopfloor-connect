@@ -3,16 +3,13 @@
 
 group = "com.amazonaws.sfc"
 version = "1.0.0"
-val sfcRelease = rootProject.extra.get("sfc_release")!!
-val sfcCoreVersion = sfcRelease
+
 plugins {
-    java
     id("sfc.kotlin-library-conventions")
     `maven-publish`
 }
 
 dependencies {
-
     implementation(project(":core:sfc-core"))
     implementation(libs.kotlin.stdlib.jdk8)
     implementation(libs.kotlinx.coroutines.core)
@@ -24,10 +21,9 @@ publishing {
             from(components["kotlin"])
             groupId = group as String
             artifactId = "modbus"
-            version = version
+            version = project.version.toString()
         }
     }
-
 }
 
 tasks.build {

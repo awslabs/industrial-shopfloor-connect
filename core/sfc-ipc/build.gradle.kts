@@ -12,11 +12,10 @@ version = rootProject.extra.get("sfc_release")!!
 val protobufVersion = libs.versions.protobuf.get()
 val grpcKotlinVersion = libs.versions.grpcKotlin.get()
 val grpcVersion = libs.versions.grpc.get()
-val sfcCoreVersion = version
+
 plugins {
     alias(libs.plugins.protobuf)
     id("sfc.kotlin-library-conventions")
-    idea
     `maven-publish`
 }
 
@@ -75,16 +74,14 @@ idea {
 }
 
 publishing {
-
     publications {
         create<MavenPublication>("maven") {
             from(components["kotlin"])
             groupId = group as String
             artifactId = "sfc-ipc"
-            version = version
+            version = project.version.toString()
         }
     }
-
 }
 
 tasks.build {

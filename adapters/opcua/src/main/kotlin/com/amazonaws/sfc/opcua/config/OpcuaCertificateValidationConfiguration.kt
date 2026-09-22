@@ -49,6 +49,14 @@ class OpcuaCertificateValidationConfiguration : Validate {
             CONFIG_DIRECTORY,
             this
         )
+
+        // reject rather than silently ignore, milo offers no way to skip this check
+        ConfigurationException.check(
+            configurationOptions.keyUsageIssuer,
+            "$CONFIG_VALIDATION_OPTIONS \"${OpcuaCertificateValidationOptions.CONFIG_KEY_USAGE_ISSUER}\" can not be disabled, issuer key usage is always validated as part of the certificate chain validation",
+            CONFIG_VALIDATION_OPTIONS,
+            this
+        )
     }
 
     companion object {

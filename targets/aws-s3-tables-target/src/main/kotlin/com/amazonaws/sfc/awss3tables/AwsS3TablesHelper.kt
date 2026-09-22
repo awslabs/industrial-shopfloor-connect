@@ -98,7 +98,9 @@ class AwsS3TablesHelper(private val targetConfig: AwsS3TablesTargetConfiguration
         properties.put(CatalogProperties.FILE_IO_IMPL, "org.apache.iceberg.aws.s3.S3FileIO")
         properties.put("rest.signing-name", "s3tables")
         properties.put("rest.signing-region", region)
-        properties.put("rest.sigv4-enabled", "true")
+        // iceberg 1.11.0 deprecated "rest.sigv4-enabled"; AuthManagers normalises it to exactly this
+        // setting, so the migration is behaviour-neutral (rest.signing-name/-region are unaffected)
+        properties.put("rest.auth.type", "sigv4")
 
         val catalog = RESTCatalog()
         try {

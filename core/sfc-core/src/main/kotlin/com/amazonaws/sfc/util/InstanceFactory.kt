@@ -23,9 +23,10 @@ open class InstanceFactory<T>(private val config: InProcessConfiguration, privat
 
         if (config.jarFiles.isNullOrEmpty()) {
             if (logger.level == LogLevel.TRACE) {
-                val classloader = ClassLoader.getSystemClassLoader()
-                val urls =(classloader as URLClassLoader).urLs.map{url->url.file}
-                log.trace("No jar files specified for '${config.factoryClassName}, using factory class from classpath:  ${urls.joinToString()}")
+                // the system classloader is no longer a URLClassLoader since Java 9, so the
+                // effective classpath can only be read from the java.class.path property
+                val classpathEntries = System.getProperty("java.class.path").split(File.pathSeparator)
+                log.trace("No jar files specified for '${config.factoryClassName}, using factory class from classpath:  ${classpathEntries.joinToString()}")
             }
         } else {
             log.trace("Loading factory class name class ${config.factoryClassName} from ${config.jarFiles!!.joinToString()}")

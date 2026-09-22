@@ -5,7 +5,6 @@ plugins {
     id("sfc.kotlin-library-conventions")
     `maven-publish`
     jacoco
-    java
 }
 
 group = "com.amazonaws.sfc"
@@ -43,16 +42,14 @@ dependencies {
 }
 
 publishing {
-
     publications {
         create<MavenPublication>("maven") {
             from(components["kotlin"])
             groupId = group as String
             artifactId = "sfc-core"
-            version = version
+            version = project.version.toString()
         }
     }
-
 }
 
 tasks.build {

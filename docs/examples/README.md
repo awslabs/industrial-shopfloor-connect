@@ -68,7 +68,7 @@ A [config provider](../sfc-extending.md) supplies or rewrites the configuration 
 | [Self-signed test certificates][ex-certs] | Script that generates certificates for testing OPC-UA and gRPC security. Testing only. | — | — | — |
 | [J1939 DBC file][ex-j1939] | An open-source J1939 DBC file to use with the [J1939 adapter][j1939]. | [J1939][j1939] | — | — |
 
-Also worth starting with: the [Quickstart lab](../../README.md#quickstart-example) in the root README,
+Also worth starting with: the [Quickstart lab](../../README.md#quickstart) in the root README,
 which walks OPC-UA to S3 end to end.
 
 <!-- examples -->

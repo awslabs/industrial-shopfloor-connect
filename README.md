@@ -81,214 +81,238 @@ The SFC core will provide the services, protocol and target adapters, with the r
 Read more in the [SFC documentation](./docs/README.md)
 
 
-## Quickstart Example
+## Quickstart
 
->**Requirements**: Docker, Java runtime, aws cli [Credentials Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html#configure-precedence)
+Two steps: the first needs **nothing but a JVM** and puts live data on your screen in under a minute;
+the second connects a real OPC-UA server and streams to S3.
 
-### Installation
+Both run from **one download**. The uberjar bundle ships the SFC core with every adapter and target
+included, so a component is named by its `FactoryClassName` alone — there are no `JarFiles` paths to
+wire up. *SFC speaks many more industrial protocols — [see the adapter docs](docs/adapters/README.md).*
 
-In this Quick start you will set up following architecture: A local SFC installation will receive data from an OPC-UA server and send it according to its configuration to an S3 Bucket. *As a side note here: SFC can deal with more industrial protocols - [have a look at the docs here!](docs/adapters/README.md)*
+### 1. Install
 
-At first, we have to download and extract the SFC bundles. These are precompiled executables to get started quickly:
+>**Requirements**: a Java 17 (or newer) runtime, and `jq` (used to read the latest release tag).
+
+**Linux / macOS**
 
 ```shell
-# Define sfc version and directory
 export VERSION=$(curl -s "https://api.github.com/repos/awslabs/industrial-shopfloor-connect/tags" | jq -r '.[0].name')
-export SFC_DEPLOYMENT_DIR="./sfc"
-```
+export SFC_DEPLOYMENT_DIR="$(pwd)/sfc"
 
-```shell
-# Download and extract bundles into folder ./sfc
-mkdir $SFC_DEPLOYMENT_DIR && cd $SFC_DEPLOYMENT_DIR
-wget https://github.com/awslabs/industrial-shopfloor-connect/releases/download/$VERSION/\
-{aws-s3-target,debug-target,opcua,sfc-main}.tar.gz
-
-for file in *.tar.gz; do
-  tar -xf "$file"
-  rm "$file"
-done
+mkdir -p $SFC_DEPLOYMENT_DIR && cd $SFC_DEPLOYMENT_DIR
+curl -L -O https://github.com/awslabs/industrial-shopfloor-connect/releases/download/$VERSION/sfc-uberjar.tar.gz
+tar -xf sfc-uberjar.tar.gz && rm sfc-uberjar.tar.gz
 cd -
 ```
 
-### Deploy, Configure, Run
+**Windows (cmd)** — `curl` and `tar` ship with Windows 10 and later.
 
-Next we will define the installation directory, the AWS region, the AWS account and the bucket name we want to send the data to:
+```bat
+:: set VERSION to the latest release tag
+set VERSION=v1.11.0
+set SFC_DEPLOYMENT_DIR=%CD%\sfc
+
+mkdir "%SFC_DEPLOYMENT_DIR%" && cd /d "%SFC_DEPLOYMENT_DIR%"
+curl -L -O https://github.com/awslabs/industrial-shopfloor-connect/releases/download/%VERSION%/sfc-uberjar.tar.gz
+tar -xf sfc-uberjar.tar.gz && del sfc-uberjar.tar.gz
+cd /d "%SFC_DEPLOYMENT_DIR%\.."
+```
+
+### 2. First data — no hardware, no cloud
+
+The **simulator adapter** generates signals in-process, so you can watch SFC work before connecting
+anything. Save this as `sfc/simulator.json`:
+
+```json
+{
+  "AWSVersion": "2022-04-02",
+  "Name": "Simulator to console",
+  "Version": 1,
+  "LogLevel": "Info",
+  "Schedules": [
+    {
+      "Name": "SimSchedule",
+      "Interval": 1000,
+      "Active": true,
+      "TimestampLevel": "Both",
+      "Sources": { "Simulator": ["*"] },
+      "Targets": ["DebugTarget"]
+    }
+  ],
+  "Sources": {
+    "Simulator": {
+      "Name": "Sim",
+      "ProtocolAdapter": "SimulatorAdapter",
+      "Channels": {
+        "sinus":    { "Simulation": { "SimulationType": "Sinus",    "DataType": "Double", "Min": 0, "Max": 100  } },
+        "triangle": { "Simulation": { "SimulationType": "Triangle", "DataType": "Double", "Min": 0, "Max": 100  } },
+        "sawtooth": { "Simulation": { "SimulationType": "Sawtooth", "DataType": "Double", "Min": 0, "Max": 100  } },
+        "square":   { "Simulation": { "SimulationType": "Square",   "DataType": "Double", "Min": 0, "Max": 100  } },
+        "random":   { "Simulation": { "SimulationType": "Random",   "DataType": "Byte",   "Min": 0, "Max": 100  } },
+        "counter":  { "Simulation": { "SimulationType": "Counter",  "DataType": "Int",    "Min": 0, "Max": 1000 } }
+      }
+    }
+  },
+  "Targets": {
+    "DebugTarget": { "Active": true, "TargetType": "DEBUG-TARGET" }
+  },
+  "TargetTypes": {
+    "DEBUG-TARGET": { "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter" }
+  },
+  "ProtocolAdapters": {
+    "SimulatorAdapter": { "AdapterType": "SIMULATOR" }
+  },
+  "AdapterTypes": {
+    "SIMULATOR": { "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter" }
+  }
+}
+```
+
+Run it:
 
 ```shell
-# define configuration values
-export SFC_DEPLOYMENT_DIR="./sfc"
+# Linux / macOS
+$SFC_DEPLOYMENT_DIR/sfc-uberjar/bin/sfc-uberjar -config $SFC_DEPLOYMENT_DIR/simulator.json -info
+```
+
+```bat
+:: Windows (cmd)
+"%SFC_DEPLOYMENT_DIR%\sfc-uberjar\bin\sfc-uberjar.bat" -config "%SFC_DEPLOYMENT_DIR%\simulator.json" -info
+```
+
+Six simulated signals now print once per second. `Ctrl-C` to stop. That is the whole loop — read a
+source, run a schedule, write a target — and everything below just swaps the source and the target.
+
+### 3. Real OPC-UA to S3
+
+Now the same pipeline against a real OPC-UA server, writing to an S3 bucket in your account.
+
+>**Additionally needs**: Docker, and the aws cli with [credentials configured](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html#configure-precedence).
+
+```shell
+# Linux / macOS
 export AWS_REGION="us-east-1"
 export ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
 export SFC_S3_BUCKET_NAME="sfc-s3-bucket-${AWS_REGION}-${ACCOUNT_ID}"
-```
 
-If you do not have a S3 bucket yet, you will have to create one:
-
-```shell
-# Create S3 bucket
 aws s3api create-bucket --bucket ${SFC_S3_BUCKET_NAME} --region ${AWS_REGION}
 ```
 
-Next we will have to configure the SFC. This is done via a [configuration file](./docs/core/sfc-configuration.md) you can specify at execution time (e.g. `sfc-main -config example.json`) We are first defining following variables which we will then use in an example configuration file. The following configuration sets SFC up, to connect to a OPCUA-Server and forward it to the S3 Bucket in your AWS Account:
-> Note: **Please** expand the section below, to see the json config...
-<details>
-  <summary><b>Expand</b></summary>
+```bat
+:: Windows (cmd)
+set AWS_REGION=us-east-1
+for /f %%i in ('aws sts get-caller-identity --query "Account" --output text') do set ACCOUNT_ID=%%i
+set SFC_S3_BUCKET_NAME=sfc-s3-bucket-%AWS_REGION%-%ACCOUNT_ID%
 
-```shell
-cat << EOF > $SFC_DEPLOYMENT_DIR/example.json
-  {
-    "AWSVersion": "2022-04-02",
-    "Name": "OPCUA to S3, using in process source and targets",
-    "Version": 1,
-    "LogLevel": "Info",
-    "ElementNames": {
-      "Value": "value",
-      "Timestamp": "timestamp",
-      "Metadata": "metadata"
-    },
-    "Schedules": [
-      {
-        "Name": "OpcuaToS3",
-        "Interval": 50,
-        "Description": "Read data of all OPCUA data types once per second and send to S3",
-        "Active": true,
-        "TimestampLevel": "Both",
-        "Sources": {
-          "OPCUA-SOURCE": [
-            "*"
-          ]
-        },
-        "Targets": [
-          "S3Target"
-        ]
+aws s3api create-bucket --bucket %SFC_S3_BUCKET_NAME% --region %AWS_REGION%
+```
+
+Save the [configuration](./docs/core/sfc-configuration.md) below as `sfc/example.json`, replacing
+`YOUR_BUCKET_NAME` with the bucket you just created. It reads nine nodes from the OPC-UA server and
+sends them to S3 — note again that no `JarFiles` appear anywhere.
+
+<details>
+  <summary><b>Expand example.json</b></summary>
+
+```json
+{
+  "AWSVersion": "2022-04-02",
+  "Name": "OPCUA to S3",
+  "Version": 1,
+  "LogLevel": "Info",
+  "ElementNames": {
+    "Value": "value",
+    "Timestamp": "timestamp",
+    "Metadata": "metadata"
+  },
+  "Schedules": [
+    {
+      "Name": "OpcuaToS3",
+      "Interval": 1000,
+      "Description": "Read OPCUA data once per second and send to S3",
+      "Active": true,
+      "TimestampLevel": "Both",
+      "Sources": { "OPCUA-SOURCE": ["*"] },
+      "Targets": ["S3Target"]
+    }
+  ],
+  "Sources": {
+    "OPCUA-SOURCE": {
+      "Name": "OPCUA-SOURCE",
+      "ProtocolAdapter": "OPC-UA",
+      "AdapterOpcuaServer": "OPCUA-SERVER-1",
+      "Description": "OPCUA local test server",
+      "SourceReadingMode": "Polling",
+      "SubscribePublishingInterval": 100,
+      "Channels": {
+        "ServerStatus":                   { "Name": "ServerStatus",           "NodeId": "ns=0;i=2256" },
+        "ServerTime":                     { "Name": "ServerTime",             "NodeId": "ns=0;i=2256", "Selector": "@.currentTime" },
+        "State":                          { "Name": "State",                  "NodeId": "ns=0;i=2259" },
+        "Machine1AbsoluteErrorTime":      { "Name": "AbsoluteErrorTime",      "NodeId": "ns=20;i=59217" },
+        "Machine1AbsoluteLength":         { "Name": "AbsoluteLength",         "NodeId": "ns=20;i=59235" },
+        "Machine1AbsoluteMachineOffTime": { "Name": "AbsoluteMachineOffTime", "NodeId": "ns=20;i=59210" },
+        "Machine1AbsoluteMachineOnTime":  { "Name": "AbsoluteMachineOnTime",  "NodeId": "ns=20;i=59219" },
+        "Machine1AbsolutePiecesIn":       { "Name": "AbsolutePiecesIn",       "NodeId": "ns=20;i=59237" },
+        "Machine1FeedSpeed":              { "Name": "FeedSpeed",              "NodeId": "ns=20;i=59208" }
       }
-    ],
-    "Sources": {
-      "OPCUA-SOURCE": {
-        "Name": "OPCUA-SOURCE",
-        "ProtocolAdapter": "OPC-UA",
-        "AdapterOpcuaServer": "OPCUA-SERVER-1",
-        "Description": "OPCUA local test server",
-        "SourceReadingMode": "Polling",
-        "SubscribePublishingInterval": 100,
-        "Channels": {
-                "ServerStatus": {
-                    "Name": "ServerStatus",
-                    "NodeId": "ns=0;i=2256"
-                },
-                "ServerTime": {
-                    "Name": "ServerTime",
-                    "NodeId": "ns=0;i=2256",
-                    "Selector": "@.currentTime"
-                },
-                "State": {
-                    "Name": "State",
-                    "NodeId": "ns=0;i=2259"
-                },
-                "Machine1AbsoluteErrorTime": {
-                    "Name": "AbsoluteErrorTime",
-                    "NodeId": "ns=20;i=59217"
-                },
-                "Machine1AbsoluteLength": {
-                    "Name": "AbsoluteLength",
-                    "NodeId": "ns=20;i=59235"
-                },
-                "Machine1AbsoluteMachineOffTime": {
-                    "Name": "AbsoluteMachineOffTime",
-                    "NodeId": "ns=20;i=59210"
-                },
-                "Machine1AbsoluteMachineOnTime": {
-                    "Name": "AbsoluteMachineOnTime",
-                    "NodeId": "ns=20;i=59219"
-                },
-                "Machine1AbsolutePiecesIn": {
-                    "Name": "AbsolutePiecesIn",
-                    "NodeId": "ns=20;i=59237"
-                },
-                "Machine1FeedSpeed": {
-                    "Name": "FeedSpeed",
-                    "NodeId": "ns=20;i=59208"
-                }
-            }
-      }
-    },
-    "Targets": {
-      "DebugTarget": {
-        "Active": true,
-        "TargetType": "DEBUG-TARGET"
-      },
-      "S3Target": {
-        "Active": true,
-        "TargetType": "AWS-S3",
-        "Region": "us-east-1",
-        "BucketName": "${SFC_S3_BUCKET_NAME}",
-        "Interval": 60,
-        "BufferSize": 1,
-        "Prefix": "opcua-data",
-        "Compression": "None"
-      }
-    },
-    "TargetTypes": {
-      "DEBUG-TARGET": {
-        "JarFiles": [
-          "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
-        ],
-        "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
-      },
-      "AWS-S3": {
-        "JarFiles": [
-          "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
-        ],
-        "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
-      }
-    },
-    "AdapterTypes": {
-      "OPCUA": {
-        "JarFiles": [
-          "${SFC_DEPLOYMENT_DIR}/opcua/lib"
-        ],
-        "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter"
-      }
-    },
-    "ProtocolAdapters": {
-      "OPC-UA": {
-        "AdapterType": "OPCUA",
-        "OpcuaServers": {
-          "OPCUA-SERVER-1": {
-            "Address": "opc.tcp://localhost",
-            "Path": "/",
-            "Port": 4840,
-            "ConnectTimeout": "10000",
-            "ReadBatchSize": 500
-          }
+    }
+  },
+  "Targets": {
+    "S3Target": {
+      "Active": true,
+      "TargetType": "AWS-S3",
+      "Region": "us-east-1",
+      "BucketName": "YOUR_BUCKET_NAME",
+      "Interval": 60,
+      "BufferSize": 1,
+      "Prefix": "opcua-data",
+      "Compression": "None"
+    }
+  },
+  "TargetTypes": {
+    "AWS-S3": { "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter" }
+  },
+  "ProtocolAdapters": {
+    "OPC-UA": {
+      "AdapterType": "OPCUA",
+      "OpcuaServers": {
+        "OPCUA-SERVER-1": {
+          "Address": "opc.tcp://localhost",
+          "Path": "/",
+          "Port": 4840,
+          "ConnectTimeout": "10000",
+          "ReadBatchSize": 500
         }
       }
     }
+  },
+  "AdapterTypes": {
+    "OPCUA": { "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter" }
   }
-EOF
+}
 ```
 
 </details>
 
-With everything being set up you can start the OPC UA server and the SFC itself:
+Start the OPC-UA server and SFC:
 
 ```shell
-# start umati opc-ua sample server
+# Linux / macOS
 docker run -d -p 4840:4840 ghcr.io/umati/sample-server:main
-
-# run sfc
-sfc/sfc-main/bin/sfc-main -config sfc/example.json
+$SFC_DEPLOYMENT_DIR/sfc-uberjar/bin/sfc-uberjar -config $SFC_DEPLOYMENT_DIR/example.json -info
 ```
 
-### Run Output
+```bat
+:: Windows (cmd)
+docker run -d -p 4840:4840 ghcr.io/umati/sample-server:main
+"%SFC_DEPLOYMENT_DIR%\sfc-uberjar\bin\sfc-uberjar.bat" -config "%SFC_DEPLOYMENT_DIR%\example.json" -info
+```
 
-The output of your Quick Start SFC run should look like the following. You can also check your S3 bucket (e.g. the first entry of your first file) with the following command:
+Check what landed in your bucket:
 
 ```shell
-# gets a list of entries in your bucket and filters it to the first file with jq
 export KEY=$(aws s3api list-objects --bucket $SFC_S3_BUCKET_NAME | jq -r '.Contents[0].Key')
-
-# downloads and prints the first entry of this file into your console
 aws s3 cp s3://$SFC_S3_BUCKET_NAME/$KEY - | jq '.[0]'
 ```
 

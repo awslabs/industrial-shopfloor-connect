@@ -80,7 +80,7 @@
       "Lifecycle": {
         "Run": {
           "RequiresPrivilege": true,
-          "Script": "java -jar {artifacts:path}/sfc-fatjar-1.8.9.jar -trace",
+          "Script": "java -jar {artifacts:path}/sfc-uberjar-1.11.0.jar -trace",
           "Setenv": {
             "SFC_CONFIG": "{configuration:/SFC_CONFIG}"
           }
@@ -88,7 +88,7 @@
       },
       "Artifacts": [
         {
-          "Uri": "s3://gg-sfc-vor-eu-central-1/sfc-fatjar-1.8.9.jar"
+          "Uri": "s3://[REPLACE WITH YOUR S3 BUCKET]/sfc-uberjar-1.11.0.jar"
         }
       ]
     }
