@@ -24,12 +24,29 @@ This strategy allows for the addition of new functionalities in data delivery to
 
 
 
-<p align="center">
-<img src="img/fig05.png" width="75%"/>
+```mermaid
+%%{init: {'theme':'base','themeVariables':{
+  'background':'#0a0e14','primaryColor':'#0d1117','primaryTextColor':'#e6faff',
+  'primaryBorderColor':'#1f6feb','lineColor':'#7d8590','fontFamily':'monospace',
+  'clusterBkg':'#0a0e14','clusterBorder':'#1f6feb'}}}%%
+flowchart LR
+    CORE(["<b>SFC Core</b>"]):::core
+    MID(["<b>Intermediate target</b><br/><i>e.g. store &amp; forward, router</i>"]):::tool
+    END(["<b>Target</b><br/><i>the end destination</i>"]):::tool
 
+    CORE == "target data" ==> MID
+    MID == "target data" ==> END
+    END -. "target results<br/>ack · nack · error" .-> MID
+    MID -. "target results" .-> CORE
 
-<p align="center">
-    <em>Fig. 3. Example of target daisy-chaining</em>
+    classDef core fill:#0d1117,stroke:#ff6b35,stroke-width:2px,color:#ffd4c2,font-weight:bold;
+    classDef tool fill:#0d1117,stroke:#1f6feb,stroke-width:2px,color:#e6faff,font-weight:bold;
+    classDef data fill:#0d1117,stroke:#ff2bd6,stroke-width:1px,color:#ffb3f0;
+    classDef aws fill:#0d1117,stroke:#b6ff00,stroke-width:2px,color:#d9ffb3;
+    classDef ext fill:#0d1117,stroke:#7d8590,stroke-width:1px,color:#9aa4b2,stroke-dasharray:5 3;
+```
+
+<p align="center"><em>Fig. 5. Example of target daisy-chaining</em></p>
 
 ## Store and forward
 

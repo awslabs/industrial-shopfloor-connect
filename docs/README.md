@@ -145,7 +145,29 @@ There are three main type of components that make up SFC.
 - [Protocol Adapters](./adapters/README.md)
 - [Target Adapters](./targets/README.md)
 
-![](img/fig01.png)
+```mermaid
+%%{init: {'theme':'base','themeVariables':{
+  'background':'#0a0e14','primaryColor':'#0d1117','primaryTextColor':'#e6faff',
+  'primaryBorderColor':'#1f6feb','lineColor':'#7d8590','fontFamily':'monospace',
+  'clusterBkg':'#0a0e14','clusterBorder':'#1f6feb'}}}%%
+flowchart LR
+    PLANT[/"Shop floor<br/><i>PLCs · sensors · historians</i>"/]:::data
+    ADAPTER(["<b>Protocol adapters</b><br/>OPC-UA · S7 · Modbus · …"]):::tool
+    CORE(["<b>SFC Core</b><br/>schedules · transforms · filters"]):::core
+    TARGET(["<b>Target adapters</b><br/>S3 · IoT Core · SiteWise · S3Tables · etc."]):::tool
+    CLOUD{{"<b>AWS Target Services</b><br/> - e.g. MSK, S3Tables, IoT Core"}}:::aws
+
+    PLANT --> ADAPTER
+    ADAPTER ==> CORE
+    CORE ==> TARGET
+    TARGET ==> CLOUD
+
+    classDef core fill:#0d1117,stroke:#ff6b35,stroke-width:2px,color:#ffd4c2,font-weight:bold;
+    classDef tool fill:#0d1117,stroke:#1f6feb,stroke-width:2px,color:#e6faff,font-weight:bold;
+    classDef data fill:#0d1117,stroke:#ff2bd6,stroke-width:1px,color:#ffb3f0;
+    classDef aws fill:#0d1117,stroke:#b6ff00,stroke-width:2px,color:#d9ffb3;
+    classDef ext fill:#0d1117,stroke:#7d8590,stroke-width:1px,color:#9aa4b2,stroke-dasharray:5 3;
+```
 
 ## SFC Core
 
@@ -321,7 +343,63 @@ SFC is designed so that protocol adapters, the SFC Core and target adapters can 
 different networking or cloud environments. The diagrams below show some of the possible deployment scenarios.
 
 
-![](img/fig02.png)
+```mermaid
+%%{init: {'theme':'base','themeVariables':{
+  'background':'#0a0e14','primaryColor':'#0d1117','primaryTextColor':'#e6faff',
+  'primaryBorderColor':'#1f6feb','lineColor':'#7d8590','fontFamily':'monospace',
+  'clusterBkg':'#0a0e14','clusterBorder':'#1f6feb'}}}%%
+flowchart LR
+    subgraph OT["OT Network"]
+        direction TB
+        P1[/"Shop floor"/]:::data
+        A1(["Protocol<br/>adapter"]):::tool
+        P2[/"Shop floor"/]:::data
+        A2(["Protocol<br/>adapter"]):::tool
+        P3[/"Shop floor"/]:::data
+        A3(["Protocol<br/>adapter"]):::tool
+        P1 --> A1
+        P2 --> A2
+        P3 --> A3
+    end
+
+    subgraph IT["IT Network"]
+        direction TB
+        C1(["SFC Core"]):::core
+        T1(["Target<br/>adapter"]):::tool
+        PX(["Proxy"]):::ext
+        C2(["SFC Core"]):::core
+        C3(["SFC Core"]):::core
+        C1 ==> T1
+        T1 ==> PX
+    end
+
+    subgraph DMZ["DMZ"]
+        T2(["Target<br/>adapter"]):::tool
+    end
+
+    subgraph CL["Cloud"]
+        direction TB
+        W1{{"AWS"}}:::aws
+        W2{{"AWS"}}:::aws
+        T3(["Target<br/>adapter"]):::tool
+        W3{{"AWS"}}:::aws
+        T3 ==> W3
+    end
+
+    A1 --> C1
+    PX ==> W1
+    A2 --> C2
+    C2 ==> T2
+    T2 ==> W2
+    A3 --> C3
+    C3 ==> T3
+
+    classDef core fill:#0d1117,stroke:#ff6b35,stroke-width:2px,color:#ffd4c2,font-weight:bold;
+    classDef tool fill:#0d1117,stroke:#1f6feb,stroke-width:2px,color:#e6faff,font-weight:bold;
+    classDef data fill:#0d1117,stroke:#ff2bd6,stroke-width:1px,color:#ffb3f0;
+    classDef aws fill:#0d1117,stroke:#b6ff00,stroke-width:2px,color:#d9ffb3;
+    classDef ext fill:#0d1117,stroke:#7d8590,stroke-width:1px,color:#9aa4b2,stroke-dasharray:5 3;
+```
 
 
 

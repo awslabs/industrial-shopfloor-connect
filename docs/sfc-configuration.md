@@ -38,12 +38,33 @@ The provider is constantly monitoring the actual configuration files, and enviro
 placeholders, and if the files or the environment variables are updated, will provide a new version of the configuration
 to the SFC Core.
 
-<p align="center">
-<img src="img/fig03.png" width="50%"/>
+```mermaid
+%%{init: {'theme':'base','themeVariables':{
+  'background':'#0a0e14','primaryColor':'#0d1117','primaryTextColor':'#e6faff',
+  'primaryBorderColor':'#1f6feb','lineColor':'#7d8590','fontFamily':'monospace',
+  'clusterBkg':'#0a0e14','clusterBorder':'#1f6feb'}}}%%
+flowchart TD
+    ENV[/"Environment<br/>variables"/]:::data
+    SEC[/"Secrets<br/><i>AWS Secrets Manager</i>"/]:::data
+    FILE[("SFC config file<br/><i>JSON</i>")]:::data
+    PROV(["<b>Config file provider</b><br/>resolves placeholders · watches for changes"]):::tool
+    CORE(["<b>SFC Core</b>"]):::core
 
+    ENV ==> PROV
+    SEC ==> PROV
+    FILE ==> PROV
+    PROV == "config stream" ==> CORE
+    PROV -. "monitors" .-> ENV
+    PROV -. "monitors" .-> FILE
 
-<p align="center">
-    <em>Fig. 3. SFC default config provider</em>
+    classDef core fill:#0d1117,stroke:#ff6b35,stroke-width:2px,color:#ffd4c2,font-weight:bold;
+    classDef tool fill:#0d1117,stroke:#1f6feb,stroke-width:2px,color:#e6faff,font-weight:bold;
+    classDef data fill:#0d1117,stroke:#ff2bd6,stroke-width:1px,color:#ffb3f0;
+    classDef aws fill:#0d1117,stroke:#b6ff00,stroke-width:2px,color:#d9ffb3;
+    classDef ext fill:#0d1117,stroke:#7d8590,stroke-width:1px,color:#9aa4b2,stroke-dasharray:5 3;
+```
+
+<p align="center"><em>Fig. 3. SFC default config provider</em></p>
 
 
 
@@ -54,12 +75,33 @@ created by the SFC Core at startup. It will receive the content of the initial c
 of the SFC configuration, combined with (or just) custom provider specific configuration data it needs to obtain the
 data it will use to build the SFC configuration.
 
-<p align="center">
-<img src="img/fig04.png" width="50%"/>
+```mermaid
+%%{init: {'theme':'base','themeVariables':{
+  'background':'#0a0e14','primaryColor':'#0d1117','primaryTextColor':'#e6faff',
+  'primaryBorderColor':'#1f6feb','lineColor':'#7d8590','fontFamily':'monospace',
+  'clusterBkg':'#0a0e14','clusterBorder':'#1f6feb'}}}%%
+flowchart TD
+    ENV[/"Environment<br/>variables"/]:::data
+    SEC[/"Secrets<br/><i>AWS Secrets Manager</i>"/]:::data
+    EXT[/"External config data<br/><i>customer-managed system</i>"/]:::ext
+    FILE[("Initial config file<br/><i>provider settings + subset</i>")]:::data
+    PROV(["<b>Custom config provider</b><br/>builds the SFC configuration"]):::tool
+    CORE(["<b>SFC Core</b>"]):::core
 
+    ENV ==> PROV
+    SEC ==> PROV
+    EXT ==> PROV
+    FILE ==> PROV
+    PROV == "config stream" ==> CORE
 
-<p align="center">
-    <em>Fig. 4. Extensible config providers</em>
+    classDef core fill:#0d1117,stroke:#ff6b35,stroke-width:2px,color:#ffd4c2,font-weight:bold;
+    classDef tool fill:#0d1117,stroke:#1f6feb,stroke-width:2px,color:#e6faff,font-weight:bold;
+    classDef data fill:#0d1117,stroke:#ff2bd6,stroke-width:1px,color:#ffb3f0;
+    classDef aws fill:#0d1117,stroke:#b6ff00,stroke-width:2px,color:#d9ffb3;
+    classDef ext fill:#0d1117,stroke:#7d8590,stroke-width:1px,color:#9aa4b2,stroke-dasharray:5 3;
+```
+
+<p align="center"><em>Fig. 4. Extensible config providers</em></p>
 
 
 
