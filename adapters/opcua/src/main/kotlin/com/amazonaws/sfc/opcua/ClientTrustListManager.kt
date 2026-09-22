@@ -15,7 +15,9 @@ import com.google.common.collect.ImmutableList
 import io.netty.buffer.ByteBufUtil
 import kotlinx.coroutines.Dispatchers
 import org.bouncycastle.openssl.jcajce.JcaPEMWriter
+import org.eclipse.milo.opcua.stack.core.security.CertificateQuarantine
 import org.eclipse.milo.opcua.stack.core.security.TrustListManager
+import org.eclipse.milo.opcua.stack.core.types.builtin.DateTime
 import org.eclipse.milo.opcua.stack.core.types.builtin.ByteString
 import org.eclipse.milo.opcua.stack.core.util.DigestUtil
 import java.io.Closeable
@@ -27,7 +29,7 @@ import java.security.cert.X509Certificate
 import kotlin.io.path.Path
 
 
-class ClientTrustListManager(baseDirectoryName: String, private val logger: Logger, onUpdate: (Path) -> Unit) : TrustListManager, Closeable {
+class ClientTrustListManager(baseDirectoryName: String, private val logger: Logger, onUpdate: (Path) -> Unit) : TrustListManager, CertificateQuarantine, Closeable {
 
     private val className = this::class.simpleName.toString()
 
@@ -121,7 +123,9 @@ class ClientTrustListManager(baseDirectoryName: String, private val logger: Logg
 
     override fun removeTrustedCertificate(thumbprint: ByteString?): Boolean = true
 
-    override fun removeRejectedCertificate(thumbprint: ByteString?): Boolean = true
+    override fun getLastUpdateTime(): DateTime = DateTime.now()
+
+    override fun removeRejectedCertificate(certificate: X509Certificate) = nop(certificate)
 
     companion object {
         private const val REJECTED_DIR_NAME = "rejected"

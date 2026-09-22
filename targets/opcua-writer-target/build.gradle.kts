@@ -21,10 +21,10 @@ dependencies {
     implementation(libs.kotlin.stdlib.jdk8)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.milo.sdk.client)
+    implementation(libs.milo.transport)
     api(libs.gson)
     implementation(libs.kotlin.stdlib.jdk8)
     implementation(libs.gson)
-    implementation(libs.milo.sdk.client)
     implementation(libs.jmespath.core)
     implementation(libs.guava)
 }

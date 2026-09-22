@@ -8,7 +8,7 @@ package com.amazonaws.sfc.opcua
 import com.amazonaws.sfc.opcua.FilterHelper.Companion.DEFAULT_EVENT_TYPE
 import com.amazonaws.sfc.opcua.config.OpcuaEventTypeConfiguration
 import com.amazonaws.sfc.opcua.config.OpcuaServerProfileConfiguration
-import org.eclipse.milo.opcua.stack.core.serialization.SerializationContext
+import org.eclipse.milo.opcua.stack.core.encoding.EncodingContext
 import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId
 import org.eclipse.milo.opcua.stack.core.types.builtin.QualifiedName
 import org.eclipse.milo.opcua.stack.core.types.builtin.Variant
@@ -64,7 +64,7 @@ class OpcuaProfileEventsHelper(private val serverProfile: OpcuaServerProfileConf
 
     override fun variantPropertiesToMap(eventVariantValues: Array<Variant>,
                                         eventProperties: List<Pair<NodeId, QualifiedName>>,
-                                        context: SerializationContext): Map<String, Any> =
+                                        context: EncodingContext): Map<String, Any> =
         opcuaEventsHelper.variantPropertiesToMap(eventVariantValues, eventProperties, context)
 
 

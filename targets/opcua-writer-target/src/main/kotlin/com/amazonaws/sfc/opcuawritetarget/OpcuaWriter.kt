@@ -21,16 +21,18 @@ import com.amazonaws.sfc.system.DateTime.systemDateUTC
 import com.amazonaws.sfc.util.buildScope
 import com.amazonaws.sfc.util.launch
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient
-import org.eclipse.milo.opcua.sdk.client.api.config.OpcUaClientConfigBuilder
-import org.eclipse.milo.opcua.stack.client.security.DefaultClientCertificateValidator
+import org.eclipse.milo.opcua.sdk.client.OpcUaClientConfigBuilder
+import org.eclipse.milo.opcua.stack.transport.client.tcp.OpcTcpClientTransportConfigBuilder
+import org.eclipse.milo.opcua.stack.core.security.DefaultClientCertificateValidator
 import org.eclipse.milo.opcua.stack.core.StatusCodes
 import org.eclipse.milo.opcua.stack.core.UaException
-import org.eclipse.milo.opcua.stack.core.channel.MessageLimits
+import org.eclipse.milo.opcua.stack.core.channel.EncodingLimits
 import org.eclipse.milo.opcua.stack.core.types.builtin.LocalizedText
 import org.eclipse.milo.opcua.stack.core.types.builtin.StatusCode
 import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.UInteger
@@ -40,6 +42,7 @@ import org.eclipse.milo.opcua.stack.core.types.structured.ServiceFault
 import org.eclipse.milo.opcua.stack.core.types.structured.UserTokenPolicy
 import org.eclipse.milo.opcua.stack.core.util.EndpointUtil
 import java.net.URI
+import java.util.function.Consumer
 import java.security.cert.X509Certificate
 import java.time.Instant
 import java.time.Period
@@ -120,7 +123,7 @@ open class OpcuaWriter(
     private var trustManager: ClientTrustListManager? = null
 
     // creates the client to communicate with the server the target is writing to
-    private fun createOpcuaClient(): OpcUaClient? {
+    private suspend fun createOpcuaClient(): OpcUaClient? {
 
         val log = logger.getCtxLoggers(className, "createOpcuaClient")
 
@@ -138,17 +141,20 @@ open class OpcuaWriter(
 
 
         // build the client configuration
-        val clientConfig = { configBuilder: OpcUaClientConfigBuilder ->
-            configBuilder.setConnectTimeout(UInteger.valueOf(targetConfiguration.connectTimeout.inWholeMilliseconds))
-                .setRequestTimeout(UInteger.valueOf(targetConfiguration.writeTimeout.inWholeMilliseconds))
-                .setMessageLimits(messageLimits)
+        // Milo 1.1.7 moved the connect timeout onto the pluggable transport config, and
+        // OpcUaClient.create now takes a Consumer<OpcUaClientConfigBuilder>.
+        val transportConfig = Consumer { transportBuilder: OpcTcpClientTransportConfigBuilder ->
+            transportBuilder.setConnectTimeout(UInteger.valueOf(targetConfiguration.connectTimeout.inWholeMilliseconds))
+        }
+
+        val clientConfig = Consumer { configBuilder: OpcUaClientConfigBuilder ->
+            configBuilder.setRequestTimeout(UInteger.valueOf(targetConfiguration.writeTimeout.inWholeMilliseconds))
+                .setEncodingLimits(messageLimits)
                 .setupClientSecurity()
                 .setupCertificateValidation { dir ->
                     log.info("Certificate or CRL Update to directory $dir, reconnecting client")
                     resetClient()
                 }
-
-            configBuilder.build()
         }
 
         // create the client
@@ -161,7 +167,7 @@ open class OpcuaWriter(
                         .filter(predicate)
                         .map { endpoint -> EndpointUtil.updateUrl(endpoint, host) }
                         .findFirst()
-                }, clientConfig
+                }, transportConfig, clientConfig
             )
 
         } catch (e: UaException) {
@@ -176,7 +182,7 @@ open class OpcuaWriter(
         // if the client was created connect to server
         return if (client != null) {
             try {
-                val opcuaClient = client.connect().join() as OpcUaClient?
+                val opcuaClient = client.connectAsync().await()
                 log.info("Client for target \"$targetID\" connected to ${targetConfiguration.endPoint}")
                 metricsCollector?.put(targetID, MetricsCollector.METRICS_CONNECTIONS, 1.0, MetricUnits.COUNT, dimensions)
                 opcuaClient
@@ -189,11 +195,12 @@ open class OpcuaWriter(
 
     }
 
-    private val messageLimits: MessageLimits
-        get() = MessageLimits(
+    private val messageLimits: EncodingLimits
+        get() = EncodingLimits(
             targetConfiguration.maxChunkSize,
             targetConfiguration.maxChunkCount,
-            targetConfiguration.maxMessageSize
+            targetConfiguration.maxMessageSize,
+            EncodingLimits.DEFAULT_MAX_RECURSION_DEPTH
         )
 
     private fun OpcUaClientConfigBuilder.setupClientSecurity(): OpcUaClientConfigBuilder {
@@ -315,7 +322,7 @@ open class OpcuaWriter(
         }
 
         log.trace("Certificate validation options ${validationConfiguration.configurationOptions.options}")
-        val certificateValidator = DefaultClientCertificateValidator(trustManager, validationConfiguration.configurationOptions.options)
+        val certificateValidator = DefaultClientCertificateValidator(trustManager, validationConfiguration.configurationOptions.options, trustManager)
         this.setCertificateValidator(certificateValidator)
         return this
 

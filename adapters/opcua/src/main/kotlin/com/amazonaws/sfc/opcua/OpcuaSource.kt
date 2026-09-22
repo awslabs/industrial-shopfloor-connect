@@ -25,22 +25,24 @@ import com.amazonaws.sfc.util.buildScope
 import com.amazonaws.sfc.util.isJobCancellationException
 import com.amazonaws.sfc.util.launch
 import kotlinx.coroutines.*
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient
-import org.eclipse.milo.opcua.sdk.client.api.config.OpcUaClientConfigBuilder
-import org.eclipse.milo.opcua.sdk.client.api.identity.UsernameProvider
-import org.eclipse.milo.opcua.sdk.client.api.identity.X509IdentityProvider
-import org.eclipse.milo.opcua.sdk.client.api.subscriptions.UaMonitoredItem
-import org.eclipse.milo.opcua.sdk.client.api.subscriptions.UaSubscription
-import org.eclipse.milo.opcua.sdk.client.api.subscriptions.UaSubscriptionManager
-import org.eclipse.milo.opcua.stack.client.security.DefaultClientCertificateValidator
+import org.eclipse.milo.opcua.sdk.client.OpcUaClientConfigBuilder
+import org.eclipse.milo.opcua.stack.transport.client.tcp.OpcTcpClientTransportConfigBuilder
+import org.eclipse.milo.opcua.sdk.client.identity.UsernameProvider
+import org.eclipse.milo.opcua.sdk.client.identity.X509IdentityProvider
+import org.eclipse.milo.opcua.sdk.client.subscriptions.OpcUaMonitoredItem
+import org.eclipse.milo.opcua.sdk.client.subscriptions.OpcUaSubscription
+import org.eclipse.milo.opcua.sdk.client.subscriptions.MonitoredItemSynchronizationException
+import org.eclipse.milo.opcua.stack.core.security.DefaultClientCertificateValidator
 import org.eclipse.milo.opcua.stack.core.AttributeId
 import org.eclipse.milo.opcua.stack.core.Identifiers
 import org.eclipse.milo.opcua.stack.core.StatusCodes
 import org.eclipse.milo.opcua.stack.core.UaException
-import org.eclipse.milo.opcua.stack.core.channel.MessageLimits
-import org.eclipse.milo.opcua.stack.core.serialization.SerializationContext
+import org.eclipse.milo.opcua.stack.core.channel.EncodingLimits
+import org.eclipse.milo.opcua.stack.core.encoding.EncodingContext
 import org.eclipse.milo.opcua.stack.core.types.builtin.*
 import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.UInteger
 import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.Unsigned.uint
@@ -48,6 +50,7 @@ import org.eclipse.milo.opcua.stack.core.types.enumerated.*
 import org.eclipse.milo.opcua.stack.core.types.structured.*
 import org.eclipse.milo.opcua.stack.core.util.EndpointUtil
 import java.net.URI
+import java.util.function.Consumer
 import java.security.KeyPair
 import java.security.cert.X509Certificate
 import java.time.Instant
@@ -89,29 +92,41 @@ open class OpcuaSource(
     }
 
 
+    // milo 1.1.7 replaced the client-wide UaSubscriptionManager.SubscriptionListener with a
+    // per-subscription OpcUaSubscription.SubscriptionListener. onPublishFailure has no successor -
+    // publish recovery is internal to the SDK now - so connection loss is surfaced via
+    // onStatusChanged / onWatchdogTimerElapsed instead.
     inner class SubscriptionListener(
         private val logger: Logger,
-        private val fnOnPublishFailure: (UaException?) -> Unit,
-        private val fnOnSubscriptionTransferFailed: (UaSubscription?, StatusCode?) -> Unit
-    ) : UaSubscriptionManager.SubscriptionListener {
-        override fun onPublishFailure(exception: UaException?) {
-            val log = logger.getCtxLoggers(this::class.java.name, "fnOnPublishFailure")
+        private val fnOnConnectionLost: () -> Unit,
+        private val fnOnSubscriptionTransferFailed: (OpcUaSubscription?, StatusCode?) -> Unit
+    ) : OpcUaSubscription.SubscriptionListener {
+
+        override fun onTransferFailed(subscription: OpcUaSubscription?, statusCode: StatusCode?) {
+            val log = logger.getCtxLoggers(this::class.java.name, "onTransferFailed")
             try {
-                log.warning("fnOnPublishFailure event received with status ${exception?.statusCode.toString()}")
-                fnOnPublishFailure(exception)
+                log.warning("onTransferFailed event received with status code ${statusCode.toString()} ")
+                fnOnSubscriptionTransferFailed(subscription, statusCode)
             } catch (e: Exception) {
                 log.error("Error executing onSubscriptionTransferFailedAction, $e")
             }
         }
 
-        override fun onSubscriptionTransferFailed(subscription: UaSubscription?, statusCode: StatusCode?) {
-            val log = logger.getCtxLoggers(this::class.java.name, "onSubscriptionTransferFailed")
-            try {
-                log.warning("onSubscriptionTransferFailed event received with status code ${statusCode.toString()} ")
-                fnOnSubscriptionTransferFailed(subscription, statusCode)
-            } catch (e: Exception) {
-                log.error("Error executing onSubscriptionTransferFailedAction, $e")
-            }
+        override fun onStatusChanged(subscription: OpcUaSubscription?, statusCode: StatusCode?) {
+            val log = logger.getCtxLoggers(this::class.java.name, "onStatusChanged")
+            log.warning("Subscription status changed to ${statusCode.toString()}")
+            if (statusCode?.value == StatusCodes.Bad_ConnectionClosed) fnOnConnectionLost()
+        }
+
+        override fun onWatchdogTimerElapsed(subscription: OpcUaSubscription?) {
+            logger.getCtxLoggers(this::class.java.name, "onWatchdogTimerElapsed")
+                .warning("No publish responses received within the watchdog interval, resetting client")
+            fnOnConnectionLost()
+        }
+
+        override fun onNotificationDataLost(subscription: OpcUaSubscription?) {
+            logger.getCtxLoggers(this::class.java.name, "onNotificationDataLost")
+                .warning("Subscription notification data was lost")
         }
     }
 
@@ -163,7 +178,12 @@ open class OpcuaSource(
     private var sourceServerFault: ServiceFault? = null
 
     // subscription and monitored items for this source
-    private var subscription: UaSubscription? = null
+    private var subscription: OpcUaSubscription? = null
+
+    // milo 1.1.7 no longer passes an EncodingContext into the value/event listeners.
+    // The client's static context is stable, so capture it once.
+    private val encodingContext: EncodingContext
+        get() = client!!.staticEncodingContext
 
     // backup field for client, used explicit field to allow testing the actual value without creating a new one on demand
     private var _opcuaClient: OpcUaClient? = null
@@ -209,15 +229,7 @@ open class OpcuaSource(
                 pauseWaitUntil = systemDateTime().plusMillis(waitingPeriod.inWholeMilliseconds)
                 logger.getCtxInfoLog(className, "getClient")("Reading from source \"$sourceID\" paused for $waitingPeriod until $pauseWaitUntil")
             } else {
-                if (_opcuaClient?.subscriptionManager?.subscriptions?.isNotEmpty() == true) {
-                    _opcuaClient!!.subscriptionManager.addSubscriptionListener(
-                        SubscriptionListener(
-                            logger,
-                            fnOnPublishFailure = { ex ->
-                                if (ex?.statusCode?.value == StatusCodes.Bad_ConnectionClosed) (resetClient(0))
-                            },
-                            fnOnSubscriptionTransferFailed = { _, _ -> resetClient(0) })
-                    )
+                if (_opcuaClient?.subscriptions?.isNotEmpty() == true) {
                     connectionWatchdog = startConnectionWatchdog()
                 }
             }
@@ -230,7 +242,7 @@ open class OpcuaSource(
 
 
         // only needed in subscription mode as in read node the read will fail anyway if connection is lost
-        if (sourceConfiguration.readingMode != OpcuaSourceReadingMode.SUBSCRIPTION && _opcuaClient?.subscriptionManager?.subscriptions?.isEmpty() == true) return null
+        if (sourceConfiguration.readingMode != OpcuaSourceReadingMode.SUBSCRIPTION && _opcuaClient?.subscriptions?.isEmpty() == true) return null
 
         if (opcuaServerConfiguration.connectionWatchdogInterval.inWholeMilliseconds == 0L) {
             logger.getCtxInfoLog(className, "startConnectionWatchdog")("Connection watchdog disabled as it's interval is set to 0")
@@ -243,13 +255,11 @@ open class OpcuaSource(
                     // try to read server status
                     if (!isClosing) {
                         withTimeout(opcuaServerConfiguration.readTimeout) {
-                            _opcuaClient?.read(
+                            _opcuaClient?.readAsync(
                                 0.0, TimestampsToReturn.Source, mutableListOf(
-                                    ReadValueId.builder()
-                                        .nodeId(Identifiers.Server_ServerStatus_State)
-                                        .build()
+                                    ReadValueId(Identifiers.Server_ServerStatus_State, AttributeId.Value.uid(), null, QualifiedName.NULL_VALUE)
                                 )
-                            )?.get()
+                            )?.await()
                         }
                         log.trace("Connection to server ${opcuaServerConfiguration.endPoint} for source \"${sourceID}\" checked")
                     }
@@ -266,7 +276,7 @@ open class OpcuaSource(
     }
 
     // monitored data/event nodes
-    private var monitoredItems: MutableList<UaMonitoredItem>? = null
+    private var monitoredItems: MutableList<OpcUaMonitoredItem>? = null
 
     // if an error occurs the source will pause for a configured period
     private var pauseWaitUntil: Instant = Instant.ofEpochSecond(0L)
@@ -276,7 +286,6 @@ open class OpcuaSource(
     private val createClientLock = Mutex()
 
     // nodes indexed by client handle used to create a subscription for that node
-    private val clientHandlesForNodes = mutableMapOf<Int, OpcuaNodeData>()
 
     private val anyEventNodes by lazy {
         sourceConfiguration.channels.values.any { channel: OpcuaNodeChannelConfiguration -> channel.isEventNode }
@@ -339,7 +348,7 @@ open class OpcuaSource(
                 "Security policy: \"${(this.securityPolicyUri ?: "None").split("#").last()}\", " +
                 "Security mode: \"${this.securityMode.name}\", " +
                 "User token types:[ ${
-                    this.userIdentityTokens.joinToString { u ->
+                    this.userIdentityTokens.orEmpty().joinToString { u ->
                         "\"${u.tokenType.name}:${(u.securityPolicyUri ?: "None").split("#").last()}\""
                     }
                 }]"
@@ -368,7 +377,7 @@ open class OpcuaSource(
 
 
     // creates the client to communicate with the server the source is reading from
-    private fun createOpcuaClient(): OpcUaClient? {
+    private suspend fun createOpcuaClient(): OpcUaClient? {
 
         val log = logger.getCtxLoggers(className, "createServerClient")
 
@@ -414,12 +423,17 @@ open class OpcuaSource(
             }
 
 
-        // build the client configuration
-        val clientConfig = { configBuilder: OpcUaClientConfigBuilder ->
-            configBuilder.setConnectTimeout(UInteger.valueOf(opcuaServerConfiguration.connectTimeout.inWholeMilliseconds))
-                .setRequestTimeout(UInteger.valueOf(opcuaServerConfiguration.readTimeout.inWholeMilliseconds))
+        // Milo 1.1.7 moved the connect timeout onto the pluggable transport config, and
+        // OpcUaClient.create now takes a Consumer<OpcUaClientConfigBuilder> rather than a
+        // function returning a built config.
+        val transportConfig = Consumer { transportBuilder: OpcTcpClientTransportConfigBuilder ->
+            transportBuilder.setConnectTimeout(UInteger.valueOf(opcuaServerConfiguration.connectTimeout.inWholeMilliseconds))
+        }
 
-                .setMessageLimits(messageLimits)
+        // build the client configuration
+        val clientConfig = Consumer { configBuilder: OpcUaClientConfigBuilder ->
+            configBuilder.setRequestTimeout(UInteger.valueOf(opcuaServerConfiguration.readTimeout.inWholeMilliseconds))
+                .setEncodingLimits(messageLimits)
                 .setupClientSecurity { dir ->
                     log.info("Certificate or CRL Update to directory $dir, reconnecting client")
                     resetClient()
@@ -428,8 +442,6 @@ open class OpcuaSource(
                     log.info("Certificate or CRL Update to directory $dir, reconnecting client")
                     resetClient()
                 }
-
-            configBuilder.build()
         }
 
         // create the client
@@ -456,7 +468,7 @@ open class OpcuaSource(
 
                     selectedEndpoint
 
-                }, clientConfig
+                }, transportConfig, clientConfig
             )
 
         } catch (e: UaException) {
@@ -471,7 +483,7 @@ open class OpcuaSource(
         // if the client was created connect to server
         return if (client != null) {
             try {
-                val opcuaClient = client.connect().join() as OpcUaClient?
+                val opcuaClient = client.connectAsync().await()
                 log.info("Client for source \"$sourceID\" connected to ${opcuaServerConfiguration.endPoint}")
                 metricsCollector?.put(protocolAdapterID, MetricsCollector.METRICS_CONNECTIONS, 1.0, MetricUnits.COUNT, dimensions)
                 opcuaClient
@@ -520,11 +532,12 @@ open class OpcuaSource(
 
     }
 
-    private val messageLimits: MessageLimits
-        get() = MessageLimits(
+    private val messageLimits: EncodingLimits
+        get() = EncodingLimits(
             opcuaServerConfiguration.maxChunkSize,
             opcuaServerConfiguration.maxChunkCount,
-            opcuaServerConfiguration.maxMessageSize
+            opcuaServerConfiguration.maxMessageSize,
+            EncodingLimits.DEFAULT_MAX_RECURSION_DEPTH
         )
 
     private fun OpcUaClientConfigBuilder.setupClientSecurity(onUpdate: (String) -> Unit): OpcUaClientConfigBuilder {
@@ -601,7 +614,7 @@ open class OpcuaSource(
                     if (tlm.trustedCrls.isEmpty()) {
                         log.warning("There are no trusted certificates in ${tlm.trustedCertificatesDirectory}, when connection for the first time to a server fails with an error message \"the trustAnchors parameter must be non-empty\" move the rejected certificate for that server from  ${tlm.rejectedPath} into ${tlm.trustedCertificatesDirectory}")
                     }
-                    val certificateValidator = DefaultClientCertificateValidator(tlm)
+                    val certificateValidator = DefaultClientCertificateValidator(tlm, tlm)
                     this.setIdentityProvider(UsernameProvider(opcuaServerConfiguration.username, opcuaServerConfiguration.password, certificateValidator))
                 } else {
                     this.setIdentityProvider(UsernameProvider(opcuaServerConfiguration.username, opcuaServerConfiguration.password))
@@ -693,14 +706,14 @@ open class OpcuaSource(
         }
 
         log.trace("Certificate validation options ${validationConfiguration.configurationOptions.options}")
-        val certificateValidator = DefaultClientCertificateValidator(trustManager, validationConfiguration.configurationOptions.options)
+        val certificateValidator = DefaultClientCertificateValidator(trustManager, validationConfiguration.configurationOptions.options, trustManager)
         this.setCertificateValidator(certificateValidator)
         return this
 
     }
 
 
-    private fun createSubscriptionWithMonitoredItems(client: OpcUaClient): UaSubscription? {
+    private fun createSubscriptionWithMonitoredItems(client: OpcUaClient): OpcUaSubscription? {
 
         val sourceNeedsSubscription = inSubscriptionReadingMode || anyEventNodes
         if (!sourceNeedsSubscription) return null
@@ -719,9 +732,17 @@ open class OpcuaSource(
             val interval = (configuredSourceInterval ?: minIntervalUsedInSchedulesForSource).toDouble(DurationUnit.MILLISECONDS)
             runBlocking {
                 withTimeoutOrNull(connectTimeOut) {
-                    sourceScope.async(Dispatchers.IO) {
-                        client.subscriptionManager.createSubscription(interval)?.get()
-                    }.await()
+                    // milo 1.1.7: a subscription is constructed locally then created on the server.
+                    // createAsync() parks no thread, unlike the old future.get().
+                    val newSubscription = OpcUaSubscription(client, interval)
+                    newSubscription.setSubscriptionListener(
+                        SubscriptionListener(
+                            logger,
+                            fnOnConnectionLost = { resetClient(0) },
+                            fnOnSubscriptionTransferFailed = { _, _ -> resetClient(0) })
+                    )
+                    newSubscription.createAsync().await()
+                    newSubscription
                 }
             }
         }
@@ -742,12 +763,16 @@ open class OpcuaSource(
 
             dataNodes.values.forEach { node: OpcuaNodeData ->
 
-                val clientHandle = clientHandleAtomic.getAndIncrement()
-                clientHandlesForNodes[clientHandle] = node
-
-                val dataChangeFilter: ExtensionObject? = buildDataChangeFilter(sourceConfiguration.channels[node.channelID]?.nodeChangeFilter)
-                val params = MonitoringParameters(uint(clientHandle), -1.0, dataChangeFilter, uint(1), true)
-                yield(MonitoredItemCreateRequest(node.readValueId, MonitoringMode.Reporting, params))
+                // milo 1.1.7 assigns client handles itself; the node is carried on the item's
+                // userObject instead of a handle -> node map maintained here.
+                val item = OpcUaMonitoredItem(node.readValueId, MonitoringMode.Reporting)
+                item.setSamplingInterval(-1.0)
+                item.setQueueSize(uint(1))
+                item.setDiscardOldest(true)
+                buildDataChangeFilter(sourceConfiguration.channels[node.channelID]?.nodeChangeFilter)?.let { item.setFilter(it) }
+                item.setUserObject(node)
+                item.setDataValueListener(onSubscribedDataReceived())
+                yield(item)
             }
         }
     }
@@ -763,8 +788,9 @@ open class OpcuaSource(
                 }.value
             )
             val filterValue = nodeChangeFilter.filterValue
-            val changeFilter = DataChangeFilter(DataChangeTrigger.StatusValue, deadBandType, filterValue)
-            ExtensionObject.encode(client?.serializationContext, changeFilter)
+            // milo 1.1.7 setFilter takes a typed MonitoringFilter, so no ExtensionObject
+            // encoding (and no EncodingContext) is needed here any more.
+            DataChangeFilter(DataChangeTrigger.StatusValue, deadBandType, filterValue)
         }
 
     private val eventNodeMonitoredItemRequests by lazy {
@@ -777,38 +803,58 @@ open class OpcuaSource(
             val filterHelper = FilterHelper(client!!, sourceID, configuration, logger)
 
             eventNodes.values.forEach { node ->
-                val clientHandle = clientHandleAtomic.getAndIncrement()
-                clientHandlesForNodes[clientHandle] = node
-
                 if (node.eventType != null) {
                     val eventFilter = filterHelper[node.eventType]
                     val eventSamplingInterval = (node.nodeEventSampleInterval ?: sourceConfiguration.eventSamplingInterval).toDouble()
-                    val params = MonitoringParameters(uint(clientHandle), eventSamplingInterval, eventFilter, uint(sourceConfiguration.eventQueueSize), true)
 
-                    val request = MonitoredItemCreateRequest(node.readValueId, MonitoringMode.Reporting, params)
-                    yield(request)
+                    val item = OpcUaMonitoredItem(node.readValueId, MonitoringMode.Reporting)
+                    item.setSamplingInterval(eventSamplingInterval)
+                    item.setQueueSize(uint(sourceConfiguration.eventQueueSize))
+                    item.setDiscardOldest(true)
+                    eventFilter?.let { item.setFilter(it) }
+                    item.setUserObject(node)
+                    item.setEventValueListener(onMonitoredEventReceived())
+                    yield(item)
                 }
             }
         }
     }
 
-    private fun createMonitoredItems(subscription: UaSubscription): MutableList<UaMonitoredItem> {
+    private fun createMonitoredItems(subscription: OpcUaSubscription): MutableList<OpcUaMonitoredItem> {
 
-        val requests =
-            dataNodeMonitoredItemRequests +
-                    eventNodeMonitoredItemRequests
+        val log = logger.getCtxLoggers(className, "createMonitoredItems")
+
+        val items = (dataNodeMonitoredItemRequests + eventNodeMonitoredItemRequests).toList()
 
         monitoredItems?.clear()
         monitoredItems = mutableListOf()
 
-        requests.windowed(size = batchSize, step = batchSize, partialWindows = true).forEach { batchOfRequests ->
-            val createdItems = subscription.createMonitoredItems(TimestampsToReturn.Both, batchOfRequests, onMonitoredItemCreated)?.get()
-            if (!createdItems.isNullOrEmpty()) {
-                monitoredItems!!.addAll(createdItems)
+        // milo 1.1.7 partitions the service calls itself against the server's operation limits,
+        // so the previous manual windowing by batchSize is expressed as a limit instead.
+        subscription.setMaxMonitoredItemsPerCall(uint(batchSize))
+        subscription.addMonitoredItems(items)
+        try {
+            subscription.synchronizeMonitoredItems()
+        } catch (e: MonitoredItemSynchronizationException) {
+            log.warning("Not all monitored items could be created for source \"$sourceID\", $e")
+        }
+
+        // per-item outcome now comes back on the item itself rather than via a creation callback
+        items.forEach { item ->
+            val node = item.userObject.getOrNull() as? OpcuaNodeData
+            val createResult = item.createResult.getOrNull()
+            if (createResult == null || !createResult.isGood) {
+                log.error(
+                    "Error creating subscription for source \"$sourceID\" " +
+                            "node \"${node?.channelID ?: "unknown channel"}\" " +
+                            "(${item.readValueId.nodeId}), $createResult "
+                )
+            } else {
+                monitoredItems!!.add(item)
             }
         }
 
-        return monitoredItems as MutableList<UaMonitoredItem>
+        return monitoredItems as MutableList<OpcUaMonitoredItem>
     }
 
 
@@ -838,41 +884,18 @@ open class OpcuaSource(
             }
     }
 
-    // called for every created monitored data item, registers the consumer for the changed data
-    private val onMonitoredItemCreated: (item: UaMonitoredItem, Int) -> Unit = { uaMonitoredItem: UaMonitoredItem, _: Int ->
-
-        if (!uaMonitoredItem.statusCode.isGood) {
-            val errorLog = logger.getCtxErrorLog(className, "onMonitoredItemCreated")
-            val channelID = clientHandlesForNodes[uaMonitoredItem.clientHandle.toInt()]?.channelID ?: "unknown channel"
-            errorLog(
-                "Error creating subscription for source \"${sourceID}\" " +
-                        "node \"$channelID\" " + "(${uaMonitoredItem.readValueId.nodeId}), ${uaMonitoredItem.statusCode} "
-            )
-        } else {
-
-            val nodeData = clientHandlesForNodes[uaMonitoredItem.clientHandle.toInt()]
-
-            if (nodeData != null) {
-                if (nodeData.isDataNode)
-                    uaMonitoredItem.setValueConsumer(onSubscribedDataReceived())
-                else
-                    uaMonitoredItem.setEventConsumer(onMonitoredEventReceived())
-            }
-        }
-    }
-
-    private fun onSubscribedDataReceived(): (context: SerializationContext, UaMonitoredItem, DataValue) -> Unit =
-        { context: SerializationContext, item: UaMonitoredItem, value: DataValue ->
+    // milo 1.1.7 DataValueListener: no EncodingContext parameter, and the node travels on
+    // the item's userObject rather than being looked up by client handle.
+    private fun onSubscribedDataReceived(): OpcUaMonitoredItem.DataValueListener =
+        OpcUaMonitoredItem.DataValueListener { item: OpcUaMonitoredItem, value: DataValue ->
 
             val log = logger.getCtxLoggers(className, "onSubscribedDataReceived")
             try {
                 if ((value.statusCode ?: StatusCode.GOOD).isGood) {
-                    val nativeValue = OpcuaDataTypesConverter(context).asNativeValue(value.value)
+                    val nativeValue = OpcuaDataTypesConverter(encodingContext).asNativeValue(value.value)
 
                     try {
-                        // find the node using the client handle
-                        val clientHandle = item.clientHandle.toInt()
-                        val node = clientHandlesForNodes[clientHandle]
+                        val node = item.userObject.getOrNull() as? OpcuaNodeData
 
                         if (node != null) {
                             log.trace("Received subscription data for source \"$sourceID\", \"${node.channelID}\"")
@@ -881,7 +904,7 @@ open class OpcuaSource(
                             dataValueChangesStore?.add(node.channelID, ChannelReadValue(nativeValue, value.sourceTime?.javaInstant))
 
                         } else {
-                            log.warning("Received subscription data for source \"$sourceID\" but $clientHandle is unknown")
+                            log.warning("Received subscription data for source \"$sourceID\" but the monitored item carried no node")
                         }
                     } catch (e: Exception) {
                         logger.getCtxLoggers(className, "onSubscribedNodeData").errorEx("Error processing subscription data for source \"$sourceID\"", e)
@@ -890,49 +913,43 @@ open class OpcuaSource(
 
             } catch (e: Exception) {
                 val errorLogEx = logger.getCtxErrorLogEx(className, "onSubscribedDataReceived")
-                errorLogEx("Error processing subscription data source \"$sourceID\", node \"${item.readValueId}\" (${item.statusCode})", e)
+                errorLogEx("Error processing subscription data source \"$sourceID\", node \"${item.readValueId}\" (${item.createResult.getOrNull()})", e)
             }
 
         }
 
-    private fun onMonitoredEventReceived(): (context: SerializationContext, item: UaMonitoredItem, eventValues: Array<Variant>) -> Unit =
-        { context, item, eventPropertyVariantValues ->
+    // milo 1.1.7 EventValueListener: no EncodingContext parameter, node via userObject.
+    private fun onMonitoredEventReceived(): OpcUaMonitoredItem.EventValueListener =
+        OpcUaMonitoredItem.EventValueListener { item: OpcUaMonitoredItem, eventPropertyVariantValues: Array<Variant> ->
 
             if (eventsHelper != null) {
                 val log = logger.getCtxLoggers(className, "onMonitoredEventReceived")
                 try {
 
-                    val node = clientHandlesForNodes[item.clientHandle.toInt()]
-                    if ((item.statusCode ?: StatusCode.GOOD).isGood) {
+                    val node = item.userObject.getOrNull() as? OpcuaNodeData
+                    if ((item.createResult.getOrNull() ?: StatusCode.GOOD).isGood) {
                         if (node != null) {
 
                             val properties = node.eventProperties ?: eventsHelper.findEvent(Identifiers.BaseEventType)?.properties
 
                             if (properties != null) {
 
-                                val propertiesValuesMap = eventsHelper.variantPropertiesToMap(eventPropertyVariantValues, properties, context)
+                                val propertiesValuesMap = eventsHelper.variantPropertiesToMap(eventPropertyVariantValues, properties, encodingContext)
 
-                                val clientHandle = item.clientHandle.toInt()
-                                val eventNode: OpcuaNodeData? = clientHandlesForNodes[clientHandle]
-
-                                if (eventNode != null) {
-                                    log.trace("Received event data for source \"$sourceID\", \"${eventNode.channelID}\"")
-                                    eventStore?.add(eventNode.channelID, propertiesValuesMap)
-                                } else {
-                                    log.warning("Received event data for source \"$sourceID\" but $clientHandle is unknown")
-                                }
+                                log.trace("Received event data for source \"$sourceID\", \"${node.channelID}\"")
+                                eventStore?.add(node.channelID, propertiesValuesMap)
                             }
 
                         } else {
                             val nodeChannelID = "unknown channel"
                             val errorLog = logger.getCtxErrorLog(className, "onMonitoredEventReceived")
-                            errorLog("Error status on monitored event item for source \"$sourceID\", node \"$nodeChannelID\" (${item.readValueId}), ${item.statusCode}")
+                            errorLog("Error status on monitored event item for source \"$sourceID\", node \"$nodeChannelID\" (${item.readValueId}), ${item.createResult.getOrNull()}")
                         }
                     }
 
                 } catch (e: Exception) {
                     val errorLogEx = logger.getCtxErrorLogEx(className, "onMonitoredEventReceived")
-                    errorLogEx("Error processing monitored event item for source \"$sourceID\", node \"${item.readValueId}\" (${item.statusCode})", e)
+                    errorLogEx("Error processing monitored event item for source \"$sourceID\", node \"${item.readValueId}\" (${item.createResult.getOrNull()})", e)
                 }
             }
         }
@@ -953,7 +970,12 @@ open class OpcuaSource(
             trustManager = null
 
             if (!monitoredItems.isNullOrEmpty() && subscription != null) {
-                subscription?.deleteMonitoredItems(monitoredItems)
+                subscription?.removeMonitoredItems(monitoredItems!!)
+                try {
+                    subscription?.synchronizeMonitoredItems()
+                } catch (e: MonitoredItemSynchronizationException) {
+                    logger.getCtxLoggers(className, "close").warning("Not all monitored items could be deleted, $e")
+                }
             }
 
             sourceServerFault = null
@@ -1127,15 +1149,13 @@ open class OpcuaSource(
         return sequence {
 
 
-            val opcuaDataTypesConverter = OpcuaDataTypesConverter(client?.serializationContext)
+            val opcuaDataTypesConverter = OpcuaDataTypesConverter(client?.staticEncodingContext)
 
             nodesToReadInPollingModeBatches(channels).forEach { batchOfNodes ->
 
                 // read from the server and wait for result
-                val deferredResult = client!!.read(0.0, TimestampsToReturn.Both, batchOfNodes.values.toMutableList())
-
                 try {
-                    val response: ReadResponse = deferredResult.join()
+                    val response: ReadResponse = client!!.read(0.0, TimestampsToReturn.Both, batchOfNodes.values.toMutableList())
 
                     if (!response.responseHeader.serviceResult.isGood) {
                         resetClient(0)
@@ -1144,13 +1164,13 @@ open class OpcuaSource(
 
                     // map the read values to the nodes
                     batchOfNodes.keys.mapIndexed { i, s ->
-                        val value = response.results[i]
+                        val value = response.results!![i]
                         if (value.statusCode?.isGood == true) {
-                            val nativeValue = opcuaDataTypesConverter.asNativeValue(response.results[i].value)
+                            val nativeValue = opcuaDataTypesConverter.asNativeValue(response.results!![i].value)
                             if (nativeValue != null) {
                                 yield(s to ChannelReadValue(nativeValue, value.sourceTime?.javaInstant))
                             } else {
-                                log.trace("Value for channel \"$s\" from source \"$sourceID\" has status ${value.statusCode} but was not converted, variant value is ${response.results[i].value.value?.let { "${it::class.java.name}: $it" } ?: "null"}")
+                                log.trace("Value for channel \"$s\" from source \"$sourceID\" has status ${value.statusCode} but was not converted, variant value is ${response.results!![i].value.value?.let { "${it::class.java.name}: $it" } ?: "null"}")
                             }
                         } else {
                             log.error("Error reading value for channel \"$s\" from source \"$sourceID\", ${value.statusCode}")

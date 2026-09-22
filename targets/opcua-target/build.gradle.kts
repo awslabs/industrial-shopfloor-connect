@@ -20,7 +20,6 @@ dependencies {
     implementation(project(":core:sfc-ipc"))
     implementation(libs.kotlin.stdlib.jdk8)
     implementation(libs.kotlinx.coroutines.core)
-    implementation(libs.milo.opc.ua.sdk)
     implementation(libs.milo.sdk.server)
     api(libs.gson)
 }

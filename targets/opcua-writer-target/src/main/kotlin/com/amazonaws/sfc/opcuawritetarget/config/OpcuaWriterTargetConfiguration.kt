@@ -10,7 +10,7 @@ import com.amazonaws.sfc.config.ConfigurationException
 import com.amazonaws.sfc.config.TargetConfiguration
 import com.amazonaws.sfc.crypto.CertificateConfiguration
 import com.google.gson.annotations.SerializedName
-import org.eclipse.milo.opcua.stack.core.channel.MessageLimits
+import org.eclipse.milo.opcua.stack.core.channel.EncodingLimits
 import kotlin.time.Duration
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
@@ -113,8 +113,8 @@ class OpcuaWriterTargetConfiguration : TargetConfiguration() {
     companion object {
 
         const val DEFAULT_CONNECT_TIMEOUT_MS = 10000L
-        const val DEFAULT_MAX_CHUNK_SIZE = MessageLimits.DEFAULT_MAX_CHUNK_SIZE
-        const val DEFAULT_MAX_MESSAGE_SIZE = MessageLimits.DEFAULT_MAX_MESSAGE_SIZE
+        const val DEFAULT_MAX_CHUNK_SIZE = EncodingLimits.DEFAULT_MAX_CHUNK_SIZE
+        const val DEFAULT_MAX_MESSAGE_SIZE = EncodingLimits.DEFAULT_MAX_MESSAGE_SIZE
         const val DEFAULT_PORT = 53530
         const val DEFAULT_WAIT_AFTER_CONNECT_ERROR = 10000L
         const val DEFAULT_WRITE_TIMEOUT_MS = 10000L

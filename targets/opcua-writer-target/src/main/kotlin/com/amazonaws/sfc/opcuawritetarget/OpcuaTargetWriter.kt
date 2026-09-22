@@ -169,7 +169,7 @@ class OpcuaTargetWriter(
                             val results = nodesAndValuesToWrite.chunked(targetConfig.writeBatchSize).map { batch ->
                                 val nodeIds = batch.map { it.first }
                                 val values = batch.map { it.second }
-                                var status = client.writeValues(nodeIds, values)
+                                var status = client.writeValuesAsync(nodeIds, values)
                                 writes += 1
                                 writeCount.addAndGet(1)
                                 Triple(nodeIds, values, status)
@@ -181,7 +181,9 @@ class OpcuaTargetWriter(
                                     result.third?.get()?.forEachIndexed { i, statusCode ->
 
                                         val value = result.second[i].value.value
-                                        val dataTypeStr = OpcuaDataType.fromIdentifier((result.second[i].value.dataType).get())
+                                        // milo 1.1.7: Variant.dataType now returns the OpcUaDataType enum;
+                                        // dataTypeId carries the ExpandedNodeId this code expects.
+                                        val dataTypeStr = OpcuaDataType.fromIdentifier((result.second[i].value.dataTypeId).get())
                                         val valueWithType = "${if ((value is Array<*>)) value.toList().joinToString(prefix = "[", postfix = "]") else value}:$dataTypeStr"
 
                                         if (statusCode == StatusCode.GOOD) {

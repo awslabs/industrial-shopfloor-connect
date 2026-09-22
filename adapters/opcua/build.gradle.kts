@@ -24,6 +24,7 @@ dependencies {
     implementation(libs.kotlin.reflect)
     implementation(libs.gson)
     implementation(libs.milo.sdk.client)
+    implementation(libs.milo.transport)
     implementation(libs.jmespath.core)
 }
 

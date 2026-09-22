@@ -55,7 +55,9 @@ class OpcuaCertificateValidationOptions {
             if (validity) set.add(ValidationCheck.VALIDITY)
             if (keyUsageEndEntity) set.add(ValidationCheck.KEY_USAGE_END_ENTITY)
             if (extKeyUsageEndEntity) set.add(ValidationCheck.EXTENDED_KEY_USAGE_END_ENTITY)
-            if (keyUsageIssuer) set.add(ValidationCheck.KEY_USAGE_ISSUER)
+            // ValidationCheck.KEY_USAGE_ISSUER was removed in milo 1.x; issuer key-usage is
+            // now always checked as part of chain validation. The config key is still accepted
+            // for backwards compatibility but no longer maps to an optional check.
             if (revocation) set.add(ValidationCheck.REVOCATION)
             if (applicationUri) set.add(ValidationCheck.APPLICATION_URI)
             return ImmutableSet.copyOf(set)

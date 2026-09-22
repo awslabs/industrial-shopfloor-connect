@@ -43,8 +43,7 @@ hadoop = "3.5.0"
 kafka = "4.3.1"
 
 # Protocols
-milo-client = "0.5.1"          # adapters/opcua, opcua-writer-target, opcua-auto-discovery
-milo-server = "0.6.14"         # targets/opcua-target
+milo = "1.1.7"                 # requires Java 17 (bytecode major 61)
 paho = "1.2.5"
 plc4x = "0.9.1"
 snmp4j = "3.13.1"
@@ -147,9 +146,9 @@ hadoop-client = { module = "org.apache.hadoop:hadoop-client", version.ref = "had
 kafka-clients = { module = "org.apache.kafka:kafka-clients", version.ref = "kafka" }
 
 # Protocols
-milo-sdk-client = { module = "org.eclipse.milo:sdk-client", version.ref = "milo-client" }
-milo-opc-ua-sdk = { module = "org.eclipse.milo:opc-ua-sdk", version.ref = "milo-server" }
-milo-sdk-server = { module = "org.eclipse.milo:sdk-server", version.ref = "milo-server" }
+milo-sdk-client = { module = "org.eclipse.milo:milo-sdk-client", version.ref = "milo" }
+milo-sdk-server = { module = "org.eclipse.milo:milo-sdk-server", version.ref = "milo" }
+milo-transport = { module = "org.eclipse.milo:milo-transport", version.ref = "milo" }
 paho-mqttv3 = { module = "org.eclipse.paho:org.eclipse.paho.client.mqttv3", version.ref = "paho" }
 plc4j-driver-s7 = { module = "org.apache.plc4x:plc4j-driver-s7", version.ref = "plc4x" }
 snmp4j = { module = "org.snmp4j:snmp4j", version.ref = "snmp4j" }

@@ -204,22 +204,28 @@ class OpcuaTargetWriter(
         if (metricsCollector != null) InProcessMetricsProvider(metricsCollector!!, logger) else null
     }
 
+    private val servedEndpoints
+        get() = opcuaTargetServer.opcuaServer!!.applicationContext.endpointDescriptions.orEmpty()
+
     private fun displayServerBoundEndpoints() {
         val log = logger.getCtxLoggers(className, "displayBoundEndpoints")
         log.info("OPCUA server endpoints:")
-        opcuaTargetServer.opcuaServer!!.stackServer.boundEndpoints.forEach {
-            log.info("URL: ${it.endpointUrl}, Security mode: ${it.securityMode}, Security policy: ${it.securityPolicy}")
+        servedEndpoints.forEach {
+            log.info("URL: ${it.endpointUrl}, Security mode: ${it.securityMode}, Security policy: ${it.securityPolicyUri}")
         }
     }
 
     private fun checkServerBoundEndpoints(): Boolean {
         val log = logger.getCtxLoggers(className, "checkBoundEndpoints")
-        if (opcuaTargetServer.opcuaServer!!.stackServer.boundEndpoints.isEmpty()) {
+        val served = servedEndpoints
+        if (served.isEmpty()) {
             return false
         }
-        if (opcuaTargetServer.opcuaServer!!.stackServer.boundEndpoints.count() != opcuaTargetServer.opcuaServer!!.stackServer.config.endpoints.count()) {
-            opcuaTargetServer.opcuaServer!!.stackServer.config.endpoints.forEach { e ->
-                if (opcuaTargetServer.opcuaServer!!.stackServer.boundEndpoints.find { it == e } == null) {
+        val configuredEndpoints = opcuaTargetServer.opcuaServer!!.config.endpoints
+        if (served.count() != configuredEndpoints.count()) {
+            configuredEndpoints.forEach { e ->
+                val isServed = served.any { it.endpointUrl == e.endpointUrl && it.securityMode == e.securityMode }
+                if (!isServed) {
                     log.warning("Endpoint ${e.endpointUrl}, Security mode: ${e.securityMode}, Security policy: ${e.securityPolicy} is not bound")
                 }
             }
@@ -281,7 +287,7 @@ class OpcuaTargetWriter(
         }
     }
 
-    override fun getAttribute(ctx: AttributeFilterContext.GetAttributeContext, attributeId: AttributeId): Any? {
+    override fun getAttribute(ctx: AttributeFilterContext, attributeId: AttributeId): Any? {
 
         val value = ctx.getAttribute(attributeId)
         // only log external reads
@@ -303,7 +309,7 @@ class OpcuaTargetWriter(
         return value
     }
 
-    override fun setAttribute(ctx: AttributeFilterContext.SetAttributeContext, attributeId: AttributeId, value: Any?) {
+    override fun setAttribute(ctx: AttributeFilterContext, attributeId: AttributeId, value: Any?) {
         if (value is DataValue) {
 
             writeCount.addAndGet(1)
@@ -388,6 +394,6 @@ class OpcuaTargetWriter(
             this.value.value is List<*> &&
                     (this.value.value as List<*>).isNotEmpty()  &&
                     ((this.value.value as List<*>).first() != null) -> ":[${(this.value.value as List<*>).first()!!::class.java.simpleName}]"
-            else -> ":${this.value.value::class.java.simpleName}"
+            else -> ":${this.value.value?.let { it::class.java.simpleName } ?: "null"}"
         }
 }

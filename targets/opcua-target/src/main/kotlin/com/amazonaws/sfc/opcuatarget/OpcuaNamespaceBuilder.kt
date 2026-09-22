@@ -14,10 +14,10 @@ import org.eclipse.milo.opcua.sdk.core.AccessLevel
 import org.eclipse.milo.opcua.sdk.core.Reference
 import org.eclipse.milo.opcua.sdk.server.Lifecycle
 import org.eclipse.milo.opcua.sdk.server.OpcUaServer
-import org.eclipse.milo.opcua.sdk.server.api.DataItem
-import org.eclipse.milo.opcua.sdk.server.api.ManagedNamespaceWithLifecycle
-import org.eclipse.milo.opcua.sdk.server.api.MonitoredItem
-import org.eclipse.milo.opcua.sdk.server.model.nodes.objects.ServerTypeNode
+import org.eclipse.milo.opcua.sdk.server.items.DataItem
+import org.eclipse.milo.opcua.sdk.server.ManagedNamespaceWithLifecycle
+import org.eclipse.milo.opcua.sdk.server.items.MonitoredItem
+import org.eclipse.milo.opcua.sdk.server.model.objects.ServerTypeNode
 import org.eclipse.milo.opcua.sdk.server.nodes.UaFolderNode
 import org.eclipse.milo.opcua.sdk.server.nodes.UaVariableNode
 import org.eclipse.milo.opcua.sdk.server.nodes.UaVariableNode.UaVariableNodeBuilder
