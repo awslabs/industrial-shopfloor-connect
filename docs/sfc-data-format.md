@@ -410,8 +410,6 @@ When [aggregation](./core/aggregation-configuration.md) is enabled for a schedul
 
 The following targets serialize the SFC data, except when a transformation template is applied to the target, resulting in JSON format.
 
-- [**AWS IoT Analytics Target**](./targets/aws-iot-analytics.md)
-
 - **[AWS IoT Core Service Target](./targets/aws-iot-core.md)**
 - **[AWS Kinesis Firehose Target](./targets/aws-kinesis-firehose.md)**
 - [**AWS Lambda  Target**](./targets/aws-lambda.md)

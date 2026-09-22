@@ -27,7 +27,6 @@ SFC extends and unifies data collection capabilities additionally to our existin
 
 [**Supported  service targets:** ](./docs/targets/README.md)
 
-- [AWS IoT Analytics](./docs/targets/aws-iot-analytics.md)
 - [AWS IoT Core](./docs/targets/aws-iot-core.md)
 - [AWS IoT Sitewise](./docs/targets/aws-sitewise.md)
 - [AWS Kinesis Firehose](./docs/targets/aws-kinesis-firehose.md)
@@ -38,7 +37,6 @@ SFC extends and unifies data collection capabilities additionally to our existin
 - [AWS S3 Tables](./docs/targets/aws-s3-tables.md)
 - [AWS SNS](./docs/targets/aws-sns.md)
 - [AWS SQS](./docs/targets/aws-sqs.md)
-- [AWS Timestream](./docs/targets/aws-timestream.md)
 
 [**Supported  edge  targets:** ](./docs/targets/README.md)
 

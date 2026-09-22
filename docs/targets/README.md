@@ -4,10 +4,6 @@ Shop Floor Connectivity target connectors enable data transmission from industri
 
 ## Service targets
 
-- [**AWS IoT Analytics**](./aws-iot-analytics.md)
-
-  AWS IoT Analytics is a fully managed service that automates the collection, processing, enrichment, and analysis of IoT device data at scale.
-
 - **[AWS IoT Core Service](./aws-iot-core.md)**
 
   AWS IoT Core is a managed cloud service that enables connected devices to securely interact with cloud applications and other devices.
@@ -43,10 +39,6 @@ Shop Floor Connectivity target connectors enable data transmission from industri
 - **[AWS SQS](./aws-sqs.md)**
 
   Amazon SQS is a managed message queuing service for decoupling distributed applications.
-
-- **[AWS Timestream](./aws-timestream.md)**
-
-  Amazon Timestream is a managed time-series database service for IoT and operational data.
 
 ## Local targets
 

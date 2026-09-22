@@ -47,7 +47,6 @@ A [config provider](../sfc-extending.md) supplies or rewrites the configuration 
 | Example | Gist | Protocol adapter | Target | Mode |
 |---|---|---|---|---|
 | [OPC-UA auto discovery][ex-opcua-discovery] | Browses the configured OPC-UA servers and generates the channel list for each source, so you do not have to enumerate nodes by hand. | [OPC-UA][opcua] | [Debug][debug] | in-process adapter, IPC target |
-| [HTTP API and web UI][ex-api-ui] | A local HTTP API and browser UI for CRUD on SFC configurations, backed by a file-based store — a blueprint for building your own UI. | [OPC-UA][opcua], [SQL][sql] | [S3][s3], [Debug][debug] | in-process |
 | [MQTT config provider][ex-mqtt-cfg] | Subscribes to an MQTT topic and accepts either a configuration payload or a pre-signed URL to download one — remote reconfiguration without touching the host. | — | — | — |
 | [YAML config provider][ex-yaml-cfg] | Lets you write SFC configurations in YAML instead of JSON; the bootstrap JSON only names the provider and the YAML file. | [OPC-UA][opcua] | [S3][s3], [IoT Core][iotcore], [Debug][debug] | in-process |
 | [Custom config provider template][ex-custom-cfg] | Minimal Kotlin skeleton to start your own provider from. | — | — | — |
@@ -56,7 +55,6 @@ A [config provider](../sfc-extending.md) supplies or rewrites the configuration 
 
 | Example | Gist | Protocol adapter | Target | Mode |
 |---|---|---|---|---|
-| [CSV file adapter][ex-csv] | A complete custom protocol adapter that reads CSV files with configurable delimiters — the template for adding a protocol SFC does not ship. | CSV file (custom) | [Debug][debug] | in-process |
 | [Custom target formatter][ex-formatter] | Kotlin project for a [custom formatter](../sfc-extending.md#custom-formatters), to control exactly how target data is serialised. | — | — | — |
 | [Custom log writer][ex-logwriter] | Template for routing SFC log output somewhere of your own choosing. | — | — | — |
 
@@ -91,11 +89,9 @@ which walks OPC-UA to S3 end to end.
 [ex-gg-ipc]: ../../examples/greengrass-ipc/README.md
 [ex-gg-uberjar]: ../../examples/greengrass-uberjar/README.md
 [ex-opcua-discovery]: ../../examples/opcua-auto-discovery/README.md
-[ex-api-ui]: ../../examples/custom-api-ui-config-provider/README.md
 [ex-mqtt-cfg]: ../../examples/mqtt-config-provider/README.md
 [ex-yaml-cfg]: ../../examples/yaml-custom-config-provider/README.md
 [ex-custom-cfg]: ../../examples/custom-config-provider/README.md
-[ex-csv]: ../../examples/custom-adapter-csvfile/README.md
 [ex-formatter]: ../../examples/custom-target-formatter/README.md
 [ex-logwriter]: ../../examples/custom-log-writer/README.md
 [ex-templates]: ../../examples/transformation-templates/README.md

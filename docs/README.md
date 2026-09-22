@@ -176,8 +176,8 @@ modifications to the rest of the framework.
 [SFC target adapters](./targets/README.md) are components that receive the data from the SFC Core and send it to their specific AWS or local
 services. Components can optionally apply data transformations using an Apache Velocity template, to deliver the data in
 the required format for the receiving service. At the moment of writing there are adapters for the following AWS
-Services: IoT Analytics, IoT Core, Kinesis Streams, Kinesis Firehose, Lambda functions, IoT Core, S3, SiteWise,
-Timestream, MKS, SNS, and SQS, with additional targets for the local filesystem, terminal output, OPCUA, NATS and MQTT clients.
+Services: IoT Core, Kinesis Streams, Kinesis Firehose, Lambda functions, IoT Core, S3, SiteWise,
+MKS, SNS, and SQS, with additional targets for the local filesystem, terminal output, OPCUA, NATS and MQTT clients.
 
 Target buffering can be applied to reduce the number of required service API calls. All this is part of the SFC
 infrastructure and makes it easier to develop new target types for additional AWS services Targets can be daisy-chained

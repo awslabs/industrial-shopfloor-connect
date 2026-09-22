@@ -226,7 +226,7 @@ Configuration with aggregation to collect average, minimum and maximum values ov
       "Channels": ["Pressure", "Flow"],
     }
   },
-  "Targets": ["IoTSiteWise", "Timestream"],
+  "Targets": ["IoTSiteWise", "S3"],
   "Interval": 1000,
   "TimestampLevel": "Both",
   "Aggregation": {
