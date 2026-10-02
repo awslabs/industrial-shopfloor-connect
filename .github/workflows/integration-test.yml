@@ -1,0 +1,144 @@
+---
+# SFC integration tests: builds the pushed tree in CodeBuild and runs the end-to-end suite across all
+# three deployment modes against real AWS targets.
+#
+# This workflow triggers on EVERY branch, which the existing Build-Checks workflow does not - it is
+# limited to bugfix/*, feature/* and main, so a branch named anything else gets no CI at all today.
+#
+# No long-lived AWS credentials: the job exchanges its GitHub OIDC token for the SfcItCiRole created by
+# ci/cdk. That role may only write to the source prefix and start, inspect and stop this one project.
+name: Integration-Tests
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      tiers:
+        description: 'core, aws, or core,aws'
+        required: false
+        default: 'core,aws'
+      modes:
+        description: 'inprocess,ipc,uberjar'
+        required: false
+        default: 'inprocess,ipc,uberjar'
+
+concurrency:
+  # Per ref, so pushing three commits in a row does not run three complete suites to completion. The
+  # cancellation is safe because the "stop the build" step below runs with if: always() - without it,
+  # cancelling the job would orphan a CodeBuild run that then collides with its successor.
+  group: sfc-it-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write   # required to request the OIDC token
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    # A fork cannot assume the role, so skip cleanly instead of failing red on something the contributor
+    # cannot fix. Same-repo pushes and same-repo PRs run normally.
+    if: >-
+      github.repository == 'awslabs/industrial-shopfloor-connect' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    timeout-minutes: 75
+    env:
+      SFC_IT_PROJECT: ${{ vars.SFC_IT_PROJECT || 'sfc-integration-test' }}
+      SFC_IT_BUCKET: ${{ vars.SFC_IT_BUCKET }}
+      SFC_IT_TIERS: ${{ inputs.tiers || 'core,aws' }}
+      SFC_IT_MODES: ${{ inputs.modes || 'inprocess,ipc,uberjar' }}
+
+    steps:
+      - name: Check the environment is configured
+        # Better a one-line explanation than an opaque credential error on every push in a fork or in a
+        # clone where the stack has never been deployed.
+        run: |
+          if [ -z "${SFC_IT_BUCKET}" ] || [ -z "${{ vars.SFC_IT_ROLE_ARN }}" ]; then
+            echo "::warning::SFC_IT_BUCKET / SFC_IT_ROLE_ARN repository variables are not set."
+            echo "::warning::Deploy ci/cdk first, then set them from the stack outputs. Skipping."
+            echo "skip=true" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/checkout@v5
+        if: env.skip != 'true'
+        with:
+          # Mandatory, not tidiness: settings.gradle.kts derives the release version from
+          # `git describe --tags`, and ci/start-build.sh ships .git so the build inside CodeBuild sees
+          # the same tags. A shallow clone has none.
+          fetch-depth: 0
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: env.skip != 'true'
+        with:
+          role-to-assume: ${{ vars.SFC_IT_ROLE_ARN }}
+          aws-region: ${{ vars.SFC_IT_REGION || 'us-east-1' }}
+          role-session-name: sfc-it-${{ github.run_id }}
+
+      - name: Start the build and wait
+        if: env.skip != 'true'
+        id: build
+        env:
+          # Provenance for the report. The build's source is an S3 zip, so CodeBuild cannot derive a
+          # commit itself.
+          SFC_E2E_COMMIT: ${{ github.sha }}
+          SFC_E2E_REF: ${{ github.ref_name }}
+          SFC_E2E_DIRTY: '0'
+        run: |
+          set -euo pipefail
+          ci/start-build.sh --tiers "$SFC_IT_TIERS" --modes "$SFC_IT_MODES" | tee build.log
+          # Recorded so the cancellation step below can stop exactly this build.
+          grep -E '^build: ' build.log | awk '{print "id=" $2}' >> "$GITHUB_OUTPUT"
+
+      - name: Stop the build if this job was cancelled
+        # The reason cancel-in-progress above is safe. Cancelling the job kills the poller in
+        # start-build.sh but does not stop the CodeBuild run, which would keep going for up to its
+        # 45-minute timeout and contend with the next push.
+        if: always() && env.skip != 'true' && steps.build.outputs.id != ''
+        run: |
+          STATUS=$(aws codebuild batch-get-builds --ids "${{ steps.build.outputs.id }}" \
+                     --query 'builds[0].buildStatus' --output text 2>/dev/null || echo UNKNOWN)
+          if [ "$STATUS" = "IN_PROGRESS" ]; then
+            echo "stopping ${{ steps.build.outputs.id }}"
+            aws codebuild stop-build --id "${{ steps.build.outputs.id }}" >/dev/null || true
+          fi
+
+      - name: Fetch the report
+        if: always() && env.skip != 'true' && steps.build.outputs.id != ''
+        run: |
+          set -uo pipefail
+          RUN="${{ steps.build.outputs.id }}"; RUN="${RUN##*:}"
+          mkdir -p report
+          aws s3 cp "s3://${SFC_IT_BUCKET}/evidence/${RUN}/" report/ --recursive --only-show-errors || true
+          find report -name REPORT.md | head -1
+
+      - name: Publish the report to the run summary
+        if: always() && env.skip != 'true'
+        run: |
+          set -uo pipefail
+          REPORT=$(find report -name REPORT.md 2>/dev/null | head -1)
+          if [ -z "$REPORT" ]; then
+            echo "### SFC integration tests" >> "$GITHUB_STEP_SUMMARY"
+            echo "No report was produced - see the CodeBuild logs." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          RESULTS=$(find report -name results.json | head -1)
+          if [ -n "$RESULTS" ]; then
+            # $GITHUB_STEP_SUMMARY truncates SILENTLY at 1 MiB, so the renderer is given a byte budget
+            # and swaps long sections for artifact pointers instead of being cut mid-table.
+            python3 tests/e2e/lib/report.py "$RESULTS" --budget 900000 >> "$GITHUB_STEP_SUMMARY"
+          else
+            head -c 900000 "$REPORT" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the report and per-case evidence
+        if: always() && env.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sfc-integration-${{ github.run_id }}
+          path: report/
+          retention-days: 14
+          if-no-files-found: ignore

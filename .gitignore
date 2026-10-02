@@ -4,6 +4,13 @@
 
 build/
 .gradle/
+
+# Integration-test run output: reports, per-case logs and sink data. Regenerated on every run.
+tests/e2e/out/
+# CDK synth output and installed node modules for the integration-test stack.
+ci/cdk/cdk.out/
+ci/cdk/node_modules/
+
 .idea/
 *.db
 .cline
@@ -11,3 +18,4 @@ build/
 .vscode
 .kotlin
 .DS_Store
+*.pyc

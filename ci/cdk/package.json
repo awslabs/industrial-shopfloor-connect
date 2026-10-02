@@ -1,0 +1,27 @@
+{
+  "name": "sfc-integration-test-cdk",
+  "version": "1.0.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "bin": {
+    "sfc-it": "bin/app.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "synth": "cdk synth",
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.2",
+    "aws-cdk": "^2.1142.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.6.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "2.270.0",
+    "constructs": "^10.0.0"
+  }
+}
