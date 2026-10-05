@@ -70,11 +70,11 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.7.0"
 }
 
-// "tests" holds support code for the end-to-end suite. Those modules use
+// "ci" holds support code for the end-to-end suite (ci/e2e-support). Those modules use
 // sfc.kotlin-library-conventions, not sfc.module-conventions, so they build a plain jar and add
 // nothing to build/distribution - the release globs build/distribution/*.tar.gz and the tarball set
 // must stay exactly as it is.
-listOf("core", "metrics", "adapters", "targets", "examples", "tests").forEach { p ->
+listOf("core", "metrics", "adapters", "targets", "examples", "ci").forEach { p ->
     File("$rootDir/$p/").listFiles()?.forEach {
         if (it.isDirectory && File(it, "build.gradle.kts").exists()) {
             include(":${p}:${it.name}")

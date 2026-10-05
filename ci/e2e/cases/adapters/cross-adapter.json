@@ -1,0 +1,815 @@
+{
+  "cases": [
+    {
+      "id": "ADP-XCUT-IPC-NULLMAP-01",
+      "title": "Null entries in structured adapter values are dropped in IPC mode only (known defect)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "A map value crosses the IPC hop as a gRPC TypedMap, and GrpcValueFromNativeExt.typedMap filters out every entry whose value is null, so a structure decoded in the adapter service loses keys that in-process and uberjar keep as null. The vehicle is the OPC-UA ServerStatus structure from SFC's own opcua-target, whose shutdownReason is null; in-process/uberjar delivery of the same key set is asserted by ADP-OPCUA-POLL-STRUCT-01. The defect affects every adapter that returns maps (OPC-UA structures, SQL rows, JSON payloads).",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcValueFromNativeExt.kt:443",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcValueFromNativeExt.kt:435",
+        "adapters/opcua/src/main/kotlin/com/amazonaws/sfc/opcua/OpcuaDataTypesConverter.kt:113"
+      ],
+      "modes": [
+        "ipc"
+      ],
+      "services": [
+        {
+          "name": "opcua",
+          "kind": "command",
+          "start": "deferred",
+          "args": {
+            "argv": [
+              "true"
+            ]
+          }
+        }
+      ],
+      "records": 4,
+      "assert": [
+        {
+          "kind": "everyRecord",
+          "path": "sources.ua.values.status.value.buildInfo.productName",
+          "equals": "SFC OPCUA Target",
+          "strictTypes": true
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcValueFromNativeExt.kt:443",
+        "summary": "typedMap filters out null-valued entries, so in IPC a structure loses its null fields (ServerStatus.shutdownReason) that in-process and uberjar deliver as null",
+        "assertCurrent": [
+          {
+            "kind": "keySet",
+            "path": "sources.ua.values.status.value",
+            "keys": [
+              "startTime",
+              "currentTime",
+              "state",
+              "buildInfo",
+              "secondsTillShutdown"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "keySet",
+            "path": "sources.ua.values.status.value",
+            "keys": [
+              "startTime",
+              "currentTime",
+              "state",
+              "buildInfo",
+              "secondsTillShutdown",
+              "shutdownReason"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-XCUT-IPC-NULLMAP-01",
+        "Schedules": [
+          {
+            "Name": "W",
+            "Interval": 1000,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "OpcuaTarget"
+            ]
+          },
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "ua": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ],
+            "TimestampLevel": "None"
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "one": {
+                "Name": "one",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 1
+                }
+              }
+            }
+          },
+          "ua": {
+            "Name": "ua",
+            "ProtocolAdapter": "Ua",
+            "AdapterOpcuaServer": "srv",
+            "SourceReadingMode": "Polling",
+            "Channels": {
+              "status": {
+                "Name": "status",
+                "NodeId": "i=2256"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "OpcuaTarget": {
+            "TargetType": "OPCUA-TARGET",
+            "ServerTcpPort": "${SFC_E2E_OPCUA_PORT}",
+            "ServerPath": "sfc",
+            "ServerSecurityPolicies": [
+              "None"
+            ],
+            "ServerAnonymousDiscoveryEndPoint": false
+          },
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          },
+          "Ua": {
+            "AdapterType": "OPCUA",
+            "OpcuaServers": {
+              "srv": {
+                "Address": "opc.tcp://127.0.0.1",
+                "Port": "${SFC_E2E_OPCUA_PORT}",
+                "Path": "sfc",
+                "ConnectTimeout": 2000,
+                "ReadTimeout": 2000,
+                "WaitAfterConnectError": 1000
+              }
+            }
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "UaServer": {
+          "module": "opcua"
+        },
+        "OpcuaTargetServer": {
+          "module": "opcua-target"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          },
+          "Ua": {
+            "AdapterServer": "UaServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          },
+          "UaServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Targets": {
+          "OpcuaTarget": {
+            "TargetServer": "OpcuaTargetServer"
+          },
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "OpcuaTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-XCUT-ISOLATION-01",
+      "title": "A failing source does not suppress data from a healthy source in the same schedule",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "One schedule reads three sources through three adapters: a simulator counter, an MQTT source whose broker port is dead (the adapter returns a SourceReadError on every read) and an OPC-UA source whose server port is dead (the adapter returns an empty success while it pauses). ScheduleReader waits for every reader and slices the combined results from the successful sources only, so the counter must keep its exact gap-free sequence in every record and the failing sources must never appear.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:234",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:789",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:206",
+        "adapters/opcua/src/main/kotlin/com/amazonaws/sfc/opcua/OpcuaSource.kt:1058"
+      ],
+      "records": 12,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.m",
+            "sources.u"
+          ]
+        },
+        {
+          "kind": "logContains",
+          "text": "Reading for source m paused for"
+        },
+        {
+          "kind": "logContains",
+          "text": "Error creating client for for source \"u\""
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-XCUT-ISOLATION-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Sources": {
+              "sim": [
+                "*"
+              ],
+              "m": [
+                "*"
+              ],
+              "u": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          },
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "Mqtt",
+            "AdapterBroker": "b",
+            "Channels": {
+              "t": {
+                "Name": "t",
+                "Topics": [
+                  "e2e/x"
+                ]
+              }
+            }
+          },
+          "u": {
+            "Name": "u",
+            "ProtocolAdapter": "Ua",
+            "AdapterOpcuaServer": "srv",
+            "SourceReadingMode": "Polling",
+            "Channels": {
+              "product": {
+                "Name": "product",
+                "NodeId": "i=2261"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          },
+          "Mqtt": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_DEAD_PORT}",
+                "Port": "${SFC_E2E_DEAD_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            }
+          },
+          "Ua": {
+            "AdapterType": "OPCUA",
+            "OpcuaServers": {
+              "srv": {
+                "Address": "opc.tcp://127.0.0.1",
+                "Port": "${SFC_E2E_DEAD_PORT}",
+                "Path": "sfc",
+                "ConnectTimeout": 2000,
+                "ReadTimeout": 2000,
+                "WaitAfterConnectError": 1000
+              }
+            }
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          },
+          "OPCUA": {
+            "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter"
+          },
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          },
+          "OPCUA": {
+            "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/opcua/lib"
+            ]
+          },
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MqttServer": {
+          "module": "mqtt"
+        },
+        "UaServer": {
+          "module": "opcua"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          },
+          "Mqtt": {
+            "AdapterServer": "MqttServer"
+          },
+          "Ua": {
+            "AdapterServer": "UaServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          },
+          "MqttServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "UaServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-XCUT-READERROR-NOTLOGGED-01",
+      "title": "Adapter read errors (SourceReadError) are never logged or counted by the core (known defect)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "docs/sfc-extending.md says the core logs the SourceReadError an adapter returns. ScheduleReader builds the slices it processes from SourceReadSuccess results only, so its error branch (log 'error reading from source', count ReadError) is dead code. The NATS adapter, pointed at a dead port, returns a SourceReadError on every read and logs a pause line each time, which the case waits for three times; the adapter's own ConnectionErrors metric proves errors were returned, while the core neither logs nor counts them.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:789",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:315",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:196",
+        "adapters/nats/src/main/kotlin/com/amazonaws/sfc/nats/NatsAdapter.kt:245",
+        "docs/sfc-extending.md:63"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "log": "Pause reading from source until",
+            "count": 3
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "Nats",
+              "name": "ConnectionErrors",
+              "op": "ge",
+              "value": 1
+            }
+          },
+          "comment": "metrics are written once per second; wait for the adapter's error count before collecting"
+        }
+      ],
+      "gate": {
+        "sink": "main",
+        "records": 10
+      },
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "R"
+          },
+          "equals": 0
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "H"
+          },
+          "min": 10
+        },
+        {
+          "kind": "metric",
+          "source": "Nats",
+          "name": "ConnectionErrors",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:789",
+        "summary": "sliceResults keeps only SourceReadSuccess entries, so the SourceReadError branch of processReceivedData never runs: read errors are neither logged nor counted as SfcCore ReadError",
+        "assertCurrent": [
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "error reading from source"
+            ]
+          },
+          {
+            "kind": "metric",
+            "source": "SfcCore",
+            "name": "ReadError",
+            "op": "eq",
+            "value": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "text": "error reading from source \"n\""
+          },
+          {
+            "kind": "metric",
+            "source": "SfcCore",
+            "name": "ReadError",
+            "op": "ge",
+            "value": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-XCUT-READERROR-NOTLOGGED-01",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "n": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          },
+          {
+            "Name": "H",
+            "Interval": 100,
+            "Sources": {
+              "hb": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "n": {
+            "Name": "n",
+            "ProtocolAdapter": "Nats",
+            "AdapterServer": "s",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Subjects": [
+                  "e2e.x"
+                ]
+              }
+            }
+          },
+          "hb": {
+            "Name": "hb",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          },
+          "Nats": {
+            "AdapterType": "NATS",
+            "Servers": {
+              "s": {
+                "Url": "nats://127.0.0.1:${SFC_E2E_DEAD_PORT}",
+                "ConnectRetries": 1,
+                "WaitAfterConnectError": 1
+              }
+            }
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          },
+          "NATS": {
+            "FactoryClassName": "com.amazonaws.sfc.nats.NatsAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          },
+          "NATS": {
+            "FactoryClassName": "com.amazonaws.sfc.nats.NatsAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/nats/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "NatsServer": {
+          "module": "nats"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          },
+          "Nats": {
+            "AdapterServer": "NatsServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          },
+          "NatsServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

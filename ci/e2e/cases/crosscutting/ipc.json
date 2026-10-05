@@ -1,0 +1,1033 @@
+{
+  "cases": [
+    {
+      "id": "CORE-IPC-STARTUP-01",
+      "title": "IPC startup: the adapter service ignores the first InitializeAdapter, so the first read fails UNKNOWN and the metrics reader spins (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "Root cause of the ~10 s first-read failure in every IPC run. IpcAdapterService.initializeAdapter only creates the adapter when it receives the SAME configuration a second time: a new configuration is just stored in lastRequest and answered initialized=true. sfc-main trusts the answer and calls ReadValues, whose flow dereferences the null adapter (adapter!!), which reaches the client as gRPC UNKNOWN; IpcSourceReader logs it and waits WAIT_AFTER_ERROR=10 s, then a new client sends the same configuration again and only that creates the adapter. Meanwhile IpcMetricsProvider sees the reader initialised and calls ReadMetrics, which returns at once because the service's own flag is still false, and re-creates its client with no delay: thousands of gRPC clients in 10 s. Counted, not timed: two 'initialized' answers for one adapter, one UNKNOWN error, a client-creation storm. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:214-272",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:147",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:190",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReadClient.kt:33-55",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReader.kt:96-143",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReader.kt:194",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcMetricsProvider.kt:52-90"
+      ],
+      "records": 8,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "logCount",
+          "process": "adapter-SimAdapter",
+          "text": "SFC_MODULE SIMULATOR",
+          "equals": 1,
+          "comment": "The adapter is created exactly once, on the request that repeats the configuration."
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-STARTUP-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:217-218",
+        "summary": "initializeAdapter's cache check is inverted: a new configuration is only stored and answered initialized=true without creating the adapter, so the first ReadValues hits adapter!! (gRPC UNKNOWN), the reader backs off 10 s, and IpcMetricsProvider re-creates its client in a tight loop meanwhile (IpcMetricsProvider.kt:87-88)",
+        "assertCurrent": [
+          {
+            "kind": "logRegex",
+            "process": "sfc-main",
+            "regex": "Error communicating with source connector service on [0-9.]+:[0-9]+, UNKNOWN"
+          },
+          {
+            "kind": "logCount",
+            "process": "sfc-main",
+            "text": "IPC source service adapter for server",
+            "equals": 2,
+            "comment": "Two 'initialized' answers for one adapter: the first one created nothing."
+          },
+          {
+            "kind": "logCount",
+            "process": "sfc-main",
+            "text": "Creating client to connect to IPC service",
+            "min": 100,
+            "comment": "The metrics reader storm; observed 5,000+ in 10 s. Two orders of magnitude above the correct bound."
+          },
+          {
+            "kind": "metric",
+            "source": "SfcCore",
+            "name": "Errors",
+            "op": "ge",
+            "value": 1
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logAbsent",
+            "process": "sfc-main",
+            "texts": [
+              "Error communicating with source connector service on"
+            ]
+          },
+          {
+            "kind": "logCount",
+            "process": "sfc-main",
+            "text": "IPC source service adapter for server",
+            "equals": 1
+          },
+          {
+            "kind": "logCount",
+            "process": "sfc-main",
+            "text": "Creating client to connect to IPC service",
+            "max": 10
+          }
+        ]
+      }
+    },
+    {
+      "id": "CORE-IPC-SVC-CLI-01",
+      "title": "IPC service command line: -envport works; a bad -connection, a bad -interface and TLS without -key exit 1 with the reason",
+      "tier": "core",
+      "priority": "P2",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The IPC service launchers are run directly by the probe, without a configuration (as the harness does). -envport names an environment variable that holds the port, and the service listens there. Each misconfiguration fails before binding with its own message and exit code 1 (ServiceMain.runService exits when no service instance was created): an unknown -connection value, an -interface that does not exist, and ServerSideTLS without -key. -config, -port and -envport form one option group, which is why the harness cannot add -envport to its own launches. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcProtocolServerCommandLine.kt:16-32",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcProtocolServerCommandLine.kt:55-66",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:165-168",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:175-208",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:168-174"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "records": 3,
+      "timeoutSeconds": 120,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 3
+          }
+        },
+        {
+          "do": "run",
+          "timeoutSeconds": 60,
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "svc",
+            "--name",
+            "envport",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/envport.json",
+            "--module",
+            "simulator",
+            "--workdir",
+            "${SFC_E2E_WORK}/svc-envport",
+            "--timeout",
+            "40",
+            "--env",
+            "SFC_E2E_SVC_PORT=__PORT__",
+            "--",
+            "-envport",
+            "SFC_E2E_SVC_PORT",
+            "-nocolor",
+            "-info"
+          ]
+        },
+        {
+          "do": "run",
+          "timeoutSeconds": 60,
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "svc",
+            "--name",
+            "badconnection",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/badconnection.json",
+            "--module",
+            "simulator",
+            "--workdir",
+            "${SFC_E2E_WORK}/svc-badconnection",
+            "--timeout",
+            "40",
+            "--",
+            "-port",
+            "__PORT__",
+            "-connection",
+            "Bogus",
+            "-nocolor",
+            "-info"
+          ]
+        },
+        {
+          "do": "run",
+          "timeoutSeconds": 60,
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "svc",
+            "--name",
+            "badinterface",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/badinterface.json",
+            "--module",
+            "simulator",
+            "--workdir",
+            "${SFC_E2E_WORK}/svc-badinterface",
+            "--timeout",
+            "40",
+            "--",
+            "-port",
+            "__PORT__",
+            "-interface",
+            "no-such-if",
+            "-nocolor",
+            "-info"
+          ]
+        },
+        {
+          "do": "run",
+          "timeoutSeconds": 60,
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "svc",
+            "--name",
+            "tlsnokey",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/tlsnokey.json",
+            "--module",
+            "simulator",
+            "--workdir",
+            "${SFC_E2E_WORK}/svc-tlsnokey",
+            "--timeout",
+            "40",
+            "--",
+            "-port",
+            "__PORT__",
+            "-connection",
+            "ServerSideTLS",
+            "-nocolor",
+            "-info"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "envport"
+          },
+          "path": "outcome",
+          "equals": "listening"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "badconnection"
+          },
+          "path": "exitCode",
+          "equals": 1
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "badconnection"
+          },
+          "path": "output",
+          "regex": "(?s).*Unknown connection type used for parameter connection, valid values are .*"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "badinterface"
+          },
+          "path": "exitCode",
+          "equals": 1
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "badinterface"
+          },
+          "path": "output",
+          "regex": "(?s).*No IP4 network address for interface no-such-if.*"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "tlsnokey"
+          },
+          "path": "exitCode",
+          "equals": 1
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "tlsnokey"
+          },
+          "path": "output",
+          "regex": "(?s).*Private key file parameter key for server must be set for connection type ServerSideTLS.*"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-SVC-CLI-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-IPC-SVC-CONFIG-01",
+      "title": "An adapter service started with -config and no -adapter picks a target id and exits (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The documented alternative to -port: start the IPC service with -config, and with a single protocol adapter in the file the adapter id is implied. getAdapterProtocolID returns serviceConfiguration.activeTargets.keys.first() for that case - a target id - so the service looks up protocol adapter 'FileTarget', logs that it does not exist and exits 1. The control, the same file with -adapter SimAdapter, listens. The probe runs the simulator module launcher itself (svc-config.json in this directory, with a free port); the regular IPC pipeline runs alongside. IPC mode only: the module launchers are unpacked for IPC.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:382-391",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:409-418",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:342-379",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:168-174"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "records": 3,
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 3
+          }
+        },
+        {
+          "do": "run",
+          "timeoutSeconds": 60,
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "svc",
+            "--name",
+            "noadapter",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/noadapter.json",
+            "--module",
+            "simulator",
+            "--workdir",
+            "${SFC_E2E_WORK}/svc-noadapter",
+            "--template",
+            "${SFC_E2E_CASE_DIR}/svc-config.json",
+            "--timeout",
+            "40",
+            "--",
+            "-config",
+            "__WORK__/svc-config.json",
+            "-nocolor",
+            "-info"
+          ]
+        },
+        {
+          "do": "run",
+          "timeoutSeconds": 60,
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "svc",
+            "--name",
+            "withadapter",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/withadapter.json",
+            "--module",
+            "simulator",
+            "--workdir",
+            "${SFC_E2E_WORK}/svc-withadapter",
+            "--template",
+            "${SFC_E2E_CASE_DIR}/svc-config.json",
+            "--timeout",
+            "40",
+            "--",
+            "-config",
+            "__WORK__/svc-config.json",
+            "-adapter",
+            "SimAdapter",
+            "-nocolor",
+            "-info"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "withadapter"
+          },
+          "path": "outcome",
+          "equals": "listening",
+          "comment": "Control: the same file with -adapter works, so the file itself is a valid service configuration."
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "withadapter"
+          },
+          "path": "output",
+          "regex": "(?s).*IPC protocol service started, listening on .*"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:389",
+        "summary": "With one protocol adapter and no -adapter, getAdapterProtocolID returns activeTargets.keys.first() (a target id), so a service started with -config exits 1 with 'Protocol Adapter \"FileTarget\" does not exist' (NoSuchElementException when there is no active target)",
+        "assertCurrent": [
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "noadapter"
+            },
+            "path": "outcome",
+            "equals": "exited"
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "noadapter"
+            },
+            "path": "exitCode",
+            "equals": 1
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "noadapter"
+            },
+            "path": "output",
+            "regex": "(?s).*Protocol Adapter \"FileTarget\" does not exist in configuration, existing protocols adapters are \\[SimAdapter\\].*"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "noadapter"
+            },
+            "path": "outcome",
+            "equals": "listening"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-SVC-CONFIG-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "svc-config.json": "{\n  \"AWSVersion\": \"2022-04-02\",\n  \"Name\": \"svc-config\",\n  \"Version\": 1,\n  \"LogLevel\": \"Info\",\n  \"Schedules\": [\n    {\n      \"Name\": \"S\",\n      \"Interval\": 100,\n      \"Active\": true,\n      \"TimestampLevel\": \"Both\",\n      \"Sources\": {\n        \"sim\": [\n          \"*\"\n        ]\n      },\n      \"Targets\": [\n        \"FileTarget\"\n      ]\n    }\n  ],\n  \"Sources\": {\n    \"sim\": {\n      \"Name\": \"sim\",\n      \"ProtocolAdapter\": \"SimAdapter\",\n      \"Channels\": {\n        \"ctr\": {\n          \"Name\": \"ctr\",\n          \"Simulation\": {\n            \"SimulationType\": \"Counter\",\n            \"DataType\": \"Int\",\n            \"Direction\": \"UP\",\n            \"Min\": 0,\n            \"Max\": 100000,\n            \"Step\": 1\n          }\n        }\n      }\n    }\n  },\n  \"Targets\": {\n    \"FileTarget\": {\n      \"Active\": true,\n      \"TargetType\": \"FILE-TARGET\",\n      \"Directory\": \"__WORK__\",\n      \"Json\": true,\n      \"UtcTime\": true,\n      \"Extension\": \".json\",\n      \"BufferSize\": 1,\n      \"BufferCount\": 1,\n      \"Interval\": 60\n    }\n  },\n  \"TargetTypes\": {\n    \"FILE-TARGET\": {\n      \"FactoryClassName\": \"com.amazonaws.sfc.filetarget.FileTargetWriter\"\n    }\n  },\n  \"ProtocolAdapters\": {\n    \"SimAdapter\": {\n      \"AdapterType\": \"SIMULATOR\",\n      \"AdapterServer\": \"SimAdapterServer\"\n    }\n  },\n  \"AdapterTypes\": {\n    \"SIMULATOR\": {\n      \"FactoryClassName\": \"com.amazonaws.sfc.simulator.SimulatorAdapter\"\n    }\n  },\n  \"AdapterServers\": {\n    \"SimAdapterServer\": {\n      \"Port\": \"__PORT__\"\n    }\n  }\n}\n"
+      }
+    },
+    {
+      "id": "CORE-IPC-SVC-CONFIG-02",
+      "title": "An adapter service started with -config ignores the server entry's ConnectionType and serves PlainText (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "buildServerConfiguration intends command line first, then the configuration file: cmd.connectionType ?: serverConfiguration.serverConnectionType ?: PlainText. But IpcServiceCommandLine.connectionType returns PlainText, never null, when -connection is absent, so the file's ConnectionType is dead. Here svc-config.json's server entry says ServerSideTLS with a valid certificate and key (which ARE picked up, through the working elvis for -key/-cert); the service started with -config and -adapter listens, logs 'connection type is PlainText', and the probe gets cleartext HTTP/2 from it. A deployment configured for TLS in the file runs unencrypted with no warning. Correct: ServerSideTLS. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcProtocolServerCommandLine.kt:44-50",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:144-147",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:355-371"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "records": 3,
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 3
+          }
+        },
+        {
+          "do": "run",
+          "timeoutSeconds": 60,
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "svc",
+            "--name",
+            "tlsinfile",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/tlsinfile.json",
+            "--module",
+            "simulator",
+            "--workdir",
+            "${SFC_E2E_WORK}/svc-tlsinfile",
+            "--template",
+            "${SFC_E2E_CASE_DIR}/svc-config.json",
+            "--timeout",
+            "40",
+            "--h2c",
+            "--",
+            "-config",
+            "__WORK__/svc-config.json",
+            "-adapter",
+            "SimAdapter",
+            "-nocolor",
+            "-info"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "tlsinfile"
+          },
+          "path": "outcome",
+          "equals": "listening"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcProtocolServerCommandLine.kt:47",
+        "summary": "IpcServiceCommandLine.connectionType returns PlainText instead of null when -connection is absent, so the configuration file's ConnectionType is never used (IpcBaseService.kt:147) and a service configured for TLS in the file serves PlainText",
+        "assertCurrent": [
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "tlsinfile"
+            },
+            "path": "output",
+            "regex": "(?s).*connection type is PlainText.*"
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "tlsinfile"
+            },
+            "path": "plaintextH2",
+            "equals": true
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "tlsinfile"
+            },
+            "path": "output",
+            "regex": "(?s).*connection type is ServerSideTLS.*"
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "tlsinfile"
+            },
+            "path": "plaintextH2",
+            "equals": false
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-SVC-CONFIG-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "svc-config.json": "{\n  \"AWSVersion\": \"2022-04-02\",\n  \"Name\": \"svc-config\",\n  \"Version\": 1,\n  \"LogLevel\": \"Info\",\n  \"Schedules\": [\n    {\n      \"Name\": \"S\",\n      \"Interval\": 100,\n      \"Active\": true,\n      \"TimestampLevel\": \"Both\",\n      \"Sources\": {\n        \"sim\": [\n          \"*\"\n        ]\n      },\n      \"Targets\": [\n        \"FileTarget\"\n      ]\n    }\n  ],\n  \"Sources\": {\n    \"sim\": {\n      \"Name\": \"sim\",\n      \"ProtocolAdapter\": \"SimAdapter\",\n      \"Channels\": {\n        \"ctr\": {\n          \"Name\": \"ctr\",\n          \"Simulation\": {\n            \"SimulationType\": \"Counter\",\n            \"DataType\": \"Int\",\n            \"Direction\": \"UP\",\n            \"Min\": 0,\n            \"Max\": 100000,\n            \"Step\": 1\n          }\n        }\n      }\n    }\n  },\n  \"Targets\": {\n    \"FileTarget\": {\n      \"Active\": true,\n      \"TargetType\": \"FILE-TARGET\",\n      \"Directory\": \"__WORK__\",\n      \"Json\": true,\n      \"UtcTime\": true,\n      \"Extension\": \".json\",\n      \"BufferSize\": 1,\n      \"BufferCount\": 1,\n      \"Interval\": 60\n    }\n  },\n  \"TargetTypes\": {\n    \"FILE-TARGET\": {\n      \"FactoryClassName\": \"com.amazonaws.sfc.filetarget.FileTargetWriter\"\n    }\n  },\n  \"ProtocolAdapters\": {\n    \"SimAdapter\": {\n      \"AdapterType\": \"SIMULATOR\",\n      \"AdapterServer\": \"SimAdapterServer\"\n    }\n  },\n  \"AdapterTypes\": {\n    \"SIMULATOR\": {\n      \"FactoryClassName\": \"com.amazonaws.sfc.simulator.SimulatorAdapter\"\n    }\n  },\n  \"AdapterServers\": {\n    \"SimAdapterServer\": {\n      \"Port\": \"__PORT__\",\n      \"ConnectionType\": \"ServerSideTLS\",\n      \"ServerCertificate\": \"${SFC_E2E_PKI}/server.crt\",\n      \"ServerPrivateKey\": \"${SFC_E2E_PKI}/server.key\"\n    }\n  }\n}\n"
+      }
+    }
+  ]
+}

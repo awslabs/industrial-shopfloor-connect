@@ -6,139 +6,96 @@ import * as codebuild from 'aws-cdk-lib/aws-codebuild';
 /**
  * The buildspec for the SFC integration-test project.
  *
- * Several things here look arbitrary and are not. Each was verified against this repository:
+ * Choices here that look arbitrary are not; each was verified against this repository:
  *
- * - `GRADLE_OPTS` must NOT contain `--no-daemon`. `gradlew` splices `$GRADLE_OPTS` into the **JVM**
- *   argument list ahead of `GradleWrapperMain`, so a Gradle CLI flag there kills the wrapper outright.
- *   The daemon is disabled with `-Dorg.gradle.daemon=false` instead.
- * - `org.gradle.parallel`, `org.gradle.caching` and the configuration cache are passed on the command
- *   line rather than written into `gradle.properties`, because this work does not modify product files.
- *   They matter: without them a 39-module build recompiles everything serially on every push.
- * - The top-level `cache.paths` block is mandatory. `codebuild.Cache.bucket()` only says *where* the
- *   cache lives; if the buildspec declares no paths, nothing is ever archived and every build is cold.
- * - `clean` is never invoked. The root build wires `clean` to `finalizedBy("cleanAll")`, which deletes
- *   the entire root `build/` directory - including `build/distribution`, which the tests read.
- * - Evidence is uploaded per phase, not only in `post_build`. `post_build` does **not** run when a build
- *   is `TIMED_OUT` or stopped, which is exactly when the logs are most wanted.
- * - `sfc-uberjar -h` is not used as a smoke test: `-h` never reaches the help handler on the sfc-main
- *   path and exits 1.
+ * - `GRADLE_OPTS` carries JVM options only. `gradlew` splices it into the **JVM** argument list, so a Gradle
+ *   flag such as `--no-daemon` there kills the wrapper.
+ * - `--parallel --build-cache` are passed on the command line, not written into gradle.properties: this
+ *   work does not change product files. `--configuration-cache` is absent on purpose - settings.gradle.kts
+ *   runs `git describe` at configuration time and Gradle fails the build with "external process started".
+ * - The top-level `cache.paths` block is mandatory. `Cache.bucket()` only says where the cache lives.
+ * - `clean` is never run: it is wired to `cleanAll`, which deletes build/distribution, the suite's input.
+ * - Evidence is uploaded per case by the runner itself. `post_build` is skipped on TIMED_OUT and on a stopped
+ *   build - exactly when the evidence is wanted most.
+ * - It runs on the suite's own image (ci/cdk/image/Dockerfile, built by the image project), which has the
+ *   JDK, Python with the harness's packages and every counterpart preinstalled. CodeBuild's
+ *   `runtime-versions` only exists on its curated images, so there is none here.
  */
 export interface BuildspecProps {
-  /** Bucket for evidence, reports and the Gradle cache. */
   readonly artifactsBucket: string;
-  /** Deployment modes to exercise, in order. */
-  readonly modes: string[];
-  /** Tiers to run: `core`, `aws`, or both. */
-  readonly tiers: string[];
+  readonly reportGroupArn: string;
 }
 
 export function buildSpec(props: BuildspecProps): codebuild.BuildSpec {
-  const modes = props.modes.join(',');
-  const tiers = props.tiers.join(',');
-
   return codebuild.BuildSpec.fromObject({
     version: '0.2',
     env: {
+      // CodeBuild's default shell is /bin/sh (dash on Ubuntu), which has no 'set -o pipefail'.
+      shell: 'bash',
       variables: {
-        // JVM options only - see the note above about --no-daemon.
         GRADLE_OPTS: '-Dorg.gradle.daemon=false',
         GRADLE_USER_HOME: '/codebuild/gradle',
-        SFC_E2E_MODES: modes,
-        SFC_E2E_TIERS: tiers,
-        // Keeps every case's output out of the container's default temp dir so the artifact upload has
-        // one predictable root.
-        SFC_E2E_OUT: '/codebuild/e2e-out',
+        SFC_E2E_PROFILE: 'push',
+        SFC_E2E_JOBS: '8',
+        KAFKA_HOME: '/opt/kafka',
       },
     },
     phases: {
       install: {
-        'runtime-versions': {
-          // The product targets bytecode 17 (milo 1.1.7 requires it) and the Gradle toolchain resolves
-          // 17 regardless, but matching the container JDK avoids a toolchain download on every build.
-          java: 'corretto17',
-          python: '3.12',
-        },
+        // Everything is preinstalled in the build image (ci/cdk/image/Dockerfile). The pip step only adds
+        // what the tree under test needs beyond the image; it is a no-op when nothing changed.
         commands: [
           'set -euo pipefail',
-          'java -version',
-          'python3 --version',
-          // Kafka in-container stands in for MSK: it exercises the target's write path and the
-          // aws-msk-iam-auth wiring with no VPC, no cluster-creation wait and no standing cost.
-          // Skipped unless the AWS tier is selected.
-          'if [ "${SFC_E2E_TIERS}" != "core" ]; then ci/scripts/install-kafka.sh; fi',
+          'java -version && python3 --version && mosquitto -h | head -1 && nats-server --version',
+          'pip3 install --quiet -r ci/e2e/requirements.txt',
         ],
       },
       pre_build: {
         commands: [
           'set -euo pipefail',
-          'mkdir -p "$SFC_E2E_OUT"',
-          // Provenance for the report. The source arrives as an S3 zip, so CODEBUILD_RESOLVED_SOURCE_VERSION
-          // is not a commit; the launcher passes the real values in as environment overrides.
-          'export SFC_E2E_COMMIT="${SFC_E2E_COMMIT:-unknown}"',
-          'export SFC_E2E_REF="${SFC_E2E_REF:-unknown}"',
-          // Deliberately NOT `clean` - see the header note.
-          './gradlew --parallel --build-cache --configuration-cache build',
-          'ls -l build/distribution/*.tar.gz | head -5',
+          'mkdir -p e2e-out',
+          // The source is an S3 zip; the executable bit is not guaranteed to survive.
+          'chmod +x gradlew',
+          './gradlew --parallel --build-cache build',
           'test "$(ls build/distribution/*.tar.gz | wc -l)" -ge 38',
-          './gradlew --parallel --build-cache :tests:e2e-support:build',
-          'if [ "${SFC_E2E_TIERS}" != "core" ]; then python3 ci/scripts/provision.py; fi',
+          'python3 -m unittest discover -s ci/e2e/selftest',
+          // Stale per-case topics from builds that died before their own cleanup, swept over the public
+          // IAM endpoint at the start of every build.
+          'python3 ci/e2e/lib/kafka_admin.py sweep --older-than 7200 || echo "kafka sweep skipped"',
         ],
       },
       build: {
         commands: [
           'set -euo pipefail',
-          // CodeBuild phases do not share shell state, so provision.py writes its exports to a file
-          // rather than exporting them. Without this the SFC_E2E_* placeholders in the AWS-tier configs
-          // are unset, and SFC aborts with "Placeholder ... could not be replaced" - loudly, which is
-          // the intended failure mode, but for the wrong reason.
-          'if [ -f /codebuild/e2e-env.sh ]; then . /codebuild/e2e-env.sh; fi',
-          // The suite's own exit status is the build's verdict. `|| true` would hide it, so the status is
-          // captured and re-raised after the report has been produced and uploaded.
+          // The suite's exit status is the build's verdict; capture it, upload, then re-raise.
           'set +e',
-          'python3 tests/e2e/run.py --tier "$SFC_E2E_TIERS" --modes "$SFC_E2E_MODES" --parity --out "$SFC_E2E_OUT"',
+          'python3 ci/e2e/run.py --profile "$SFC_E2E_PROFILE" ${SFC_E2E_TIERS:+--tier "$SFC_E2E_TIERS"} ${SFC_E2E_MODES:+--modes "$SFC_E2E_MODES"} --jobs "$SFC_E2E_JOBS" --parity --out e2e-out --evidence "s3://' + props.artifactsBucket + '/evidence/${CODEBUILD_BUILD_ID##*:}/"',
           'E2E_STATUS=$?',
           'set -e',
-          // Uploaded here, in the same phase, so a later timeout cannot lose it.
-          `aws s3 cp --recursive "$SFC_E2E_OUT" "s3://${props.artifactsBucket}/evidence/\${CODEBUILD_BUILD_ID##*:}/" --only-show-errors || true`,
           'echo "e2e exit status: $E2E_STATUS"',
           'exit $E2E_STATUS',
         ],
       },
       post_build: {
         commands: [
-          // Best-effort only. The authoritative teardown is the EventBridge-driven janitor, because this
-          // phase is skipped entirely on TIMED_OUT and on a stopped build.
-          'set +e',
-          'if [ -f /codebuild/e2e-env.sh ]; then . /codebuild/e2e-env.sh; fi',
-          'if [ "${SFC_E2E_TIERS}" != "core" ]; then python3 ci/scripts/cleanup.py; fi',
-          `aws s3 cp --recursive "$SFC_E2E_OUT" "s3://${props.artifactsBucket}/evidence/\${CODEBUILD_BUILD_ID##*:}/" --only-show-errors`,
+          // Best effort; the runner has already uploaded each case as it finished.
+          'aws s3 cp --recursive e2e-out "s3://' + props.artifactsBucket + '/evidence/${CODEBUILD_BUILD_ID##*:}/" --exclude "artifacts/*" --only-show-errors || true',
         ],
       },
     },
     reports: {
-      // Surfaces per-case pass/fail in the CodeBuild console. The build role needs
-      // codebuild:CreateReportGroup / CreateReport / UpdateReport / BatchPutTestCases for this to work.
-      'sfc-e2e': {
-        files: ['junit.xml'],
-        'base-directory': '/codebuild/e2e-out/**',
+      [props.reportGroupArn]: {
+        files: ['**/junit.xml'],
+        'base-directory': 'e2e-out',
         'file-format': 'JUNITXML',
-        'discard-paths': 'yes',
       },
     },
-    artifacts: {
-      'base-directory': '/codebuild/e2e-out',
-      files: ['**/*'],
-    },
     cache: {
-      // Without this block the project-level S3 cache archives nothing at all.
-      // build-cache-1 is included deliberately: it is what makes an unchanged module skip recompilation,
-      // which is the single biggest win available on a 39-module build.
       paths: [
         '/codebuild/gradle/caches/modules-2/**/*',
         '/codebuild/gradle/caches/build-cache-1/**/*',
         '/codebuild/gradle/caches/jars-*/**/*',
         '/codebuild/gradle/wrapper/dists/**/*',
-        '/opt/kafka/**/*',
       ],
     },
   });

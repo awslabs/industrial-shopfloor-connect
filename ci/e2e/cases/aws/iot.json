@@ -1,0 +1,1738 @@
+{
+  "cases": [
+    {
+      "id": "AWS-IOT-01",
+      "title": "IoT Core per record: every record is one HTTPS Publish to the configured topic and comes back through the topic rule",
+      "tier": "aws",
+      "priority": "P0",
+      "intent": "The basic IoT Core contract against the real service. When the writer is built it resolves the account's iot:Data-ATS endpoint with DescribeEndpoint (AwsIotCoreTargetWriter.kt:90, 116-128) and then publishes over HTTPS with the project role's credentials (iot:Publish on topic/sfc/it/*). With no BatchSize, BatchCount or BatchInterval nothing is batched (:87), so each record is flushed on arrival (:239-241) as one Publish whose payload is the record JSON, not an array (:418-427). The stack's rule on sfc/it/# forwards every message to its queue as base64 plus topic(); the iot sink keeps this run's records by marker and, because the queue keeps no order, reads it until it is quiet once SFC has stopped. The case fails if a record is lost or duplicated (the counter set must be contiguous), if a record arrives on any topic other than ${SFC_E2E_IOT_TOPIC_ROOT}/data, if SFC batches without being asked to (Messages/Writes must be exactly 1), or if a publish error is logged or counted.",
+      "pins": [
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:87",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:90",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:116-128",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:239-241",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:399-436",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:448-475",
+        "ci/cdk/lib/sfc-it-stack.ts:181-190",
+        "ci/cdk/lib/sfc-it-stack.ts:439-440",
+        "ci/e2e/lib/sinks/aws.py:256-274"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "iot"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Iot",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "the rule's queue keeps no order: a contiguous set, no duplicates"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "_topic",
+          "regex": "sfc/it/b_[0-9a-f]{12}_aws_iot_01_(ip|ipc|uj)/data",
+          "comment": "topic() as the rule saw it: TopicName after ${SFC_E2E_IOT_TOPIC_ROOT} substitution"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ctr.value",
+          "type": "int"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "Iot",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "Iot",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1,
+          "comment": "no batching configured: one record per Publish"
+        },
+        {
+          "kind": "logContains",
+          "text": "AWS IoT Core writer for target \"Iot\" publishing to topics in region",
+          "comment": "the writer was built, so DescribeEndpoint succeeded (it runs in the constructor)"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing to topic",
+            "Error in writer",
+            "max payload size",
+            "Error creating AWS IoT core target writer",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-IOT-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Iot"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Iot": {
+            "TargetType": "AWS-IOT-CORE",
+            "TopicName": "${SFC_E2E_IOT_TOPIC_ROOT}/data",
+            "Region": "${SFC_E2E_REGION}"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-iot-core-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "IotServer": {
+          "module": "aws-iot-core-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Iot": {
+            "TargetServer": "IotServer"
+          }
+        },
+        "TargetServers": {
+          "IotServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-IOT-02",
+      "title": "IoT Core Retain: every Publish carries the retain flag, so the topic's retained message is replaced by each record SFC sends",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Retain is how a subscriber that connects later still gets the last known value. SFC sets the flag on every Publish (builder.retain, AwsIotCoreTargetWriter.kt:434; Retain defaults to false, AwsIotCoreTargetConfiguration.kt:66-69), which needs iot:RetainPublish besides iot:Publish. The main sink reads the topic's retained message with GetRetainedMessage while SFC runs and keeps every new version (by lastModifiedTime); the rule sink reads the same publishes through the stack's rule, so the copies of this run are consumed instead of being left in the shared queue. One record every 2 s stays below IoT Core's per-topic rate for retained publishes. The case fails if there is no retained message (the flag was dropped: the gate times out), if later records do not replace it (fewer than 3 versions), if a retained version is not a record SFC published on that topic (serialSet subset of the rule copies), if publishes are lost or duplicated, or on a WriteError such as a denied RetainPublish. The sink registers the retained topic for cleanup.",
+      "pins": [
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/config/AwsIotCoreTargetConfiguration.kt:66-69",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:433-435",
+        "docs/targets/aws-iot-core.md:126-133",
+        "ci/cdk/lib/sfc-it-stack.ts:439",
+        "ci/e2e/lib/sinks/aws.py:230-237",
+        "ci/e2e/lib/sinks/aws.py:248-255"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "iot",
+          "retainedTopic": "sfc/it/<marker>/data"
+        },
+        "rule": {
+          "kind": "iot"
+        }
+      },
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3,
+          "comment": "three distinct retained versions were read: each publish replaced the retained message"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ctr.value",
+          "type": "int",
+          "comment": "the retained payload is the record JSON, intact"
+        },
+        {
+          "kind": "serialSet",
+          "a": "main",
+          "b": "rule",
+          "relation": "subset",
+          "comment": "every retained version is one of the records SFC published on the topic"
+        },
+        {
+          "kind": "recordCount",
+          "sink": "rule",
+          "min": 3
+        },
+        {
+          "kind": "channelValueRun",
+          "sink": "rule",
+          "source": "sim",
+          "channel": "ctr"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "rule",
+          "path": "_topic",
+          "regex": "sfc/it/b_[0-9a-f]{12}_aws_iot_02_(ip|ipc|uj)/data"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "IotRetain",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "IotRetain",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing to topic",
+            "Error in writer",
+            "max payload size",
+            "Error creating AWS IoT core target writer",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-IOT-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 2000,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "IotRetain"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "IotRetain": {
+            "TargetType": "AWS-IOT-CORE",
+            "TopicName": "${SFC_E2E_IOT_TOPIC}",
+            "Region": "${SFC_E2E_REGION}",
+            "Retain": true
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-iot-core-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "IotRetainServer": {
+          "module": "aws-iot-core-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "IotRetain": {
+            "TargetServer": "IotRetainServer"
+          }
+        },
+        "TargetServers": {
+          "IotRetainServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 3
+        },
+        {
+          "sink": "rule",
+          "records": 3
+        }
+      ]
+    },
+    {
+      "id": "AWS-IOT-03",
+      "title": "IoT Core topic templates: records are split per source and channel, routed by %target%/%source%/%line% metadata, grouped by rendered topic, and an unmapped channel goes to AlternateTopicName or is dropped",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "A TopicName with placeholders is how one target fans data out by source, channel and metadata. The writer renders it per channel (%schedule%, %source%, %channel%, %target% and any metadata key, TemplateRenderer.kt:27-42) from channel metadata merged with source and top-level metadata, and publishes one message per rendered topic holding only the channels that render to it (TargetData.kt:142-189). simA.a has channel metadata line=L1; simB has source metadata line=L2, so its channels c and d share one topic and one message; simA.b has no 'line' at all. IotTpl must route b to its AlternateTopicName (AwsIotCoreTargetWriter.kt:493-499, which also exercises %schedule% and %channel%); IotNoAlt has none and must drop b with a warning (:500-503) instead of publishing to a literal '%line%' topic. Each record is tied to its topic by its own content (where on the channel or source metadata), so the case fails if records are not split (a record holding another channel or source), if c and d are not grouped, if a placeholder renders wrongly, if the alternate is not used, or if IotNoAlt publishes b anywhere. Each topic message is one Publish of one item (Messages/Writes = 1).",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetData.kt:142-189",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/TemplateRenderer.kt:27-42",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:477-506",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/config/AwsIotCoreTargetConfiguration.kt:41-50",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/config/AwsIotCoreTargetConfiguration.kt:101-106",
+        "docs/targets/aws-iot-core.md:171-201"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "iot"
+        }
+      },
+      "records": 20,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "IotTpl",
+              "name": "Writes",
+              "op": "ge",
+              "value": 12
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "IotNoAlt",
+              "name": "Writes",
+              "op": "ge",
+              "value": 8
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 20
+        },
+        {
+          "kind": "everyRecord",
+          "path": "_topic",
+          "regex": "sfc/it/b_[0-9a-f]{12}_aws_iot_03_(ip|ipc|uj)/((IotTpl|IotNoAlt)/(simA/L1|simB/L2)|IotTpl/alt-S/simA-b)",
+          "comment": "only these five topics: IotNoAlt never publishes simA.b"
+        },
+        {
+          "kind": "distinct",
+          "path": "_topic",
+          "equals": 5
+        },
+        {
+          "kind": "everyRecord",
+          "where": {
+            "sources.simA.values.a.metadata.line": "L1"
+          },
+          "path": "_topic",
+          "regex": ".*/(IotTpl|IotNoAlt)/simA/L1",
+          "comment": "channel-level metadata resolves %line%"
+        },
+        {
+          "kind": "keysAbsent",
+          "where": {
+            "sources.simA.values.a.metadata.line": "L1"
+          },
+          "paths": [
+            "sources.simA.values.b",
+            "sources.simB"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "where": {
+            "sources.simA.values.b.metadata.cell": "C7"
+          },
+          "path": "_topic",
+          "regex": ".*/IotTpl/alt-S/simA-b",
+          "comment": "unresolved %line%: IotTpl's AlternateTopicName"
+        },
+        {
+          "kind": "keysAbsent",
+          "where": {
+            "sources.simA.values.b.metadata.cell": "C7"
+          },
+          "paths": [
+            "sources.simA.values.a",
+            "sources.simB"
+          ]
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.simA.values.b.metadata.cell": "C7"
+          },
+          "min": 4
+        },
+        {
+          "kind": "everyRecord",
+          "where": {
+            "sources.simB.metadata.line": "L2"
+          },
+          "path": "_topic",
+          "regex": ".*/(IotTpl|IotNoAlt)/simB/L2",
+          "comment": "source-level metadata resolves %line%"
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.simB.metadata.line": "L2"
+          },
+          "path": "sources.simB.values",
+          "keys": [
+            "c",
+            "d"
+          ],
+          "comment": "c and d render to the same topic: grouped into one message"
+        },
+        {
+          "kind": "keysAbsent",
+          "where": {
+            "sources.simB.metadata.line": "L2"
+          },
+          "paths": [
+            "sources.simA"
+          ]
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "simA",
+          "channel": "b",
+          "comment": "b is published by IotTpl only: contiguous, no duplicates"
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "simB",
+          "channel": "c",
+          "allowDuplicates": true,
+          "comment": "both targets publish c"
+        },
+        {
+          "kind": "logContains",
+          "text": "Source \"simA\", channel \"b\" has unmapped placeholder(s) [%line%]",
+          "min": 4,
+          "comment": "IotNoAlt's warning for every dropped b (IotTpl's fallback is logged at TRACE only)"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "IotTpl",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "IotTpl",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "IotNoAlt",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "IotNoAlt",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing to topic",
+            "Error in writer",
+            "max payload size",
+            "Error creating AWS IoT core target writer",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-IOT-03",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 500,
+            "Sources": {
+              "simA": [
+                "*"
+              ],
+              "simB": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "IotTpl",
+              "IotNoAlt"
+            ]
+          }
+        ],
+        "Sources": {
+          "simA": {
+            "Name": "simA",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "a": {
+                "Name": "a",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                },
+                "Metadata": {
+                  "line": "L1"
+                }
+              },
+              "b": {
+                "Name": "b",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                },
+                "Metadata": {
+                  "cell": "C7"
+                }
+              }
+            }
+          },
+          "simB": {
+            "Name": "simB",
+            "ProtocolAdapter": "Sim",
+            "Metadata": {
+              "line": "L2"
+            },
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "d": {
+                "Name": "d",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "IotTpl": {
+            "TargetType": "AWS-IOT-CORE",
+            "TopicName": "${SFC_E2E_IOT_TOPIC_ROOT}/%target%/%source%/%line%",
+            "Region": "${SFC_E2E_REGION}",
+            "AlternateTopicName": "${SFC_E2E_IOT_TOPIC_ROOT}/%target%/alt-%schedule%/%source%-%channel%"
+          },
+          "IotNoAlt": {
+            "TargetType": "AWS-IOT-CORE",
+            "TopicName": "${SFC_E2E_IOT_TOPIC_ROOT}/%target%/%source%/%line%",
+            "Region": "${SFC_E2E_REGION}"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-iot-core-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "IotTplServer": {
+          "module": "aws-iot-core-target"
+        },
+        "IotNoAltServer": {
+          "module": "aws-iot-core-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "IotTpl": {
+            "TargetServer": "IotTplServer"
+          },
+          "IotNoAlt": {
+            "TargetServer": "IotNoAltServer"
+          }
+        },
+        "TargetServers": {
+          "IotTplServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "IotNoAltServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-IOT-04",
+      "title": "IoT Core BatchCount 4 with GZip and Zip: each Publish is one compressed JSON array of exactly four records that decodes back intact",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Batching and compression are how SFC cuts IoT Core message count and size. With BatchCount 4 and neither BatchSize nor BatchInterval (whose timer then never fires, AwsIotCoreTargetConfiguration.kt:125-138) a buffer is flushed exactly when it holds four records (AwsIotCoreTargetWriter.kt:303-312), as one JSON array (:418-420). Compression then turns the array into raw GZip or Zip bytes (:426-429, 438-445) - no base64 envelope, unlike the SQS target. The rule base64-encodes whatever the payload is, and the sink gunzips or unzips it and flattens the array, so contiguous counters and the intact constant prove the round trip for both formats. Messages/Writes must be exactly 4, a 'Used GZIP/ZIP compression' line must be logged per publish, and BytesWritten (the size of the compressed payload, :342 and :383) per record must stay far below the ~650 bytes of one uncompressed record. The case fails if batching is off or uneven, if a payload is sent uncompressed or cannot be decoded, or if records are lost or duplicated.",
+      "pins": [
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/config/AwsIotCoreTargetConfiguration.kt:125-145",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:303-312",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:418-429",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:438-445",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:342",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/Compress.kt:45-49",
+        "ci/e2e/lib/sinks/aws.py:42-60"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "iot"
+        }
+      },
+      "records": 32,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "IotGzip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 4
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "IotZip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 4
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "G"
+          },
+          "min": 16
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Z"
+          },
+          "min": 16
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "simG",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "simZ",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "simG",
+          "channel": "txt",
+          "values": [
+            "sfc-e2e-iot-batch-payload-sfc-e2e-iot-batch-payload-sfc-e2e-iot-batch-payload"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "simZ",
+          "channel": "txt",
+          "values": [
+            "sfc-e2e-iot-batch-payload-sfc-e2e-iot-batch-payload-sfc-e2e-iot-batch-payload"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "where": {
+            "schedule": "G"
+          },
+          "path": "_topic",
+          "regex": "sfc/it/b_[0-9a-f]{12}_aws_iot_04_(ip|ipc|uj)/gzip"
+        },
+        {
+          "kind": "everyRecord",
+          "where": {
+            "schedule": "Z"
+          },
+          "path": "_topic",
+          "regex": "sfc/it/b_[0-9a-f]{12}_aws_iot_04_(ip|ipc|uj)/zip"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "IotGzip",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "IotGzip",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 4,
+          "comment": "BatchCount 4 is the only flush trigger"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "IotZip",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "IotZip",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 4,
+          "comment": "BatchCount 4 is the only flush trigger"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "IotGzip",
+            "name": "BytesWritten"
+          },
+          "denominator": {
+            "source": "IotGzip",
+            "name": "Messages"
+          },
+          "op": "lt",
+          "value": 300,
+          "comment": "compressed bytes per record (~120); an uncompressed record is ~650"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "IotZip",
+            "name": "BytesWritten"
+          },
+          "denominator": {
+            "source": "IotZip",
+            "name": "Messages"
+          },
+          "op": "lt",
+          "value": 300,
+          "comment": "compressed bytes per record (~170 with the zip headers); an uncompressed record is ~650"
+        },
+        {
+          "kind": "logContains",
+          "text": "Used GZIP compression to compress",
+          "min": 4
+        },
+        {
+          "kind": "logContains",
+          "text": "Used ZIP compression to compress",
+          "min": 4
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing to topic",
+            "Error in writer",
+            "max payload size",
+            "Error creating AWS IoT core target writer",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-IOT-04",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "G",
+            "Interval": 200,
+            "Sources": {
+              "simG": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "IotGzip"
+            ]
+          },
+          {
+            "Name": "Z",
+            "Interval": 200,
+            "Sources": {
+              "simZ": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "IotZip"
+            ]
+          }
+        ],
+        "Sources": {
+          "simG": {
+            "Name": "simG",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "txt": {
+                "Name": "txt",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "sfc-e2e-iot-batch-payload-sfc-e2e-iot-batch-payload-sfc-e2e-iot-batch-payload"
+                }
+              }
+            }
+          },
+          "simZ": {
+            "Name": "simZ",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "txt": {
+                "Name": "txt",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "sfc-e2e-iot-batch-payload-sfc-e2e-iot-batch-payload-sfc-e2e-iot-batch-payload"
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "IotGzip": {
+            "TargetType": "AWS-IOT-CORE",
+            "TopicName": "${SFC_E2E_IOT_TOPIC_ROOT}/gzip",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchCount": 4,
+            "Compression": "GZip"
+          },
+          "IotZip": {
+            "TargetType": "AWS-IOT-CORE",
+            "TopicName": "${SFC_E2E_IOT_TOPIC_ROOT}/zip",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchCount": 4,
+            "Compression": "Zip"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-iot-core-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "IotGzipServer": {
+          "module": "aws-iot-core-target"
+        },
+        "IotZipServer": {
+          "module": "aws-iot-core-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "IotGzip": {
+            "TargetServer": "IotGzipServer"
+          },
+          "IotZip": {
+            "TargetServer": "IotZipServer"
+          }
+        },
+        "TargetServers": {
+          "IotGzipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "IotZipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-IOT-DEF-01",
+      "title": "IoT Core oversize record: rejected and counted when publishing per record; with BatchCount it is still buffered and takes its whole batch down (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "AWS IoT Core rejects payloads over 128 KB, so the writer checks each record (checkMessagePayloadSize, AwsIotCoreTargetWriter.kt:286-293, which only logs and reports it) and each publish (:354-358, which also counts a WriteError). Schedule Big sends a ~0.5 MB record (a 30000-element counter array) every 1.3 s to both targets, beside small counter records of their own. IotSingle (no batching) must reject every oversize record, count it as a WriteError, never publish it and keep publishing its small records without a gap. IotBatch (BatchCount 5) pins the defect: a record that fails the check is still added to the buffer, because the add and the flush (:232-241) sit outside the check, unlike MqttTargetWriter.kt:185-203 and NatsTargetWriter.kt:225-243. The batch it joins then exceeds 128 KB and is rejected whole at :354-358, so the valid records buffered before it are lost with it (and IotSingle's WriteError comes from the same path). The pin discriminates on that batch-level rejection for the oversize-batch topic, which a correct writer never reaches; how many small records a rejected batch held depends on timing, so the loss itself (a gap in Batch's counters) is asserted under assertCorrect only. In both worlds no oversize record reaches the topic and every successful batch holds exactly 5 records.",
+      "pins": [
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:225-241",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:286-293",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:354-358",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:544",
+        "targets/mqtt-target/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttTargetWriter.kt:185-203",
+        "targets/nats-target/src/main/kotlin/com/amazonaws/sfc/natstarget/NatsTargetWriter.kt:225-243"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "iot"
+        }
+      },
+      "records": 30,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "allowWriteErrors": [
+        "IotSingle",
+        "IotBatch"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "any": [
+              {
+                "log": "bytes of message is larger max payload size",
+                "count": 30
+              },
+              {
+                "sink": "main",
+                "records": 100,
+                "where": {
+                  "schedule": "Single"
+                }
+              }
+            ],
+            "comment": "checkMessagePayloadSize (AwsIotCoreTargetWriter.kt:286-293) logs once per target and oversize record, before and after a fix: 30 lines = 15 records of Big. No wait on Writes: in-process and uberjar the IotSingle/IotBatch metrics are the Big schedule's own writer instances (MainControllerService.kt:347, the last schedule wins), which never publish."
+          }
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 10,
+            "where": {
+              "schedule": "Single"
+            }
+          }
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 20,
+            "where": {
+              "schedule": "Batch"
+            }
+          }
+        },
+        {
+          "wait": {
+            "any": [
+              {
+                "metric": {
+                  "source": "IotBatch",
+                  "name": "WriteError",
+                  "op": "ge",
+                  "value": 2
+                }
+              },
+              {
+                "log": "bytes of message is larger max payload size",
+                "count": 40
+              },
+              {
+                "sink": "main",
+                "records": 125,
+                "where": {
+                  "schedule": "Single"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "wait": {
+            "any": [
+              {
+                "metric": {
+                  "source": "IotSingle",
+                  "name": "WriteError",
+                  "op": "ge",
+                  "value": 2
+                }
+              },
+              {
+                "log": "bytes of message is larger max payload size",
+                "count": 40
+              },
+              {
+                "sink": "main",
+                "records": 125,
+                "where": {
+                  "schedule": "Single"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Single"
+          },
+          "min": 10
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Batch"
+          },
+          "min": 20
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.big"
+          ],
+          "comment": "no oversize record ever reached the topic"
+        },
+        {
+          "kind": "everyRecord",
+          "where": {
+            "schedule": "Single"
+          },
+          "path": "_topic",
+          "regex": "sfc/it/b_[0-9a-f]{12}_aws_iot_def_01_(ip|ipc|uj)/oversize-single"
+        },
+        {
+          "kind": "everyRecord",
+          "where": {
+            "schedule": "Batch"
+          },
+          "path": "_topic",
+          "regex": "sfc/it/b_[0-9a-f]{12}_aws_iot_def_01_(ip|ipc|uj)/oversize-batch"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Single"
+          },
+          "source": "single",
+          "channel": "ctr",
+          "comment": "per record, rejecting an oversize record costs no other record"
+        },
+        {
+          "kind": "logContains",
+          "text": "bytes of message is larger max payload size",
+          "min": 6,
+          "comment": "the per-record check (:286-293), in either world"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing to topic",
+            "Error in writer",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:232-241",
+        "summary": "A record over 128 KB fails checkMessagePayloadSize but is still added to the topic buffer and only rejected at publish (:354-358): alone without batching, with BatchCount together with the batch it joined - losing the valid records buffered with it",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "text": "/oversize-batch is ",
+            "min": 2,
+            "comment": "'Size of MQTT payload for topic .../oversize-batch is N bytes' (:356): a batch holding an oversize record was built and rejected whole"
+          },
+          {
+            "kind": "logContains",
+            "text": "/oversize-single is ",
+            "min": 2,
+            "comment": "without batching the oversize record is still buffered and rejected only at publish"
+          },
+          {
+            "kind": "metric",
+            "source": "IotBatch",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 2
+          },
+          {
+            "kind": "metric",
+            "source": "IotSingle",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 2,
+            "comment": "today a rejected oversize record is counted only by the publish-time rejection (:357)"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "/oversize-batch is ",
+              "/oversize-single is "
+            ],
+            "comment": "an oversize record never reaches writeBufferedMessages"
+          },
+          {
+            "kind": "channelValueRun",
+            "where": {
+              "schedule": "Batch"
+            },
+            "source": "batch",
+            "channel": "ctr",
+            "comment": "no small record is lost with an oversize one"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-IOT-DEF-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Single",
+            "Interval": 400,
+            "Sources": {
+              "single": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "IotSingle"
+            ]
+          },
+          {
+            "Name": "Batch",
+            "Interval": 200,
+            "Sources": {
+              "batch": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "IotBatch"
+            ]
+          },
+          {
+            "Name": "Big",
+            "Interval": 1300,
+            "Sources": {
+              "big": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "IotSingle",
+              "IotBatch"
+            ]
+          }
+        ],
+        "Sources": {
+          "single": {
+            "Name": "single",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "batch": {
+            "Name": "batch",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "big": {
+            "Name": "big",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "arr": {
+                "Name": "arr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 1000000,
+                  "Size": 30000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "IotSingle": {
+            "TargetType": "AWS-IOT-CORE",
+            "TopicName": "${SFC_E2E_IOT_TOPIC_ROOT}/oversize-single",
+            "Region": "${SFC_E2E_REGION}"
+          },
+          "IotBatch": {
+            "TargetType": "AWS-IOT-CORE",
+            "TopicName": "${SFC_E2E_IOT_TOPIC_ROOT}/oversize-batch",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchCount": 5
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-iot-core-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "IotSingleServer": {
+          "module": "aws-iot-core-target"
+        },
+        "IotBatchServer": {
+          "module": "aws-iot-core-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "IotSingle": {
+            "TargetServer": "IotSingleServer"
+          },
+          "IotBatch": {
+            "TargetServer": "IotBatchServer"
+          }
+        },
+        "TargetServers": {
+          "IotSingleServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "IotBatchServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

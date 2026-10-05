@@ -2,15 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as cdk from 'aws-cdk-lib';
-import { Template, Match } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { SfcItStack } from '../lib/sfc-it-stack';
 
 /**
- * These are regression tests for specific mistakes that are invisible until a real build fails, and
- * expensive to diagnose then. Each one corresponds to a defect that was found by reading the CDK source
- * rather than by deploying.
+ * Regression tests for mistakes that are invisible until a real build fails - each one was found by reading
+ * CDK or SFC source, and several shipped in the first version of this stack.
  */
-function synth(props: Partial<ConstructorParameters<typeof SfcItStack>[2]> = {}) {
+function synth(props: Partial<ConstructorParameters<typeof SfcItStack>[2]> = {}): Template {
   const app = new cdk.App();
   const stack = new SfcItStack(app, 'TestStack', {
     githubRepo: 'awslabs/industrial-shopfloor-connect',
@@ -20,110 +19,191 @@ function synth(props: Partial<ConstructorParameters<typeof SfcItStack>[2]> = {})
   return Template.fromStack(stack);
 }
 
-/**
- * The rendered buildspec as plain text.
- *
- * It does not synthesise to a string: because the artifacts bucket name is a token, CDK emits an
- * `Fn::Join` whose parts interleave literal text with `Ref`s. Flattening the literals is enough to
- * assert on the commands, and treating the value as a string silently yields "[object Object]" - which
- * makes every `toContain` assertion pass vacuously and every `not.toContain` assertion pass for the
- * wrong reason.
- */
+const T = synth();
+// Inline AND managed: a large role policy overflows into AWS::IAM::ManagedPolicy resources when the
+// app is not minimizing policies (jest does not load cdk.json's context), so both must be searched.
+const policies = JSON.stringify([T.findResources('AWS::IAM::Policy'), T.findResources('AWS::IAM::ManagedPolicy')]);
+
+/** The rendered buildspec. It is an Fn::Join (the bucket name is a token), not a string; treating it as a
+ *  string yields "[object Object]" and every toContain() passes vacuously. */
 function buildSpecText(template: Template): string {
-  const project = Object.values(template.findResources('AWS::CodeBuild::Project'))[0];
+  const project = Object.values(template.findResources('AWS::CodeBuild::Project'))
+    .find((p: any) => p.Properties.Name === 'sfc-integration-test')!;
   const spec = project.Properties.Source.BuildSpec;
   if (typeof spec === 'string') return spec;
-  const parts = spec['Fn::Join'][1] as unknown[];
-  return parts.map((p) => (typeof p === 'string' ? p : '')).join('');
+  return (spec['Fn::Join'][1] as unknown[]).map((p) => (typeof p === 'string' ? p : '')).join('');
 }
 
-describe('SfcItStack', () => {
-  test('the project role can read any source key, not just the seed zip', () => {
-    // codebuild.Source.s3() calls bucket.grantRead(project, this.path), which scopes s3:GetObject to the
-    // literal key. Every build is started with --source-location-override pointing at a per-run key, so
-    // without an explicit src/* grant every build fails at DOWNLOAD_SOURCE with AccessDenied.
-    const template = synth();
-    const policies = template.findResources('AWS::IAM::Policy');
-    const rendered = JSON.stringify(policies);
-    expect(rendered).toContain('src/*');
+describe('destinations: every target except SiteWise Edge is testable right after deploy', () => {
+  test('three stack queues: SNS sink, IoT sink, IoT rule errors - the SQS target gets one per case run', () => {
+    // A shared target queue keeps no order and every concurrent case run read it: sinks starved.
+    T.resourceCountIs('AWS::SQS::Queue', 3);
   });
-
-  test('no OIDC custom resource is created', () => {
-    // iam.OpenIdConnectProvider is implemented as Custom::AWSCDKOpenIdConnectProvider backed by a
-    // bundled Lambda. OidcProviderNative emits a plain AWS::IAM::OIDCProvider instead.
-    const template = synth();
-    template.resourceCountIs('Custom::AWSCDKOpenIdConnectProvider', 0);
-    template.resourceCountIs('AWS::IAM::OIDCProvider', 1);
+  test('the project role creates, reads and deletes the per-run queues, and only those', () => {
+    expect(policies).toContain('sqs:CreateQueue');
+    expect(policies).toContain(':sfc-it-b_*');
+    const env = JSON.stringify(T.findResources('AWS::CodeBuild::Project'));
+    expect(env).not.toContain('SFC_E2E_SQS_QUEUE_URL');
   });
-
-  test('an existing OIDC provider ARN suppresses creating one', () => {
-    // An OIDC provider is account-global; creating a second fails with EntityAlreadyExists.
-    const template = synth({
-      oidcProviderArn: 'arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com',
-    });
-    template.resourceCountIs('AWS::IAM::OIDCProvider', 0);
+  test('the janitor deletes leaked per-run queues', () => {
+    expect(policies).toContain('sqs:DeleteQueue');
+    expect(policies).toContain('sqs:ListQueues');
   });
-
-  test('the CI role may stop a build', () => {
-    // Without StopBuild, cancelling the Actions job orphans a running build that then collides with the
-    // build started by the next push.
-    const rendered = JSON.stringify(synth().findResources('AWS::IAM::Policy'));
-    expect(rendered).toContain('codebuild:StopBuild');
+  test('a provisioned one-shard Kinesis stream exists and is destroyed with the stack', () => {
+    T.hasResourceProperties('AWS::Kinesis::Stream', { ShardCount: 1, StreamModeDetails: { StreamMode: 'PROVISIONED' } });
+    T.hasResource('AWS::Kinesis::Stream', { DeletionPolicy: 'Delete' });
   });
-
-  test('the build role may publish a test report group', () => {
-    // The buildspec declares a `reports` block; without these actions it fails to publish and the
-    // per-case results never reach the console.
-    const rendered = JSON.stringify(synth().findResources('AWS::IAM::Policy'));
-    expect(rendered).toContain('codebuild:BatchPutTestCases');
+  test('Firehose is DirectPut with zero buffering', () => {
+    T.hasResourceProperties('AWS::KinesisFirehose::DeliveryStream', Match.objectLike({
+      DeliveryStreamType: 'DirectPut',
+      ExtendedS3DestinationConfiguration: Match.objectLike({ BufferingHints: { IntervalInSeconds: 0, SizeInMBs: 1 } }),
+    }));
   });
-
-  test('the project uses LARGE compute', () => {
-    // gradle.properties asks for a 4 GB Gradle JVM plus a separate 2 GB Kotlin daemon. SMALL (3 GB) and
-    // MEDIUM (7 GB) leave no headroom for a 39-module build producing a 228 MB shadowJar.
-    synth().hasResourceProperties('AWS::CodeBuild::Project', {
-      Environment: Match.objectLike({ ComputeType: 'BUILD_GENERAL1_LARGE' }),
-    });
+  test('S3 Tables fixture: one bucket, the sfc_it namespace and two primitive-schema tables', () => {
+    T.resourceCountIs('AWS::S3Tables::TableBucket', 1);
+    T.hasResourceProperties('AWS::S3Tables::Namespace', { Namespace: 'sfc_it' });
+    T.resourceCountIs('AWS::S3Tables::Table', 2);
+    T.hasResourceProperties('AWS::S3Tables::Table', Match.objectLike({ TableName: 'sim_b',
+      IcebergMetadata: Match.objectLike({ IcebergPartitionSpec: Match.anyValue() }) }));
   });
+  test('SiteWise fixture: one model and two assets whose properties carry aliases', () => {
+    T.resourceCountIs('AWS::IoTSiteWise::AssetModel', 1);
+    T.resourceCountIs('AWS::IoTSiteWise::Asset', 2);
+    // Every model property is bound by LogicalId on both assets, under the prefix the cases are given.
+    const model = Object.values(T.findResources('AWS::IoTSiteWise::AssetModel'))[0].Properties;
+    const project = Object.values(T.findResources('AWS::CodeBuild::Project'))
+      .find((p: any) => p.Properties.Name === 'sfc-integration-test')!;
+    const env = Object.fromEntries(project.Properties.Environment.EnvironmentVariables.map((v: any) => [v.Name, v.Value]));
+    for (const n of [1, 2]) {
+      const asset = Object.values(T.findResources('AWS::IoTSiteWise::Asset'))
+        .find((a: any) => a.Properties.AssetName === `sfc-it-fixture-asset-${n}`)!;
+      expect(asset.Properties.AssetProperties).toEqual(model.AssetModelProperties.map((p: any) =>
+        ({ LogicalId: p.LogicalId, Alias: `${env[`SFC_E2E_SW_ALIAS_A${n}`]}/${p.Name}` })));
+    }
+  });
+  test('MSK Provisioned: IAM auth only, TLS, in-cluster encryption, 2 brokers in the 2 public subnets', () => {
+    T.resourceCountIs('AWS::MSK::ServerlessCluster', 0);
+    const cluster = Object.values(T.findResources('AWS::MSK::Cluster'))[0].Properties;
+    expect(cluster.ClientAuthentication).toEqual({ Sasl: { Iam: { Enabled: true } }, Unauthenticated: { Enabled: false } });
+    expect(cluster.EncryptionInfo).toEqual({ EncryptionInTransit: { ClientBroker: 'TLS', InCluster: true } });
+    expect(cluster.NumberOfBrokerNodes).toBe(2);
+    expect(cluster.BrokerNodeGroupInfo.InstanceType).toBe('kafka.m5.large');
+    expect(cluster.BrokerNodeGroupInfo.ClientSubnets).toHaveLength(2);
+    // Public access cannot be set at creation; the custom resource turns it on afterwards.
+    expect(cluster.BrokerNodeGroupInfo.ConnectivityInfo).toBeUndefined();
+  });
+  test('public access is turned on after creation, and its bootstrap string is a stack output', () => {
+    T.resourceCountIs('AWS::CloudFormation::CustomResource', 1);
+    T.hasOutput('MskBootstrapPublic', Match.anyValue());
+  });
+  test('the build project does not wait for MSK: no reference to the cluster or the public-access resource', () => {
+    const resources = T.toJSON().Resources;
+    const ids = Object.keys(resources).filter((id) => ['AWS::MSK::Cluster', 'AWS::CloudFormation::CustomResource']
+      .includes(resources[id].Type));
+    const project = Object.values(T.findResources('AWS::CodeBuild::Project')).find((p: any) => p.Properties.Name === 'sfc-integration-test')!;
+    const policies = Object.values(T.findResources('AWS::IAM::Policy'))
+      .filter((p: any) => JSON.stringify(p.Properties.Roles).includes('SfcItRole'));
+    for (const id of ids) {
+      expect(JSON.stringify(project)).not.toContain(id);
+      for (const p of policies) expect(JSON.stringify(p)).not.toContain(id);
+    }
+  });
+  test('no NAT gateway, no private subnets, and only the public IAM listener 9198 is open', () => {
+    T.resourceCountIs('AWS::EC2::NatGateway', 0);
+    const sg = Object.values(T.findResources('AWS::EC2::SecurityGroup'))
+      .find((r: any) => String(r.Properties.GroupDescription).includes('MSK'))!.Properties;
+    expect(sg.SecurityGroupIngress).toEqual([expect.objectContaining({ FromPort: 9198, ToPort: 9198, CidrIp: '0.0.0.0/0' })]);
+  });
+  test('secret, IoT role alias and device policy exist', () => {
+    T.resourceCountIs('AWS::SecretsManager::Secret', 1);
+    T.hasResourceProperties('AWS::IoT::RoleAlias', { RoleAlias: 'sfc-it-role-alias', CredentialDurationSeconds: 900 });
+  });
+});
 
-  test('the buildspec declares cache paths', () => {
-    // codebuild.Cache.bucket() only sets where the cache lives. With no top-level `cache.paths` block in
-    // the buildspec nothing is ever archived, and every build is a cold build.
-    const spec = buildSpecText(synth());
+describe('the build image', () => {
+  test('an ECR repository and a privileged image project that builds ci/cdk/image/Dockerfile in AWS', () => {
+    T.hasResourceProperties('AWS::ECR::Repository', { RepositoryName: 'sfc-it-ci-image' });
+    const image = Object.values(T.findResources('AWS::CodeBuild::Project'))
+      .find((p: any) => p.Properties.Name === 'sfc-integration-test-image')!.Properties;
+    expect(image.Environment.PrivilegedMode).toBe(true);
+    expect(image.Source.BuildSpec).toContain('docker build -f ci/cdk/image/Dockerfile');
+  });
+  test('the test project runs on the image from that repository, pulled with its service role', () => {
+    const test = Object.values(T.findResources('AWS::CodeBuild::Project'))
+      .find((p: any) => p.Properties.Name === 'sfc-integration-test')!.Properties;
+    expect(test.Environment.ImagePullCredentialsType).toBe('SERVICE_ROLE');
+    expect(JSON.stringify(test.Environment.Image)).toContain('CiImageRepo');
+    expect(buildSpecText(T)).not.toContain('runtime-versions');
+  });
+});
+
+describe('the build project', () => {
+  test('runs outside any VPC on LARGE compute', () => {
+    const project = Object.values(T.findResources('AWS::CodeBuild::Project')).find((p: any) => p.Properties.Name === 'sfc-integration-test')!.Properties;
+    expect(project.Environment.ComputeType).toBe('BUILD_GENERAL1_LARGE');
+    expect(project.VpcConfig).toBeUndefined();
+  });
+  test('stack values are baked into its environment', () => {
+    T.hasResourceProperties('AWS::CodeBuild::Project', Match.objectLike({
+      Environment: Match.objectLike({ EnvironmentVariables: Match.anyValue() }),
+    }));
+    // arrayWith() is order-sensitive, so each name is checked on its own.
+    const env = Object.values(T.findResources('AWS::CodeBuild::Project')).find((p: any) => p.Properties.Name === 'sfc-integration-test')!.Properties.Environment.EnvironmentVariables
+      .map((e: { Name: string }) => e.Name);
+    for (const name of ['SFC_E2E_BUCKET', 'SFC_E2E_MSK_CLUSTER_NAME', 'SFC_E2E_KINESIS_STREAM', 'SFC_E2E_S3T_BUCKET_ARN',
+      'SFC_E2E_FIREHOSE_STREAM', 'SFC_E2E_SW_ALIAS_A1', 'SFC_E2E_SECRET_NAME', 'SFC_E2E_IOT_ROLE_ALIAS']) {
+      expect(env).toContain(name);
+    }
+  });
+  test('the same values are exported as the E2eEnvironment output for laptop runs', () => {
+    T.hasOutput('E2eEnvironment', Match.anyValue());
+  });
+  test('an explicit report group exists', () => {
+    T.resourceCountIs('AWS::CodeBuild::ReportGroup', 1);
+  });
+  test('the buildspec has no configuration cache, no clean, cache paths and no CLI flags in GRADLE_OPTS', () => {
+    const spec = buildSpecText(T);
+    expect(spec).not.toContain('--configuration-cache');
+    expect(spec).not.toMatch(/gradlew[^\n"]*\bclean\b/);
     expect(spec).toContain('build-cache-1');
-    expect(spec).toContain('modules-2');
+    expect(/"GRADLE_OPTS":\s*"([^"]*)"/.exec(spec)?.[1]).not.toContain('--');
+    expect(spec).toContain('chmod +x gradlew');
   });
+});
 
-  test('the buildspec never runs gradle clean', () => {
-    // The root build wires clean -> finalizedBy("cleanAll"), which deletes the whole root build/
-    // directory - including build/distribution, which the tests read.
-    const spec = buildSpecText(synth());
-    expect(spec).toContain('./gradlew');
-    expect(spec).not.toMatch(/gradlew[^\n]*\bclean\b/);
+describe('IAM: SFC runs as the project role, so the project role holds the target permissions', () => {
+  test('no separate runtime role (the old one was never assumed, so every write was denied)', () => {
+    const roles = Object.keys(T.findResources('AWS::IAM::Role'));
+    expect(roles.some((r) => r.startsWith('SfcRunRole'))).toBe(false);
   });
-
-  test('GRADLE_OPTS carries no Gradle CLI flags', () => {
-    // gradlew splices $GRADLE_OPTS into the JVM argument list, so --no-daemon there kills the wrapper.
-    const spec = buildSpecText(synth());
-    const gradleOpts = /"GRADLE_OPTS":\s*"([^"]*)"/.exec(spec)?.[1];
-    expect(gradleOpts).toBeDefined();
-    expect(gradleOpts).not.toContain('--');
+  test.each([
+    'sqs:SendMessage', 'sns:Publish', 'lambda:InvokeFunction', 'kinesis:PutRecords', 'firehose:PutRecordBatch',
+    's3tables:PutTableData', 's3tables:CreateTable', 'iotsitewise:BatchPutAssetPropertyValue', 'iotsitewise:CreateAsset',
+    'kafka-cluster:WriteData', 'kafka-cluster:CreateTopic', 'iot:Publish', 'iot:RetainPublish', 'secretsmanager:GetSecretValue',
+  ])('grants %s', (action) => {
+    expect(policies).toContain(action);
   });
-
-  test('the SNS sink and the SQS target use separate queues', () => {
-    // Sharing one queue with rawMessageDelivery makes the SNS assertion unfalsifiable: the bodies are
-    // byte-identical, so an SNS case would pass even with SNS entirely broken.
-    synth().resourceCountIs('AWS::SQS::Queue', 4);
+  test('the project role can read any source key, not just the seed zip', () => {
+    // Source.s3() grants GetObject on the literal key only; per-run overrides would fail at DOWNLOAD_SOURCE.
+    expect(policies).toContain('src/*');
   });
+});
 
-  test('the teardown rule covers non-success terminal states', () => {
-    // post_build does not run on TIMED_OUT or on a stopped build, which are the runs that leak.
-    const rules = Object.values(synth().findResources('AWS::Events::Rule'))
-      .map((r) => r.Properties?.EventPattern)
-      .filter((p) => p?.detail?.['build-status']);
-    expect(rules).toHaveLength(1);
-    expect(rules[0].detail['build-status']).toEqual(
-      expect.arrayContaining(['SUCCEEDED', 'FAILED', 'STOPPED', 'FAULT', 'TIMED_OUT']),
-    );
+describe('teardown and access', () => {
+  test('the teardown rule covers every terminal state', () => {
+    const patterns = Object.values(T.findResources('AWS::Events::Rule'))
+      .map((r) => r.Properties?.EventPattern).filter((p) => p?.detail?.['build-status']);
+    expect(patterns).toHaveLength(1);
+    expect(patterns[0].detail['build-status']).toEqual(expect.arrayContaining(['SUCCEEDED', 'FAILED', 'STOPPED', 'FAULT', 'TIMED_OUT']));
+  });
+  test('no OIDC custom resource; an existing provider ARN suppresses creating one', () => {
+    T.resourceCountIs('Custom::AWSCDKOpenIdConnectProvider', 0);
+    T.resourceCountIs('AWS::IAM::OIDCProvider', 1);
+    synth({ oidcProviderArn: 'arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com' })
+      .resourceCountIs('AWS::IAM::OIDCProvider', 0);
+  });
+  test('the CI role may stop a build and its session outlives a queued plus running build', () => {
+    expect(policies).toContain('codebuild:StopBuild');
+    T.hasResourceProperties('AWS::IAM::Role', Match.objectLike({ MaxSessionDuration: 7200 }));
   });
 });

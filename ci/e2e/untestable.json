@@ -1,0 +1,14 @@
+[
+  {"what": "J1939 / CAN bus adapters", "why": "need a vcan interface and CAP_NET_ADMIN, which a CodeBuild container does not grant"},
+  {"what": "PCCC, ADS (Beckhoff), SLMP (Mitsubishi) adapters", "why": "no maintained software emulator that speaks the protocol faithfully"},
+  {"what": "S7 adapter", "why": "python-snap7 interoperability with PLC4X is unverified; runs only as an experimental case in the full profile"},
+  {"what": "SQL adapter against SQL Server / Oracle", "why": "servers are Docker-only; driver loading is still covered in all three modes, and PostgreSQL covers the read path"},
+  {"what": "SiteWise Edge target", "why": "out of scope: needs a SiteWise Edge gateway"},
+  {"what": "Greengrass-specific paths (IPC to Greengrass, component lifecycle)", "why": "need a Greengrass nucleus deployment"},
+  {"what": "IPC across hosts", "why": "the suite runs on one host"},
+  {"what": "Windows behaviour (paths, service wrapper)", "why": "CodeBuild runs Linux"},
+  {"what": "Genuine AWS throttling", "why": "cannot be produced on demand against real services; covered on the wire by the AWS stub cases"},
+  {"what": "IoT credential provider expiry and refresh", "why": "the shortest credential lifetime is 15 minutes, too slow for a push run"},
+  {"what": "Flush on SIGTERM", "why": "sfc-main installs no shutdown hook, so buffered data is lost on stop; pinned as a known defect rather than tested as a feature"},
+  {"what": "Exact values of wall-clock simulations (Sinus, Random, ...)", "why": "depend on time; only ranges and membership are asserted"}
+]

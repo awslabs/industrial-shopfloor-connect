@@ -1,0 +1,142 @@
+{
+  "cases": [
+    {
+      "id": "TGT-DEBUG-PILOT",
+      "title": "pilot: simulator -> debug target, read back from the hosting process's log",
+      "tier": "core",
+      "priority": "P1",
+      "sinks": {
+        "main": {
+          "kind": "debug",
+          "target": "Dbg"
+        }
+      },
+      "records": 5,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "TGT-DEBUG-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Dbg"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetType": "DEBUG-TARGET"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "DbgServer": {
+          "module": "debug-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetServer": "DbgServer"
+          }
+        },
+        "TargetServers": {
+          "DbgServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

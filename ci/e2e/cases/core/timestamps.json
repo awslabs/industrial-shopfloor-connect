@@ -1,0 +1,846 @@
+{
+  "cases": [
+    {
+      "id": "CORE-TS-ADJUST-01",
+      "title": "SourceTimestampAdjustment and ChannelTimestampAdjustment shift source and channel timestamps by the configured milliseconds",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "Timestamp adjustment corrects devices with skewed clocks, so a sign error or a unit error (seconds vs milliseconds) corrupts every time series. ScheduleReader.adjustTimestamps adds SourceTimestampAdjustment to the source read timestamp and ChannelTimestampAdjustment to every channel timestamp, in sfc-main, before any output; the root timestamp is unadjusted. A +1 day source and -1 hour channel adjustment dwarf scheduling jitter, so the deltas to the root timestamp are asserted within 5 s. In-process and uberjar only: an IPC adapter service does not transmit channel timestamps at all (GrpcSourceValueFromNativeExt.kt:759), so the channel adjustment has nothing to act on; CORE-TS-ADJUST-02 pins that in IPC mode.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:249-271",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/SourceConfiguration.kt:49-57"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "tsDelta",
+          "from": "timestamp",
+          "to": "sources.sim.timestamp",
+          "minMs": 86395000,
+          "maxMs": 86405000
+        },
+        {
+          "kind": "tsDelta",
+          "from": "timestamp",
+          "to": "sources.sim.values.c.timestamp",
+          "minMs": -3605000,
+          "maxMs": -3595000
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-TS-ADJUST-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "SourceTimestampAdjustment": 86400000,
+            "ChannelTimestampAdjustment": -3600000,
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-TS-ADJUST-02",
+      "title": "An IPC adapter service drops channel timestamps, so ChannelTimestampAdjustment is lost and channels inherit the source timestamp (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "The IPC-mode half of CORE-TS-ADJUST-01. SourceReadResult.asSourceReadValuesReply in the adapter service calls addAnyValue(key, value) without the channel timestamp and stamps the source with Instant.now() instead of the read timestamp. sfc-main then finds no channel timestamp to adjust (ScheduleReader.adjustTimestamps skips nulls) and buildOutputValues falls back to the source timestamp, which already carries the +1 day source adjustment. Every channel of an IPC adapter therefore reports the source time: TimestampLevel Channel/Both and ChannelTimestampAdjustment are silently wrong in IPC deployments. IPC only, because that is the only mode with the defect.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcSourceValueFromNativeExt.kt:756",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcSourceValueFromNativeExt.kt:759",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:261-268",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:767"
+      ],
+      "modes": [
+        "ipc"
+      ],
+      "records": 3,
+      "timeoutSeconds": 90,
+      "modeParity": false,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "tsDelta",
+          "from": "timestamp",
+          "to": "sources.sim.timestamp",
+          "minMs": 86395000,
+          "maxMs": 86405000,
+          "comment": "The source adjustment works in IPC mode too."
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcSourceValueFromNativeExt.kt:759",
+        "summary": "The IPC adapter service encodes channel values without their timestamps (GrpcSourceValueFromNativeExt.kt:759, and :756 re-stamps the source with Instant.now()), so channel timestamps fall back to the source timestamp and ChannelTimestampAdjustment has no effect",
+        "assertCurrent": [
+          {
+            "kind": "pathsEqual",
+            "a": "sources.sim.values.c.timestamp",
+            "b": "sources.sim.timestamp"
+          },
+          {
+            "kind": "tsDelta",
+            "from": "timestamp",
+            "to": "sources.sim.values.c.timestamp",
+            "minMs": 86395000,
+            "maxMs": 86405000,
+            "comment": "The channel shows the source time plus one day instead of the read time minus one hour."
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "tsDelta",
+            "from": "timestamp",
+            "to": "sources.sim.values.c.timestamp",
+            "minMs": -3605000,
+            "maxMs": -3595000
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-TS-ADJUST-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "SourceTimestampAdjustment": 86400000,
+            "ChannelTimestampAdjustment": -3600000,
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-TS-LEVELS-01",
+      "title": "TimestampLevel None, Channel, Source and Both in one run: where timestamps appear, and that the root timestamp always does",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "TimestampLevel decides which nodes carry a timestamp, and consumers keyed on it break silently when a level is wrong. ScheduleReader.buildOutputValues adds the source timestamp only for Source/Both and the channel timestamp only for Channel/Both, while the root timestamp comes from TargetData regardless. Four schedules with their own sources and sinks run side by side, so every level is checked by exact key order on the source and channel nodes in the same run. For Both, the channel timestamp is not equal to but at most the source timestamp (channels are stamped during the read, the source after it).",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:756-777",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TimestampLevel.kt:13-30",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorSource.kt:56",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorAdapter.kt:144",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetDataSerializer.kt:39"
+      ],
+      "sinks": {
+        "none": {
+          "kind": "file"
+        },
+        "channel": {
+          "kind": "file"
+        },
+        "source": {
+          "kind": "file"
+        },
+        "both": {
+          "kind": "file"
+        }
+      },
+      "gates": [
+        {
+          "sink": "none",
+          "records": 3
+        },
+        {
+          "sink": "channel",
+          "records": 3
+        },
+        {
+          "sink": "source",
+          "records": 3
+        },
+        {
+          "sink": "both",
+          "records": 3
+        }
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "keyOrder",
+          "sink": "none",
+          "path": "sources.srcN",
+          "keys": [
+            "values",
+            "metadata"
+          ]
+        },
+        {
+          "kind": "keyOrder",
+          "sink": "none",
+          "path": "sources.srcN.values.v",
+          "keys": [
+            "value",
+            "metadata"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "none",
+          "path": "timestamp",
+          "regex": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "none",
+          "path": "schedule",
+          "equals": "TsNone"
+        },
+        {
+          "kind": "keyOrder",
+          "sink": "channel",
+          "path": "sources.srcC",
+          "keys": [
+            "values",
+            "metadata"
+          ]
+        },
+        {
+          "kind": "keyOrder",
+          "sink": "channel",
+          "path": "sources.srcC.values.v",
+          "keys": [
+            "value",
+            "metadata",
+            "timestamp"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "channel",
+          "path": "timestamp",
+          "regex": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "channel",
+          "path": "schedule",
+          "equals": "TsChannel"
+        },
+        {
+          "kind": "keyOrder",
+          "sink": "source",
+          "path": "sources.srcS",
+          "keys": [
+            "values",
+            "metadata",
+            "timestamp"
+          ]
+        },
+        {
+          "kind": "keyOrder",
+          "sink": "source",
+          "path": "sources.srcS.values.v",
+          "keys": [
+            "value",
+            "metadata"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "source",
+          "path": "timestamp",
+          "regex": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "source",
+          "path": "schedule",
+          "equals": "TsSource"
+        },
+        {
+          "kind": "keyOrder",
+          "sink": "both",
+          "path": "sources.srcB",
+          "keys": [
+            "values",
+            "metadata",
+            "timestamp"
+          ]
+        },
+        {
+          "kind": "keyOrder",
+          "sink": "both",
+          "path": "sources.srcB.values.v",
+          "keys": [
+            "value",
+            "metadata",
+            "timestamp"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "both",
+          "path": "timestamp",
+          "regex": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "both",
+          "path": "schedule",
+          "equals": "TsBoth"
+        },
+        {
+          "kind": "tsDelta",
+          "sink": "both",
+          "from": "sources.srcB.values.v.timestamp",
+          "to": "sources.srcB.timestamp",
+          "minMs": 0,
+          "maxMs": 5000,
+          "comment": "SimulatorSource stamps each channel during the read, the adapter stamps the source after it: channel <= source, not equal."
+        },
+        {
+          "kind": "tsDelta",
+          "sink": "both",
+          "from": "sources.srcB.timestamp",
+          "to": "timestamp",
+          "minMs": 0,
+          "maxMs": 10000,
+          "comment": "The root timestamp is taken when ScheduleWriter builds the TargetData, after the read."
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-TS-LEVELS-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "TsNone",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "srcN": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileNone"
+            ]
+          },
+          {
+            "Name": "TsChannel",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Channel",
+            "Sources": {
+              "srcC": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileChannel"
+            ]
+          },
+          {
+            "Name": "TsSource",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Source",
+            "Sources": {
+              "srcS": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileSource"
+            ]
+          },
+          {
+            "Name": "TsBoth",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "srcB": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileBoth"
+            ]
+          }
+        ],
+        "Sources": {
+          "srcN": {
+            "Name": "srcN",
+            "ProtocolAdapter": "SimAdapter",
+            "Metadata": {
+              "m": "y"
+            },
+            "Channels": {
+              "v": {
+                "Name": "v",
+                "Metadata": {
+                  "u": "x"
+                },
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 1
+                }
+              }
+            }
+          },
+          "srcC": {
+            "Name": "srcC",
+            "ProtocolAdapter": "SimAdapter",
+            "Metadata": {
+              "m": "y"
+            },
+            "Channels": {
+              "v": {
+                "Name": "v",
+                "Metadata": {
+                  "u": "x"
+                },
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 1
+                }
+              }
+            }
+          },
+          "srcS": {
+            "Name": "srcS",
+            "ProtocolAdapter": "SimAdapter",
+            "Metadata": {
+              "m": "y"
+            },
+            "Channels": {
+              "v": {
+                "Name": "v",
+                "Metadata": {
+                  "u": "x"
+                },
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 1
+                }
+              }
+            }
+          },
+          "srcB": {
+            "Name": "srcB",
+            "ProtocolAdapter": "SimAdapter",
+            "Metadata": {
+              "m": "y"
+            },
+            "Channels": {
+              "v": {
+                "Name": "v",
+                "Metadata": {
+                  "u": "x"
+                },
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileNone": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_NONE}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileChannel": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_CHANNEL}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileSource": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_SOURCE}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileBoth": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_BOTH}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileNoneServer": {
+          "module": "file-target"
+        },
+        "FileChannelServer": {
+          "module": "file-target"
+        },
+        "FileSourceServer": {
+          "module": "file-target"
+        },
+        "FileBothServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileNone": {
+            "TargetServer": "FileNoneServer"
+          },
+          "FileChannel": {
+            "TargetServer": "FileChannelServer"
+          },
+          "FileSource": {
+            "TargetServer": "FileSourceServer"
+          },
+          "FileBoth": {
+            "TargetServer": "FileBothServer"
+          }
+        },
+        "TargetServers": {
+          "FileNoneServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileChannelServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "FileSourceServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          },
+          "FileBothServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50004
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,1700 @@
+{
+  "cases": [
+    {
+      "id": "AWS-S3-01",
+      "title": "S3 BufferSize 0: every record becomes its own object under the run's prefix, keyed <Prefix>/<y>/<m>/<d>/<h>/<min>/<uuid>, and decodes back to the record",
+      "tier": "aws",
+      "priority": "P0",
+      "intent": "The basic S3 contract against the real bucket. BufferSize counts MB (AwsS3TargetConfiguration.kt:77-78) and a buffer is written as soon as its payload reaches it (AwsS3TargetWriter.kt:174), so BufferSize 0 - not 1, which means 1 MiB - is S3's per-record setting: every record must become one PutObject, authorised by s3:PutObject on s3-target/* of the stack bucket (sfc-it-stack.ts:416), keyed <Prefix>/<year>/<month>/<day>/<hour>/<minute>/<uuid> (AwsS3TargetWriter.kt:333, :346), its body a JSON array holding the record (AsArrayWhenBuffered defaults to true, AwsS3TargetWriter.kt:292-293). The s3 sink lists only this run's prefix and decodes every object, so its records are exactly what this case run stored. The case fails if a record is lost or duplicated (the counter set must be contiguous), if a record changes on the way (schedule, metadata, the counter's int type), if records are batched despite BufferSize 0 (Messages/Writes must be exactly 1), if the key layout or the Prefix join changes, or if a write error is logged or counted.",
+      "pins": [
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/config/AwsS3TargetConfiguration.kt:71-78",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:174",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:213-222",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:259-264",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:292-293",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:330-346",
+        "ci/cdk/lib/sfc-it-stack.ts:416",
+        "ci/e2e/lib/sinks/aws.py:109-138"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "S3",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "the sink reads objects by LastModified (1 s resolution) and key, and default keys end in a random UUID: read order is not write order, so a contiguous set, no duplicates"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "metadata.case",
+          "equals": "AWS-S3-01"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ctr.value",
+          "type": "int"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "S3",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "S3",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1,
+          "comment": "BufferSize 0: one record per object"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Creating S3 object s3-target/[a-z0-9_]+/\\d{4}/\\d{1,2}/\\d{1,2}/\\d{1,2}/\\d{1,2}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12} containing",
+          "comment": "<Prefix>/<y>/<m>/<d>/<h>/<min>/<uuid>; the default key's date fields are not zero-padded (AwsS3TargetWriter.kt:333), unlike the ObjectKey placeholders"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing to bucket",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3": {
+            "TargetType": "AWS-S3",
+            "BucketName": "${SFC_E2E_BUCKET}",
+            "Region": "${SFC_E2E_REGION}",
+            "Prefix": "${SFC_E2E_S3_PREFIX}",
+            "BufferSize": 0
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3Server": {
+          "module": "aws-s3-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3": {
+            "TargetServer": "S3Server"
+          }
+        },
+        "TargetServers": {
+          "S3Server": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-S3-02",
+      "title": "S3 Compression GZip and Zip: every object is compressed and decompresses back to its record",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Compression changes the bytes of every object: compressPayload runs the joined payload through a GZIPOutputStream or a one-entry ZipOutputStream named after the key's last segment and uploads the result (AwsS3TargetWriter.kt:298-313, Compress.kt:45-49). Those bodies must be accepted by S3 and decompress back to the record a consumer expects. S3Gzip and S3Zip run in schedules of their own, so their records are told apart by schedule name. The s3 sink recognises gzip and zip by their magic numbers, so a body in any other encoding would not decode; it exposes neither the stored bytes nor the Content-Type, so the per-object 'Used GZIP/ZIP compression' line (:312) is the evidence that each object was compressed. The case fails if an object does not decompress to its record, if a record is lost or duplicated, if the constant string is altered, or if the compression path did not run for every object.",
+      "pins": [
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:298-303",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:307-313",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/Compress.kt:45-49",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/GzipCompression.kt:14-16",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/ZipCompression.kt:16-21",
+        "ci/e2e/lib/sinks/aws.py:42-48"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3"
+        }
+      },
+      "records": 10,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "S3Gzip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 5
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "S3Zip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 5
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Gzip"
+          },
+          "min": 5
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Zip"
+          },
+          "min": 5
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Gzip"
+          },
+          "source": "simG",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Zip"
+          },
+          "source": "simZ",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "simG",
+          "channel": "txt",
+          "values": [
+            "sfc-e2e-s3-compressed-payload-sfc-e2e-s3-compressed-payload-sfc-e2e-s3-compressed-payload"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "simZ",
+          "channel": "txt",
+          "values": [
+            "sfc-e2e-s3-compressed-payload-sfc-e2e-s3-compressed-payload-sfc-e2e-s3-compressed-payload"
+          ]
+        },
+        {
+          "kind": "logContains",
+          "text": "Used GZIP compression to compress",
+          "min": 5,
+          "comment": "one line per compressed object body"
+        },
+        {
+          "kind": "logContains",
+          "text": "Used ZIP compression to compress",
+          "min": 5,
+          "comment": "one line per compressed object body"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing to bucket"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Gzip",
+            "Interval": 200,
+            "Sources": {
+              "simG": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3Gzip"
+            ]
+          },
+          {
+            "Name": "Zip",
+            "Interval": 200,
+            "Sources": {
+              "simZ": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3Zip"
+            ]
+          }
+        ],
+        "Sources": {
+          "simG": {
+            "Name": "simG",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "txt": {
+                "Name": "txt",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "sfc-e2e-s3-compressed-payload-sfc-e2e-s3-compressed-payload-sfc-e2e-s3-compressed-payload"
+                }
+              }
+            }
+          },
+          "simZ": {
+            "Name": "simZ",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "txt": {
+                "Name": "txt",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "sfc-e2e-s3-compressed-payload-sfc-e2e-s3-compressed-payload-sfc-e2e-s3-compressed-payload"
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3Gzip": {
+            "TargetType": "AWS-S3",
+            "BucketName": "${SFC_E2E_BUCKET}",
+            "Region": "${SFC_E2E_REGION}",
+            "Prefix": "${SFC_E2E_S3_PREFIX}/gzip",
+            "BufferSize": 0,
+            "Compression": "GZip"
+          },
+          "S3Zip": {
+            "TargetType": "AWS-S3",
+            "BucketName": "${SFC_E2E_BUCKET}",
+            "Region": "${SFC_E2E_REGION}",
+            "Prefix": "${SFC_E2E_S3_PREFIX}/zip",
+            "BufferSize": 0,
+            "Compression": "Zip"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3GzipServer": {
+          "module": "aws-s3-target"
+        },
+        "S3ZipServer": {
+          "module": "aws-s3-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3Gzip": {
+            "TargetServer": "S3GzipServer"
+          },
+          "S3Zip": {
+            "TargetServer": "S3ZipServer"
+          }
+        },
+        "TargetServers": {
+          "S3GzipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "S3ZipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-S3-03",
+      "title": "S3 BufferSize 1: an object is written when the buffered payload reaches 1 MiB - BufferSize counts MiB, and the record that crosses it triggers the write",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "BufferSize is S3's batching control and is given in MB: the threshold is BufferSize * 1024 * 1024 characters of buffered payload (AwsS3TargetConfiguration.kt:71-78, docs/targets/aws-s3.md:67-72), a record counting the length of its JSON (AwsS3TargetWriter.kt:158-161, TargetDataBuffer.kt:26-30), checked as each record arrives (AwsS3TargetWriter.kt:174), so an object holds every record up to and including the one that crosses 1 MiB. Records are pretty-printed JSON (TargetData.kt:78, :100), so each element of blob - 2034 six-digit ints, drawn from [100000, 999999) (Random.kt:37, :46-52) - costs 20 characters (a newline, 12 spaces of indentation, six digits, a comma), and a record is 41,111-41,124 characters in every mode. The 4000 elements this case used to carry made 80,431-80,444-character records, not the 28 KB of compact JSON it had assumed: the last run measured 14 records and 1,126,1xx characters per object in all three modes, so both of its bounds failed. 1 MiB is now 25.5 records: every object holds exactly 26, 1,068,9xx-1,069,2xx characters, BytesWritten being the buffered payload and Messages the record count of each write (AwsS3TargetWriter.kt:259-264). Interval 900 keeps the timer out of the run, sfc-main has no shutdown hook, and in IPC mode it is stopped before the target service runs its shutdown flush (ci/e2e/lib/runner.py:281-282, IpcTargetServer.kt:106-113), so no partial object is ever counted. The case fails if BufferSize were read as bytes or KB (one record per object), as decimal megabytes (25 records, about 1,028,000 characters, under 1,048,576), if a write came before the threshold, if one waited beyond the crossing record (27 records, over 1,110,000), if the size trigger never fired (the wait times out: the timer is 15 minutes away), or if records were lost or duplicated across objects.",
+      "pins": [
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/config/AwsS3TargetConfiguration.kt:71-78",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:158-180",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:259-264",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetDataBuffer.kt:26-30",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetData.kt:78",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetData.kt:100",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Random.kt:37",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Random.kt:46-52",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetServer.kt:106-113",
+        "ci/e2e/lib/runner.py:281-282",
+        "docs/targets/aws-s3.md:67-72"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3"
+        }
+      },
+      "records": 52,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 40,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "S3Buf",
+              "name": "Writes",
+              "op": "ge",
+              "value": 2
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 52,
+          "comment": "two objects of 26 records"
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.blob.value",
+          "type": "list"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "S3Buf",
+            "name": "BytesWritten"
+          },
+          "denominator": {
+            "source": "S3Buf",
+            "name": "Writes"
+          },
+          "op": "ge",
+          "value": 1048576,
+          "comment": "no object before its buffered payload reached 1 * 1024 * 1024 characters; decimal megabytes would stop at 25 records, about 1,028,000"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "S3Buf",
+            "name": "BytesWritten"
+          },
+          "denominator": {
+            "source": "S3Buf",
+            "name": "Writes"
+          },
+          "op": "lt",
+          "value": 1089536,
+          "comment": "nor after the record that crosses it: 26 records are about 1,069,100 characters, half a record past 1 MiB, and one more would be about 1,110,200; the bound is 1 MiB + 40 KiB, less than one record"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "S3Buf",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "S3Buf",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 26,
+          "comment": "1 MiB is 25.5 records of about 41,120 characters, so the 26th crosses it in every object; 25 would be decimal megabytes or an early flush, 27 a late one, 1 no buffering"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing to bucket"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3-03",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3Buf"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "blob": {
+                "Name": "blob",
+                "Simulation": {
+                  "SimulationType": "Random",
+                  "DataType": "Int",
+                  "Min": 100000,
+                  "Max": 999999,
+                  "Size": 2034
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3Buf": {
+            "TargetType": "AWS-S3",
+            "BucketName": "${SFC_E2E_BUCKET}",
+            "Region": "${SFC_E2E_REGION}",
+            "Prefix": "${SFC_E2E_S3_PREFIX}",
+            "BufferSize": 1,
+            "Interval": 900
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3BufServer": {
+          "module": "aws-s3-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3Buf": {
+            "TargetServer": "S3BufServer"
+          }
+        },
+        "TargetServers": {
+          "S3BufServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-S3-04",
+      "title": "S3 Interval 60: the timer writes a partial buffer while records keep arriving; AsArrayWhenBuffered false drops the enclosing array",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "With the default BufferSize of 1 MB a low-rate source never fills a buffer, so the Interval timer is what writes S3 objects in most deployments. Interval is in seconds, 60..900 (AwsS3TargetConfiguration.kt:100-101, :127-133), and the timer is restarted only after a write (AwsS3TargetWriter.kt:176-186): a maximum age, not an inactivity timer, so it must fire while a record arrives every 500 ms - 'whichever occurs first' (docs/targets/aws-s3.md:154). The same timed objects check AsArrayWhenBuffered (AwsS3TargetWriter.kt:292-295): both targets render each record as a one-element JSON array [{...}] (the counter renders as 3.0, OutputTransformation.kt:69), and the s3 sink flattens one array level per body, so S3Arr's default framing [[{...}],[{...}]] decodes to one-element lists and S3Cat's AsArrayWhenBuffered false, [{...}][{...}], to the objects themselves. The case fails if the timer were an inactivity timer or not in seconds (the waits time out, or Messages/Writes falls to 1), if S3Cat still wrapped its buffer (none of its records would be an object) or S3Arr did not (none would be a list, and the counters would be duplicated), or if a record were lost or duplicated.",
+      "pins": [
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/config/AwsS3TargetConfiguration.kt:94-101",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/config/AwsS3TargetConfiguration.kt:127-133",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:138-187",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:269-275",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:292-295",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TargetConfiguration.kt:121-124",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/OutputTransformation.kt:45",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/OutputTransformation.kt:69",
+        "docs/targets/aws-s3.md:151-158",
+        "docs/core/target-configuration.md:33-38",
+        "ci/e2e/lib/sinks/aws.py:53-59"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3"
+        }
+      },
+      "records": 40,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "S3Arr",
+              "name": "Writes",
+              "op": "ge",
+              "value": 1
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "S3Cat",
+              "name": "Writes",
+              "op": "ge",
+              "value": 1
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "S"
+          },
+          "min": 20,
+          "comment": "S3Cat: every record decoded as the template's object - the buffer had no enclosing array"
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "[0].schedule": "S"
+          },
+          "min": 20,
+          "comment": "S3Arr: every record decoded as a one-element list - the buffer was wrapped in an array"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "S"
+          },
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "S3Cat's records only; S3Arr's are lists"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "S3Arr",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "S3Arr",
+            "name": "Writes"
+          },
+          "op": "ge",
+          "value": 20,
+          "comment": "one timed write holds every record since the start, about 100; per-record writes would give 1"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "S3Cat",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "S3Cat",
+            "name": "Writes"
+          },
+          "op": "ge",
+          "value": 20
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing to bucket",
+            "Error transforming data with template",
+            "Error creating velocity template"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3-04",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 500,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3Arr",
+              "S3Cat"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3Arr": {
+            "TargetType": "AWS-S3",
+            "BucketName": "${SFC_E2E_BUCKET}",
+            "Region": "${SFC_E2E_REGION}",
+            "Prefix": "${SFC_E2E_S3_PREFIX}/array",
+            "BufferSize": 1,
+            "Interval": 60,
+            "Template": "${SFC_E2E_CASE_DIR}/wrapped.vm"
+          },
+          "S3Cat": {
+            "TargetType": "AWS-S3",
+            "BucketName": "${SFC_E2E_BUCKET}",
+            "Region": "${SFC_E2E_REGION}",
+            "Prefix": "${SFC_E2E_S3_PREFIX}/concat",
+            "BufferSize": 1,
+            "Interval": 60,
+            "Template": "${SFC_E2E_CASE_DIR}/wrapped.vm",
+            "AsArrayWhenBuffered": false
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3ArrServer": {
+          "module": "aws-s3-target"
+        },
+        "S3CatServer": {
+          "module": "aws-s3-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3Arr": {
+            "TargetServer": "S3ArrServer"
+          },
+          "S3Cat": {
+            "TargetServer": "S3CatServer"
+          }
+        },
+        "TargetServers": {
+          "S3ArrServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "S3CatServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "wrapped.vm": "[{\"schedule\": \"$schedule\", \"sources\": {\"sim\": {\"values\": {\"ctr\": {\"value\": $sources[\"sim\"][\"values\"][\"ctr\"][\"value\"]}}}}}]\n"
+      }
+    },
+    {
+      "id": "AWS-S3-05",
+      "title": "S3 object keys: ObjectKey placeholders and Extension render as documented; a Prefix ending in '/' doubles the slash (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Consumers of the bucket (Athena tables, Glue partitions) depend on the key layout. S3Key's ObjectKey uses the documented placeholders (docs/targets/aws-s3.md:164-181): TemplateRenderer pads month to second to two digits and millisecond to three, where docs/targets/aws-s3.md:172 says two, and adds a random UUID (TemplateRenderer.kt:44-64); Extension '.json' is cut to 'json' and appended once (AwsS3TargetConfiguration.kt:55, AwsS3TargetWriter.kt:338-343). The 'Creating S3 object <key>' line (:217) shows each key; the sink reads every object under the run's prefix. S3Slash uses a Prefix ending in '/', the form of both examples in the docs (\"Prefix\": \"data/\", aws-s3.md:322, :338), and objectKey() always adds a '/' of its own (AwsS3TargetWriter.kt:346), so its keys get an empty segment, .../slash//2026/..., which path-normalising readers collapse: pinned as a defect. The two targets run in schedules of their own. The case fails if a placeholder is not rendered or padded, if the extension is missing or doubled, or if a record is lost or duplicated.",
+      "pins": [
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:217",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:330-346",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/config/AwsS3TargetConfiguration.kt:38-55",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/TemplateRenderer.kt:44-64",
+        "docs/targets/aws-s3.md:164-185",
+        "docs/targets/aws-s3.md:190-193",
+        "docs/targets/aws-s3.md:322",
+        "docs/targets/aws-s3.md:338"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3"
+        }
+      },
+      "records": 8,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "S3Key",
+              "name": "Writes",
+              "op": "ge",
+              "value": 4
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "S3Slash",
+              "name": "Writes",
+              "op": "ge",
+              "value": 4
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Key"
+          },
+          "min": 4
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Slash"
+          },
+          "min": 4
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Key"
+          },
+          "source": "simK",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Slash"
+          },
+          "source": "simP",
+          "channel": "ctr"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Creating S3 object s3-target/[a-z0-9_]+/keyed/year=\\d{4}/month=\\d{2}/day=\\d{2}/hour=\\d{2}/minute=\\d{2}/\\d{2}\\.\\d{3}-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.json containing",
+          "comment": "two-digit month..second, three-digit millisecond, the UUID, exactly one '.json'"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing to bucket"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:346",
+        "summary": "objectKey() joins Prefix and key with a '/' of its own, so a Prefix ending in '/' - the form of both examples in docs/targets/aws-s3.md (\"Prefix\": \"data/\") - yields keys with an empty segment: data//2026/10/5/...",
+        "assertCurrent": [
+          {
+            "kind": "logRegex",
+            "regex": "Creating S3 object s3-target/[a-z0-9_]+/slash//\\d{4}/"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logRegex",
+            "regex": "Creating S3 object s3-target/[a-z0-9_]+/slash/\\d{4}/"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3-05",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Key",
+            "Interval": 200,
+            "Sources": {
+              "simK": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3Key"
+            ]
+          },
+          {
+            "Name": "Slash",
+            "Interval": 200,
+            "Sources": {
+              "simP": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3Slash"
+            ]
+          }
+        ],
+        "Sources": {
+          "simK": {
+            "Name": "simK",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "simP": {
+            "Name": "simP",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3Key": {
+            "TargetType": "AWS-S3",
+            "BucketName": "${SFC_E2E_BUCKET}",
+            "Region": "${SFC_E2E_REGION}",
+            "Prefix": "${SFC_E2E_S3_PREFIX}",
+            "BufferSize": 0,
+            "ObjectKey": "keyed/year=%year%/month=%month%/day=%day%/hour=%hour%/minute=%minute%/%second%.%millisecond%-%uuid%",
+            "Extension": ".json"
+          },
+          "S3Slash": {
+            "TargetType": "AWS-S3",
+            "BucketName": "${SFC_E2E_BUCKET}",
+            "Region": "${SFC_E2E_REGION}",
+            "Prefix": "${SFC_E2E_S3_PREFIX}/slash/",
+            "BufferSize": 0
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3KeyServer": {
+          "module": "aws-s3-target"
+        },
+        "S3SlashServer": {
+          "module": "aws-s3-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3Key": {
+            "TargetServer": "S3KeyServer"
+          },
+          "S3Slash": {
+            "TargetServer": "S3SlashServer"
+          }
+        },
+        "TargetServers": {
+          "S3KeyServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "S3SlashServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-S3-NEG-01",
+      "title": "S3 AccessDenied from an explicit Deny: every refused PutObject is one WriteError, it is not retried, and a sibling S3 target keeps delivering",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "A write the destination refuses must show in SFC's own counters, not only in a log. No prefix of the stack bucket is closed to the project role: codebuild.Cache.bucket() binds with an unscoped bucket.grantReadWrite(project) (sfc-it-stack.ts:401; aws-cdk-lib 2.270.0, aws-codebuild/lib/cache.js), so the synthesized role policy allows s3:PutObject on <bucket>/* beside the per-prefix grants (:415-420). The firehose/ prefix this case used to write to accepted every object, and its wait for a WriteError timed out in all three modes. The refusal comes from an explicit Deny on the project role instead (sfc-it-stack.ts:434-436): s3:PutObject on s3-target/*/denied/*, which no grant overrides, so S3 answers every PutObject of S3Denied (its Prefix is ${SFC_E2E_S3_PREFIX}/denied) with 403 AccessDenied. AccessDenied is not a retryable error code (AwsServiceClientHelper.kt:75-86, :128-134), so it is thrown at once (BaseRetryableAccessor.kt:42-45) and flush() logs 'Error writing to bucket ... for target' with the exception's stack trace (Logger.kt:189-191), counts one WriteError and drops the buffer (AwsS3TargetWriter.kt:236-246). With BufferSize 0 every record is its own PutObject (:174): one WriteError per lost record, at the pace of S3Ok, which shares the schedule, writes under the same run prefix and must keep delivering. The timeline waits for the refusals in the log, not for the counter under test, so an uncounted refusal fails an assertion instead of timing out. The case fails if a refusal is not counted, if the non-retryable error were retried (5 tries with 0.5 s * n backoff would leave S3Denied far behind S3Ok: the ratio check), if the refusal is not S3's AccessDenied, if anything were stored for S3Denied (its prefix lies inside the run's, so every counter would be duplicated), or if S3Ok's delivery suffered.",
+      "pins": [
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:174",
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/AwsS3TargetWriter.kt:211-247",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/client/AwsServiceClientHelper.kt:75-86",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/client/AwsServiceClientHelper.kt:128-134",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/BaseRetryableAccessor.kt:42-45",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/Logger.kt:189-191",
+        "ci/cdk/lib/sfc-it-stack.ts:401",
+        "ci/cdk/lib/sfc-it-stack.ts:415-420",
+        "ci/cdk/lib/sfc-it-stack.ts:434-436"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3"
+        }
+      },
+      "records": 5,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "allowWriteErrors": [
+        "S3Denied"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "any": [
+              {
+                "log": "\" for target \"S3Denied\"",
+                "count": 5
+              },
+              {
+                "metric": {
+                  "source": "S3Denied",
+                  "name": "Writes",
+                  "op": "ge",
+                  "value": 1
+                }
+              }
+            ],
+            "comment": "five refusals in the log - only the error line at AwsS3TargetWriter.kt:237 has a quote before ' for target' - rather than the counter under test; a first S3Denied write ends the wait too, and the assertions then say the deny is gone"
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "S3Ok",
+              "name": "Writes",
+              "op": "ge",
+              "value": 10
+            },
+            "comment": "a second or more past the fifth refusal, so the metrics file has caught up with its WriteErrors"
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5,
+          "comment": "S3Ok kept delivering"
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "S3Ok's records only: S3Denied's prefix lies inside the run's, so an object it stored would duplicate the counters"
+        },
+        {
+          "kind": "metric",
+          "source": "S3Denied",
+          "name": "WriteError",
+          "op": "ge",
+          "value": 3
+        },
+        {
+          "kind": "metric",
+          "source": "S3Denied",
+          "name": "Writes",
+          "op": "eq",
+          "value": 0,
+          "comment": "no PutObject of S3Denied succeeded"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "S3Denied",
+            "name": "WriteError"
+          },
+          "denominator": {
+            "source": "S3Ok",
+            "name": "Writes"
+          },
+          "op": "ge",
+          "value": 0.5,
+          "comment": "one WriteError per refused record, keeping pace with S3Ok's writes of the same records"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Error writing to bucket \"[^\"]+\" for target \"S3Denied\" : [^\\n]*S3Exception: [^\\n]*(?:Access Denied|explicit deny)[^\\n]*Status Code: 403",
+          "comment": "S3's AccessDenied - 'Access Denied', or for a same-account caller '... with an explicit deny in a resource-based policy' - not another 403 such as SignatureDoesNotMatch"
+        },
+        {
+          "kind": "logContains",
+          "text": "Status Code: 403",
+          "min": 5,
+          "comment": "the SDK's S3Exception in each error line; only S3Denied is refused"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3-NEG-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3Ok",
+              "S3Denied"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3Ok": {
+            "TargetType": "AWS-S3",
+            "BucketName": "${SFC_E2E_BUCKET}",
+            "Region": "${SFC_E2E_REGION}",
+            "Prefix": "${SFC_E2E_S3_PREFIX}",
+            "BufferSize": 0
+          },
+          "S3Denied": {
+            "TargetType": "AWS-S3",
+            "BucketName": "${SFC_E2E_BUCKET}",
+            "Region": "${SFC_E2E_REGION}",
+            "Prefix": "${SFC_E2E_S3_PREFIX}/denied",
+            "BufferSize": 0
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3OkServer": {
+          "module": "aws-s3-target"
+        },
+        "S3DeniedServer": {
+          "module": "aws-s3-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3Ok": {
+            "TargetServer": "S3OkServer"
+          },
+          "S3Denied": {
+            "TargetServer": "S3DeniedServer"
+          }
+        },
+        "TargetServers": {
+          "S3OkServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "S3DeniedServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

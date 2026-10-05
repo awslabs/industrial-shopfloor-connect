@@ -1,0 +1,159 @@
+{
+  "cases": [
+    {
+      "id": "TGT-NATS-PILOT",
+      "title": "pilot: simulator -> nats-target -> nats-server",
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "nats",
+          "kind": "nats"
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "nats",
+          "service": "nats",
+          "subject": "sfc.e2e.>"
+        }
+      },
+      "records": 5,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "everyRecord",
+          "path": "_subject",
+          "equals": "sfc.e2e.pilot"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "TGT-NATS-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Nats"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Nats": {
+            "TargetType": "NATS-TARGET",
+            "NatsServer": {
+              "Url": "nats://127.0.0.1:${SFC_E2E_NATS_PORT}"
+            },
+            "SubjectName": "sfc.e2e.pilot",
+            "BatchCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "NATS-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.natstarget.NatsTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "NATS-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.natstarget.NatsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/nats-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "NatsServer": {
+          "module": "nats-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Nats": {
+            "TargetServer": "NatsServer"
+          }
+        },
+        "TargetServers": {
+          "NatsServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

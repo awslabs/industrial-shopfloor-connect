@@ -1,0 +1,1506 @@
+{
+  "cases": [
+    {
+      "id": "CORE-AWSTGT-VAL-NAMES-REQUIRED-01",
+      "title": "Invalid names and missing required keys fail per AWS target with their own message before any network call",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "Required destinations and name rules are checked when each writer is built, so a broken name is reported at startup instead of as a stream of AWS errors. Nine AWS targets each carry one naming problem - an S3 bucket with upper case and '_', a 9-level IoT topic, SQS/SNS/Kinesis/Firehose without their destination, MSK without brokers, an S3 Tables namespace with upper case and '-', a SiteWise AssetId that is not a UUID - beside a valid file target. Each message must be logged, no AWS writer may start (IoT validates before its DescribeEndpoint call, AwsIotCoreTargetWriter.kt:88-90, so nothing touches the network) and the file target keeps delivering. One invalid target per type, for the reason given in CORE-AWSTGT-VAL-RANGES-01. The Lambda counterpart of this check never fires; that is AWS-LAM-DEF-01.",
+      "pins": [
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/config/AwsS3TargetConfiguration.kt:206-226",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/config/AwsIotCoreTargetConfiguration.kt:101-106",
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/config/AwsSqsTargetConfiguration.kt:96-102",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/config/AwsSnsTargetConfiguration.kt:124-130",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/config/AwsKinesisTargetConfiguration.kt:113-118",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/config/AwsKinesisFirehoseTargetConfiguration.kt:82-88",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/config/AwsMskTargetConfiguration.kt:113-118",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/AwsS3TablesTargetConfiguration.kt:107-118",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesHelper.kt:253-260",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/config/AwsSiteWiseAssetConfiguration.kt:83-86"
+      ],
+      "failFast": [],
+      "records": 5,
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "FileTarget",
+              "name": "Writes",
+              "op": "ge",
+              "value": 5
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5
+        },
+        {
+          "kind": "logContains",
+          "text": "BucketName can only contain lowercase letters, numbers, periods (.), and hyphens (-)"
+        },
+        {
+          "kind": "logContains",
+          "text": "TopicName cannot have more than 8 levels for AWS IoT Core"
+        },
+        {
+          "kind": "logContains",
+          "text": "QueueUrl for SQS Target must be specified"
+        },
+        {
+          "kind": "logContains",
+          "text": "TopicArn for SNS Target must be specified"
+        },
+        {
+          "kind": "logContains",
+          "text": "Stream name for Kinesis Target must be specified"
+        },
+        {
+          "kind": "logContains",
+          "text": "Delivery stream name for Kinesis Firehose Target must be specified"
+        },
+        {
+          "kind": "logContains",
+          "text": "BootstrapBrokers for MSK topic must be specified"
+        },
+        {
+          "kind": "logContains",
+          "text": "Invalid Namespace \"Bad-NS\""
+        },
+        {
+          "kind": "logContains",
+          "text": "AssetId \"not-a-uuid\" is not a valid identifier as it does not match the specifier"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "AWS IoT Core writer for target",
+            "AWS S3 writer for target",
+            "AWS SQS writer for target",
+            "AWS SNS writer for target",
+            "AWS Kinesis writer for target",
+            "AWS Kinesis Firehose writer for target",
+            "AWS MKS writer for target",
+            "Setting up AWS S3 tables resources",
+            "NoClassDefFoundError",
+            "ClassNotFoundException",
+            "NoSuchMethodError"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AWSTGT-VAL-NAMES-REQUIRED-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget",
+              "S3Name",
+              "Iot9",
+              "SqsNoUrl",
+              "SnsNoArn",
+              "KinNoStream",
+              "FhNoStream",
+              "MskNoBrokers",
+              "S3TNs",
+              "SwAsset"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "S3Name": {
+            "TargetType": "AWS-S3",
+            "BucketName": "Bad_Bucket",
+            "Region": "us-east-1"
+          },
+          "Iot9": {
+            "TargetType": "AWS-IOT-CORE",
+            "Region": "us-east-1",
+            "TopicName": "a/b/c/d/e/f/g/h/i"
+          },
+          "SqsNoUrl": {
+            "TargetType": "AWS-SQS",
+            "Region": "us-east-1"
+          },
+          "SnsNoArn": {
+            "TargetType": "AWS-SNS",
+            "Region": "us-east-1"
+          },
+          "KinNoStream": {
+            "TargetType": "AWS-KINESIS",
+            "Region": "us-east-1"
+          },
+          "FhNoStream": {
+            "TargetType": "AWS-FIREHOSE",
+            "Region": "us-east-1"
+          },
+          "MskNoBrokers": {
+            "TargetType": "AWS-MSK",
+            "BootstrapBrokers": [],
+            "TopicName": "t",
+            "Interval": 100
+          },
+          "S3TNs": {
+            "TargetType": "AWS-S3-TABLES",
+            "Region": "us-east-1",
+            "TableBucket": "e2e-tb",
+            "Namespace": "Bad-NS",
+            "Tables": [
+              {
+                "TableName": "t1",
+                "Schema": [
+                  {
+                    "Name": "ctr",
+                    "Type": "int"
+                  }
+                ],
+                "Mappings": [
+                  {
+                    "ctr": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "SwAsset": {
+            "TargetType": "AWS-SITEWISE",
+            "Region": "us-east-1",
+            "Assets": [
+              {
+                "AssetId": "not-a-uuid",
+                "Properties": [
+                  {
+                    "PropertyName": "p",
+                    "DataPath": "sources.sim.values.ctr.value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter"
+          },
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
+          },
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter"
+          },
+          "AWS-MSK": {
+            "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter"
+          },
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+          },
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
+          },
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
+          },
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter"
+          },
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter"
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-firehose-target/lib"
+            ]
+          },
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-iot-core-target/lib"
+            ]
+          },
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-target/lib"
+            ]
+          },
+          "AWS-MSK": {
+            "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-msk-target/lib"
+            ]
+          },
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
+            ]
+          },
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-tables-target/lib"
+            ]
+          },
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sitewise-target/lib"
+            ]
+          },
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sns-target/lib"
+            ]
+          },
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sqs-target/lib"
+            ]
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "S3NameServer": {
+          "module": "aws-s3-target"
+        },
+        "Iot9Server": {
+          "module": "aws-iot-core-target"
+        },
+        "SqsNoUrlServer": {
+          "module": "aws-sqs-target"
+        },
+        "SnsNoArnServer": {
+          "module": "aws-sns-target"
+        },
+        "KinNoStreamServer": {
+          "module": "aws-kinesis-target"
+        },
+        "FhNoStreamServer": {
+          "module": "aws-kinesis-firehose-target"
+        },
+        "MskNoBrokersServer": {
+          "module": "aws-msk-target"
+        },
+        "S3TNsServer": {
+          "module": "aws-s3-tables-target"
+        },
+        "SwAssetServer": {
+          "module": "aws-sitewise-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "S3Name": {
+            "TargetServer": "S3NameServer"
+          },
+          "Iot9": {
+            "TargetServer": "Iot9Server"
+          },
+          "SqsNoUrl": {
+            "TargetServer": "SqsNoUrlServer"
+          },
+          "SnsNoArn": {
+            "TargetServer": "SnsNoArnServer"
+          },
+          "KinNoStream": {
+            "TargetServer": "KinNoStreamServer"
+          },
+          "FhNoStream": {
+            "TargetServer": "FhNoStreamServer"
+          },
+          "MskNoBrokers": {
+            "TargetServer": "MskNoBrokersServer"
+          },
+          "S3TNs": {
+            "TargetServer": "S3TNsServer"
+          },
+          "SwAsset": {
+            "TargetServer": "SwAssetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "S3NameServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "Iot9Server": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          },
+          "SqsNoUrlServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50004
+          },
+          "SnsNoArnServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50005
+          },
+          "KinNoStreamServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50006
+          },
+          "FhNoStreamServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50007
+          },
+          "MskNoBrokersServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50008
+          },
+          "S3TNsServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50009
+          },
+          "SwAssetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50010
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AWSTGT-VAL-NAMES-REQUIRED-02",
+      "title": "A missing S3 BucketName and an IoT topic starting with '$' are rejected at startup",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "The second half of CORE-AWSTGT-VAL-NAMES-REQUIRED-01, split off because a writer validates every target of its own type and reports the first invalid one (AwsSqsWriterConfiguration.validate and its siblings), so two invalid S3 or IoT targets in one configuration would produce mode-dependent messages. An S3 target without BucketName and an IoT target publishing to a reserved '$aws/...' topic must each fail with their own message ('$aws' has no braces, so SFC's ${} substitution leaves it alone), while the file target keeps delivering.",
+      "pins": [
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/config/AwsS3TargetConfiguration.kt:206-210",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/config/AwsIotCoreTargetConfiguration.kt:94-99"
+      ],
+      "failFast": [],
+      "records": 4,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 4
+        },
+        {
+          "kind": "logContains",
+          "text": "BucketName cannot be empty"
+        },
+        {
+          "kind": "logContains",
+          "text": "TopicName cannot start with \"$\""
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "AWS IoT Core writer for target",
+            "AWS S3 writer for target",
+            "NoClassDefFoundError",
+            "ClassNotFoundException",
+            "NoSuchMethodError"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AWSTGT-VAL-NAMES-REQUIRED-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget",
+              "S3NoBucket",
+              "IotDollar"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "S3NoBucket": {
+            "TargetType": "AWS-S3",
+            "Region": "us-east-1"
+          },
+          "IotDollar": {
+            "TargetType": "AWS-IOT-CORE",
+            "Region": "us-east-1",
+            "TopicName": "$aws/things/x"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
+          },
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-iot-core-target/lib"
+            ]
+          },
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
+            ]
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "S3NoBucketServer": {
+          "module": "aws-s3-target"
+        },
+        "IotDollarServer": {
+          "module": "aws-iot-core-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "S3NoBucket": {
+            "TargetServer": "S3NoBucketServer"
+          },
+          "IotDollar": {
+            "TargetServer": "IotDollarServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "S3NoBucketServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "IotDollarServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AWSTGT-VAL-RANGES-01",
+      "title": "Out-of-range numeric options are rejected per AWS target with their documented message, and the rest of the pipeline keeps running",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "A typo in one target's BatchSize or Interval must be caught at startup with a message naming the option, not surface as a throttled or silently idle target later. Six AWS targets each carry one out-of-range value - S3 Interval 30 (60..900 s), SQS BatchSize 11 and SNS BatchSize 0 (1..10), Kinesis and MSK Interval 0 (> 0), SiteWise Interval 5 - next to a valid file target. Every message must appear and no AWS writer may start, while the file target keeps receiving records: one bad target does not stop the schedule. MSK Interval 0 being rejected also shows that its 'flush every record' branch (AwsMskTargetWriter.kt:221,368) is unreachable. One invalid target per type on purpose: a writer validates every target of its type (AwsSqsWriterConfiguration.validate), so a second invalid target of the same type would report the first one's message in-process but its own in IPC.",
+      "pins": [
+        "targets/aws-s3-target/src/main/kotlin/com/amazonaws/sfc/awss3/config/AwsS3TargetConfiguration.kt:127-133",
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/config/AwsSqsTargetConfiguration.kt:104-110",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/config/AwsSnsTargetConfiguration.kt:134-139",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/config/AwsKinesisTargetConfiguration.kt:105-110",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/config/AwsMskTargetConfiguration.kt:121-126",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/config/AwsSiteWiseTargetConfiguration.kt:106-111",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:57-72"
+      ],
+      "failFast": [],
+      "records": 5,
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "FileTarget",
+              "name": "Writes",
+              "op": "ge",
+              "value": 5
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "logContains",
+          "text": "Interval must be in range 60..900 seconds"
+        },
+        {
+          "kind": "logContains",
+          "text": "BatchSize for SQS must be in range 1..10"
+        },
+        {
+          "kind": "logContains",
+          "text": "BatchSize for SNS must be in range 1..10"
+        },
+        {
+          "kind": "logContains",
+          "text": "Interval must be 1 or more",
+          "min": 2,
+          "comment": "Kinesis and MSK"
+        },
+        {
+          "kind": "logContains",
+          "text": "Interval must be 10 or more"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "AWS S3 writer for target",
+            "AWS SQS writer for target",
+            "AWS SNS writer for target",
+            "AWS Kinesis writer for target",
+            "AWS MKS writer for target",
+            "NoClassDefFoundError",
+            "ClassNotFoundException",
+            "NoSuchMethodError"
+          ],
+          "comment": "no AWS writer coroutine ever started; the first five are the writers' own start lines"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AWSTGT-VAL-RANGES-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget",
+              "S3Bad",
+              "SqsBad",
+              "SnsBad",
+              "KinBad",
+              "MskBad",
+              "SwBad"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "S3Bad": {
+            "TargetType": "AWS-S3",
+            "BucketName": "sfc-e2e-unused",
+            "Region": "us-east-1",
+            "Interval": 30
+          },
+          "SqsBad": {
+            "TargetType": "AWS-SQS",
+            "QueueUrl": "https://sqs.us-east-1.amazonaws.com/000000000000/q",
+            "Region": "us-east-1",
+            "BatchSize": 11
+          },
+          "SnsBad": {
+            "TargetType": "AWS-SNS",
+            "TopicArn": "arn:aws:sns:us-east-1:000000000000:t",
+            "Region": "us-east-1",
+            "BatchSize": 0
+          },
+          "KinBad": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "s",
+            "Region": "us-east-1",
+            "Interval": 0
+          },
+          "MskBad": {
+            "TargetType": "AWS-MSK",
+            "BootstrapBrokers": [
+              "127.0.0.1:1"
+            ],
+            "TopicName": "t",
+            "Interval": 0
+          },
+          "SwBad": {
+            "TargetType": "AWS-SITEWISE",
+            "Region": "us-east-1",
+            "Interval": 5,
+            "Assets": [
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "/e2e/a",
+                    "DataPath": "sources.sim.values.ctr.value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter"
+          },
+          "AWS-MSK": {
+            "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter"
+          },
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+          },
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
+          },
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter"
+          },
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter"
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-target/lib"
+            ]
+          },
+          "AWS-MSK": {
+            "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-msk-target/lib"
+            ]
+          },
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
+            ]
+          },
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sitewise-target/lib"
+            ]
+          },
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sns-target/lib"
+            ]
+          },
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sqs-target/lib"
+            ]
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "S3BadServer": {
+          "module": "aws-s3-target"
+        },
+        "SqsBadServer": {
+          "module": "aws-sqs-target"
+        },
+        "SnsBadServer": {
+          "module": "aws-sns-target"
+        },
+        "KinBadServer": {
+          "module": "aws-kinesis-target"
+        },
+        "MskBadServer": {
+          "module": "aws-msk-target"
+        },
+        "SwBadServer": {
+          "module": "aws-sitewise-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "S3Bad": {
+            "TargetServer": "S3BadServer"
+          },
+          "SqsBad": {
+            "TargetServer": "SqsBadServer"
+          },
+          "SnsBad": {
+            "TargetServer": "SnsBadServer"
+          },
+          "KinBad": {
+            "TargetServer": "KinBadServer"
+          },
+          "MskBad": {
+            "TargetServer": "MskBadServer"
+          },
+          "SwBad": {
+            "TargetServer": "SwBadServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "S3BadServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "SqsBadServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          },
+          "SnsBadServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50004
+          },
+          "KinBadServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50005
+          },
+          "MskBadServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50006
+          },
+          "SwBadServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50007
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AWSTGT-VAL-REGION-01",
+      "title": "An unknown Region is rejected by every regional AWS target; S3 Tables cannot be configured with an Endpoint alone (known defect)",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "Each regional target checks Region against its SDK client's service metadata offline, so a mistyped region fails at startup instead of as unresolvable-host errors at every write. Seven targets with Region 'us-east-7' must all be rejected with the shared 'Region \"us-east-7\" is not valid' message while the file target keeps running. S3 Tables is the exception: its first check accepts an Endpoint instead of a Region (\"Either Region must be specified\"), but the second one evaluates Region.of(_region!!) and turns the resulting NullPointerException into 'Invalid Region \"null\"', so an Endpoint-only configuration can never be built. That is pinned as a defect.",
+      "pins": [
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/config/AwsSqsTargetConfiguration.kt:122-134",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/config/AwsIotCoreTargetConfiguration.kt:111-123",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/config/AwsLambdaTargetConfiguration.kt:112-123",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/AwsS3TablesTargetConfiguration.kt:124-143"
+      ],
+      "failFast": [],
+      "records": 4,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 4
+        },
+        {
+          "kind": "logContains",
+          "text": "Region \"us-east-7\" is not valid",
+          "min": 7,
+          "comment": "S3, SQS, SNS, Lambda, Kinesis, Firehose and IoT Core"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "AWS IoT Core writer for target",
+            "AWS S3 writer for target",
+            "AWS SQS writer for target",
+            "AWS SNS writer for target",
+            "AWS Kinesis writer for target",
+            "AWS Lambda writer for target",
+            "AWS Kinesis Firehose writer for target",
+            "NoClassDefFoundError",
+            "ClassNotFoundException",
+            "NoSuchMethodError"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/AwsS3TablesTargetConfiguration.kt:133-142",
+        "summary": "S3 Tables accepts Endpoint instead of Region in its first check, then dereferences the null Region and rejects the configuration as 'Invalid Region \"null\"'",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "text": "Invalid Region \"null\""
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "Invalid Region \"null\""
+            ]
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AWSTGT-VAL-REGION-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget",
+              "S3R",
+              "SqsR",
+              "SnsR",
+              "LambdaR",
+              "KinR",
+              "FhR",
+              "IotR",
+              "S3TEp"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "S3R": {
+            "TargetType": "AWS-S3",
+            "BucketName": "sfc-e2e-unused",
+            "Region": "us-east-7"
+          },
+          "SqsR": {
+            "TargetType": "AWS-SQS",
+            "QueueUrl": "https://sqs.us-east-1.amazonaws.com/000000000000/q",
+            "Region": "us-east-7"
+          },
+          "SnsR": {
+            "TargetType": "AWS-SNS",
+            "TopicArn": "arn:aws:sns:us-east-1:000000000000:t",
+            "Region": "us-east-7"
+          },
+          "LambdaR": {
+            "TargetType": "AWS-LAMBDA",
+            "FunctionName": "f",
+            "Region": "us-east-7"
+          },
+          "KinR": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "s",
+            "Region": "us-east-7"
+          },
+          "FhR": {
+            "TargetType": "AWS-FIREHOSE",
+            "StreamName": "s",
+            "Region": "us-east-7"
+          },
+          "IotR": {
+            "TargetType": "AWS-IOT-CORE",
+            "TopicName": "sfc/e2e/r",
+            "Region": "us-east-7"
+          },
+          "S3TEp": {
+            "TargetType": "AWS-S3-TABLES",
+            "Endpoint": "http://127.0.0.1:9",
+            "TableBucket": "e2e-tb",
+            "Namespace": "e2e_ns",
+            "Tables": [
+              {
+                "TableName": "t1",
+                "Schema": [
+                  {
+                    "Name": "ctr",
+                    "Type": "int"
+                  }
+                ],
+                "Mappings": [
+                  {
+                    "ctr": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter"
+          },
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
+          },
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter"
+          },
+          "AWS-LAMBDA": {
+            "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter"
+          },
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+          },
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
+          },
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter"
+          },
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter"
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-firehose-target/lib"
+            ]
+          },
+          "AWS-IOT-CORE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-iot-core-target/lib"
+            ]
+          },
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-target/lib"
+            ]
+          },
+          "AWS-LAMBDA": {
+            "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-lambda-target/lib"
+            ]
+          },
+          "AWS-S3": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
+            ]
+          },
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-tables-target/lib"
+            ]
+          },
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sns-target/lib"
+            ]
+          },
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sqs-target/lib"
+            ]
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "S3RServer": {
+          "module": "aws-s3-target"
+        },
+        "SqsRServer": {
+          "module": "aws-sqs-target"
+        },
+        "SnsRServer": {
+          "module": "aws-sns-target"
+        },
+        "LambdaRServer": {
+          "module": "aws-lambda-target"
+        },
+        "KinRServer": {
+          "module": "aws-kinesis-target"
+        },
+        "FhRServer": {
+          "module": "aws-kinesis-firehose-target"
+        },
+        "IotRServer": {
+          "module": "aws-iot-core-target"
+        },
+        "S3TEpServer": {
+          "module": "aws-s3-tables-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "S3R": {
+            "TargetServer": "S3RServer"
+          },
+          "SqsR": {
+            "TargetServer": "SqsRServer"
+          },
+          "SnsR": {
+            "TargetServer": "SnsRServer"
+          },
+          "LambdaR": {
+            "TargetServer": "LambdaRServer"
+          },
+          "KinR": {
+            "TargetServer": "KinRServer"
+          },
+          "FhR": {
+            "TargetServer": "FhRServer"
+          },
+          "IotR": {
+            "TargetServer": "IotRServer"
+          },
+          "S3TEp": {
+            "TargetServer": "S3TEpServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "S3RServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "SqsRServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          },
+          "SnsRServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50004
+          },
+          "LambdaRServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50005
+          },
+          "KinRServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50006
+          },
+          "FhRServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50007
+          },
+          "IotRServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50008
+          },
+          "S3TEpServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50009
+          }
+        }
+      }
+    }
+  ]
+}

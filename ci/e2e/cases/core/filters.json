@@ -1,0 +1,3652 @@
+{
+  "cases": [
+    {
+      "id": "CORE-FILT-CHG-ABS-01",
+      "title": "Absolute change filter: inclusive boundary in both directions, source-level default, channel override, per-channel state",
+      "tier": "core",
+      "intent": "An Absolute change filter passes a value when it is at or beyond lastPassed +/- Value (ChangeFilter.kt:30-33, 113-114, inclusive). Counters 0..20 and 100..120 under a source-level Abs5 must yield exactly 0,5,10,15,20 and 100,105,...,120 - one filter instance per channel (ChangeFiltersCache.kt:43-47), so the two do not interfere - and the wrap back to Min passes because the drop is >= 5. 'ovr' overrides the source filter with Abs20 at channel level (ChangeFiltersCache.kt:40) and yields 0,20. 'rng' steps by exactly +5 and -5 and by +4/-1: only the exact-5 steps pass, proving the boundary is inclusive both ways. A String channel passes once, then every change throws inside the filter, which is caught, logged and treated as 'filtered' (ChangeFiltersCache.kt:63-69).",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:30-33",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:97-114",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFiltersCache.kt:40-47",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFiltersCache.kt:63-69",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Counter.kt:43-64"
+      ],
+      "records": 30,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 30
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.up.value",
+          "cycle": [
+            0,
+            5,
+            10,
+            15,
+            20
+          ],
+          "minLength": 8
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.b.value",
+          "cycle": [
+            100,
+            105,
+            110,
+            115,
+            120
+          ],
+          "minLength": 8
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.ovr.value",
+          "cycle": [
+            0,
+            20
+          ],
+          "minLength": 3
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.rng.value",
+          "cycle": [
+            100,
+            105,
+            100,
+            95
+          ],
+          "minLength": 8
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "sim",
+          "channel": "label",
+          "values": [
+            "A"
+          ]
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.label.value": "A"
+          },
+          "equals": 1,
+          "comment": "'A' passes once as the first value; 'B' throws, a returning 'A' equals the baseline"
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.label.value",
+          "value": "A"
+        },
+        {
+          "kind": "logContains",
+          "text": "Error applying filter"
+        }
+      ],
+      "priority": "P0",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-CHG-ABS-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ChangeFilters": {
+          "Abs5": {
+            "Type": "Absolute",
+            "Value": 5
+          },
+          "Abs20": {
+            "Type": "Absolute",
+            "Value": 20
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "ChangeFilter": "Abs5",
+            "Channels": {
+              "up": {
+                "Name": "up",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 20,
+                  "Step": 1
+                }
+              },
+              "b": {
+                "Name": "b",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 100,
+                  "Max": 120,
+                  "Step": 1
+                }
+              },
+              "ovr": {
+                "Name": "ovr",
+                "ChangeFilter": "Abs20",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 20,
+                  "Step": 1
+                }
+              },
+              "rng": {
+                "Name": "rng",
+                "Simulation": {
+                  "SimulationType": "Range",
+                  "DataType": "Int",
+                  "Values": [
+                    100,
+                    104,
+                    105,
+                    100,
+                    99,
+                    95
+                  ]
+                }
+              },
+              "label": {
+                "Name": "label",
+                "Simulation": {
+                  "SimulationType": "Range",
+                  "DataType": "String",
+                  "Values": [
+                    "A",
+                    "B"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-FILT-CHG-ALWAYS-01",
+      "title": "Type=Always never moves its baseline, so a value that returns to the first one is suppressed forever (known defect); docs-spelled keys are ignored",
+      "tier": "core",
+      "intent": "For Type=Always a changed value returns true without updating lastPassedValue (ChangeFilter.kt:91-94), so the first value stays the baseline: A,B,A,B emits A,B,B,B and 1,2,1,2 emits 1,2,2,2 - the moment a signal returns to its starting value it disappears. The 'docs' channel uses the keys from the documentation example (docs/core/change-filter-configuration.md:94-95, FilterType/FilterValue); the code reads Type/Value (ChangeFilterConfiguration.kt:72-73) and silently defaults to Always (:24), so the 'Absolute 5' filter passes 1 right after 0. An unfiltered counter makes every read a record, so counts are counts of reads.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:91-94",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilterConfiguration.kt:18-26",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilterConfiguration.kt:72-73",
+        "docs/core/change-filter-configuration.md:94-95"
+      ],
+      "records": 30,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 30
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.docs.value": 1
+          },
+          "min": 2,
+          "comment": "Absolute 5 would never pass 1 after 0: the docs keys were ignored and Always applied"
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.s.value": "B"
+          },
+          "min": 10
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:92",
+        "summary": "Type=Always passes a changed value without updating lastPassedValue, so every later occurrence of the first value is treated as unchanged and suppressed",
+        "assertCurrent": [
+          {
+            "kind": "recordCount",
+            "where": {
+              "sources.sim.values.s.value": "A"
+            },
+            "equals": 1
+          },
+          {
+            "kind": "recordCount",
+            "where": {
+              "sources.sim.values.flip.value": 1
+            },
+            "equals": 1
+          },
+          {
+            "kind": "recordCount",
+            "where": {
+              "sources.sim.values.docs.value": 0
+            },
+            "equals": 1
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "cycle",
+            "path": "sources.sim.values.s.value",
+            "cycle": [
+              "A",
+              "B"
+            ],
+            "minLength": 10
+          },
+          {
+            "kind": "cycle",
+            "path": "sources.sim.values.flip.value",
+            "cycle": [
+              1,
+              2
+            ],
+            "minLength": 10
+          },
+          {
+            "kind": "recordCount",
+            "where": {
+              "sources.sim.values.docs.value": 0
+            },
+            "equals": 2
+          }
+        ]
+      },
+      "priority": "P0",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-CHG-ALWAYS-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ChangeFilters": {
+          "Always": {
+            "Type": "Always"
+          },
+          "DocsSpelled": {
+            "FilterType": "Absolute",
+            "FilterValue": 5
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "s": {
+                "Name": "s",
+                "ChangeFilter": "Always",
+                "Simulation": {
+                  "SimulationType": "Range",
+                  "DataType": "String",
+                  "Values": [
+                    "A",
+                    "B"
+                  ]
+                }
+              },
+              "flip": {
+                "Name": "flip",
+                "ChangeFilter": "Always",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 2,
+                  "Step": 1
+                }
+              },
+              "docs": {
+                "Name": "docs",
+                "ChangeFilter": "DocsSpelled",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 20,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-FILT-CHG-ATLEAST-01",
+      "title": "AtLeast re-sends an unchanged value; AtLeast 0 passes every repeat; AtLeast is never applied to in-window changes (known defect)",
+      "tier": "core",
+      "intent": "AtLeast is consulted only when the new value equals the last passed one (ChangeFilter.kt:75-87, compared with >= at :80). So a constant under AtLeast 0 passes on every read, a constant under AtLeast 500 is re-sent periodically - asserted only by loose read-count bounds, since it is time-based - and its value never changes. But a counter that moves by less than the threshold is never re-sent: 1..4 between 0 and 5 do not pass even though 200 ms elapse, which contradicts the documented guarantee that at least one value passes per AtLeast period 'regardless of whether the value has changed or met the filter value threshold' (docs/core/change-filter-configuration.md:20).",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:75-89",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:80",
+        "docs/core/change-filter-configuration.md:20"
+      ],
+      "records": 30,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 30
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.k0.value",
+          "equals": 7,
+          "strictTypes": true
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "sim",
+          "channel": "k500",
+          "values": [
+            42
+          ]
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.k500.value": 42
+          },
+          "min": 2,
+          "max": 20,
+          "comment": "Time-based: about every 5th read at a 100 ms interval. Only wide bounds: it must repeat (min 2) and must not pass every read (max 20 of 30)"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:76",
+        "summary": "AtLeast only re-sends identical values; a value that changes by less than the threshold is never passed, contrary to the documented minimum reporting interval",
+        "assertCurrent": [
+          {
+            "kind": "cycle",
+            "path": "sources.sim.values.c.value",
+            "cycle": [
+              0,
+              5,
+              10,
+              15,
+              20
+            ],
+            "minLength": 5
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "distinct",
+            "path": "sources.sim.values.c.value",
+            "min": 6,
+            "comment": "With a 200 ms AtLeast and 100 ms reads, some of the in-window values must pass"
+          }
+        ]
+      },
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-CHG-ATLEAST-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ChangeFilters": {
+          "Hb500": {
+            "Type": "Absolute",
+            "Value": 1,
+            "AtLeast": 500
+          },
+          "Hb0": {
+            "Type": "Absolute",
+            "Value": 1,
+            "AtLeast": 0
+          },
+          "Abs5Hb200": {
+            "Type": "Absolute",
+            "Value": 5,
+            "AtLeast": 200
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "k500": {
+                "Name": "k500",
+                "ChangeFilter": "Hb500",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 42
+                }
+              },
+              "k0": {
+                "Name": "k0",
+                "ChangeFilter": "Hb0",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 7
+                }
+              },
+              "c": {
+                "Name": "c",
+                "ChangeFilter": "Abs5Hb200",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 20,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-FILT-CHG-NEGCFG-01",
+      "title": "Negative change-filter Value and AtLeast are accepted and silently disable filtering (known defect)",
+      "tier": "core",
+      "intent": "ChangeFilterConfiguration.validate() rejects a negative Value or AtLeast (ChangeFilterConfiguration.kt:36-61), but nothing calls it: ControllerServiceConfiguration only checks that the referenced ID exists (:258-276). A negative Value makes low > high, so every value passes; a negative AtLeast makes the period always expired, so a constant passes on every read. The configuration should be rejected at startup; today it runs and filters nothing.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilterConfiguration.kt:36-61",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ControllerServiceConfiguration.kt:258-276",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:30-33"
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "gate": {
+        "sink": "main",
+        "records": 25,
+        "orExit": true
+      },
+      "failFast": [],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 25
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ControllerServiceConfiguration.kt:258",
+        "summary": "ChangeFilterConfiguration.validate() is never invoked, so Value -5 and AtLeast -1000 are accepted and disable the filter",
+        "assertCurrent": [
+          {
+            "kind": "cycle",
+            "path": "sources.sim.values.c.value",
+            "cycle": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15,
+              16,
+              17,
+              18,
+              19,
+              20
+            ],
+            "minLength": 25
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.k.value",
+            "equals": 3,
+            "strictTypes": true
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "exitCode",
+            "equals": 1
+          },
+          {
+            "kind": "logContains",
+            "text": "must be 0 or more"
+          }
+        ]
+      },
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-CHG-NEGCFG-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ChangeFilters": {
+          "Neg": {
+            "Type": "Absolute",
+            "Value": -5
+          },
+          "NegAtLeast": {
+            "Type": "Absolute",
+            "Value": 1,
+            "AtLeast": -1000
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "ChangeFilter": "Neg",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 20,
+                  "Step": 1
+                }
+              },
+              "k": {
+                "Name": "k",
+                "ChangeFilter": "NegAtLeast",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 3
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-FILT-CHG-PCT-01",
+      "title": "Percent change filter follows a geometric progression; on negative values it filters nothing (known defect)",
+      "tier": "core",
+      "intent": "A Percent filter's window is lastPassed +/- lastPassed*Value/100 (ChangeFilter.kt:35-38). A counter 10..160 step 10 under 50% must pass exactly 10,20,30,50,80,120 (each value at least 1.5x the last passed one, or after the wrap at most half of it); every intermediate step is filtered. For a negative last value the computed dif is negative, so low > high and the 'outside' predicate at :113-114 is true for every value: a 10% filter on a signal around -100 passes all of -100..-90 instead of only -100 and -90.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:35-38",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:113-114"
+      ],
+      "records": 30,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 30
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.p.value",
+          "cycle": [
+            10,
+            20,
+            30,
+            50,
+            80,
+            120
+          ],
+          "minLength": 8
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:36",
+        "summary": "The Percent window dif = last * Value/100 is not sign-safe: for a negative last value low > high and every value passes",
+        "assertCurrent": [
+          {
+            "kind": "cycle",
+            "path": "sources.sim.values.neg.value",
+            "cycle": [
+              -100,
+              -99,
+              -98,
+              -97,
+              -96,
+              -95,
+              -94,
+              -93,
+              -92,
+              -91,
+              -90
+            ],
+            "minLength": 22
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "cycle",
+            "path": "sources.sim.values.neg.value",
+            "cycle": [
+              -100,
+              -90
+            ],
+            "minLength": 4
+          }
+        ]
+      },
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-CHG-PCT-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ChangeFilters": {
+          "Pct50": {
+            "Type": "Percent",
+            "Value": 50
+          },
+          "Pct10": {
+            "Type": "Percent",
+            "Value": 10
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "p": {
+                "Name": "p",
+                "ChangeFilter": "Pct50",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 10,
+                  "Max": 160,
+                  "Step": 10
+                }
+              },
+              "neg": {
+                "Name": "neg",
+                "ChangeFilter": "Pct10",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": -100,
+                  "Max": -90,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-FILT-COND-OPS-01",
+      "title": "Condition filters present/absent/any/all/none/and/or over a 4-phase trigger pattern; operands are channel IDs, not names",
+      "tier": "core",
+      "intent": "Two triggers share one 4-phase counter: t1 passes its value filter in phases 2 and 3, t2 in phases 1 and 3, so the four phases realise all four presence combinations. Each constant channel carries one condition filter, evaluated against the source's post-value-filter channel map keyed by channel ID (ScheduleReader.kt:621-642, SourceReadResult.kt:36-37). The exact key set of every phase is asserted (selected by the unfiltered phase counter 'ph'), so a wrong operator or a filter evaluated on the wrong snapshot changes a set. 'wn' is conditioned on 'Trigger1', t1's output Name: filters see IDs, so it never passes - while the payload key of t1 IS its Name.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ConditionFilterBuilder.kt:18-28",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:621-642",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourceReadResult.kt:36-37",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/AbsentConditionFilter.kt:13-14",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/AnyConditionFilter.kt:12-13",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/AllConditionFilter.kt:13-14",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/NoneConditionFilter.kt:13-14"
+      ],
+      "records": 16,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 16
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.ph.value": 0
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "ph",
+            "wa",
+            "wnone",
+            "wh"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.ph.value": 1
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "ph",
+            "t2",
+            "wa",
+            "wany"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.ph.value": 2
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "ph",
+            "Trigger1",
+            "wp",
+            "wany",
+            "wg",
+            "wh"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.ph.value": 3
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "ph",
+            "Trigger1",
+            "t2",
+            "wp",
+            "wany",
+            "wall",
+            "wh"
+          ]
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.ph.value": 0
+          },
+          "min": 3
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.ph.value": 1
+          },
+          "min": 3
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.ph.value": 2
+          },
+          "min": 3
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.ph.value": 3
+          },
+          "min": 3
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.sim.values.wn"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "sim",
+          "channel": "wh",
+          "values": [
+            17
+          ]
+        }
+      ],
+      "priority": "P0",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-COND-OPS-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Ge2": {
+            "Operator": "ge",
+            "Value": 2
+          },
+          "Odd": {
+            "Operator": "or",
+            "Value": [
+              {
+                "Operator": "eq",
+                "Value": 1
+              },
+              {
+                "Operator": "eq",
+                "Value": 3
+              }
+            ]
+          }
+        },
+        "ConditionFilters": {
+          "P1": {
+            "Operator": "present",
+            "Value": "t1"
+          },
+          "A1": {
+            "Operator": "absent",
+            "Value": "t1"
+          },
+          "Any": {
+            "Operator": "any",
+            "Value": [
+              "t1",
+              "t2"
+            ]
+          },
+          "All": {
+            "Operator": "all",
+            "Value": [
+              "t1",
+              "t2"
+            ]
+          },
+          "None": {
+            "Operator": "none",
+            "Value": [
+              "t1",
+              "t2"
+            ]
+          },
+          "G": {
+            "Operator": "and",
+            "Value": [
+              {
+                "Operator": "present",
+                "Value": "t1"
+              },
+              {
+                "Operator": "absent",
+                "Value": "t2"
+              }
+            ]
+          },
+          "H": {
+            "Operator": "or",
+            "Value": [
+              {
+                "Operator": "#",
+                "Value": "t1"
+              },
+              {
+                "Operator": "!",
+                "Value": "t2"
+              }
+            ]
+          },
+          "ByName": {
+            "Operator": "present",
+            "Value": "Trigger1"
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ph": {
+                "Name": "ph",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 3,
+                  "Step": 1
+                }
+              },
+              "t1": {
+                "Name": "Trigger1",
+                "ValueFilter": "Ge2",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 3,
+                  "Step": 1
+                }
+              },
+              "t2": {
+                "Name": "t2",
+                "ValueFilter": "Odd",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 3,
+                  "Step": 1
+                }
+              },
+              "wp": {
+                "Name": "wp",
+                "ConditionFilter": "P1",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 11
+                }
+              },
+              "wa": {
+                "Name": "wa",
+                "ConditionFilter": "A1",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 12
+                }
+              },
+              "wany": {
+                "Name": "wany",
+                "ConditionFilter": "Any",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 13
+                }
+              },
+              "wall": {
+                "Name": "wall",
+                "ConditionFilter": "All",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 14
+                }
+              },
+              "wnone": {
+                "Name": "wnone",
+                "ConditionFilter": "None",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 15
+                }
+              },
+              "wg": {
+                "Name": "wg",
+                "ConditionFilter": "G",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 16
+                }
+              },
+              "wh": {
+                "Name": "wh",
+                "ConditionFilter": "H",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 17
+                }
+              },
+              "wn": {
+                "Name": "wn",
+                "ConditionFilter": "ByName",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 18
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-FILT-COND-SIZE-PATH-01",
+      "title": "only/notonly count the surviving channel map; a dotted JMESPath reaches into a Structure value",
+      "tier": "core",
+      "intent": "'only' passes when the source's post-value-filter map holds exactly one channel, 'notonly' when it holds more (OnlyValueConditionFilter.kt:11-12, NotOnlyValueConditionFilter.kt:11-12). A 0/1 trigger behind eq 1 toggles the map size, so srcOnly alternates between {onlyCh} and {tA}, and srcNot between absent and {tB, notonlyCh}. A present condition with 'status.state' is a JMESPath into a Structure channel's value (FilterBuilder.kt:99-101) and passes; 'status.nosuch' does not. Assertions are per source, because the source order in a record follows completion order.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/OnlyValueConditionFilter.kt:11-12",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/NotOnlyValueConditionFilter.kt:11-12",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/FilterBuilder.kt:99-109",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/PresentConditionFilter.kt:13-14"
+      ],
+      "records": 10,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 10
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.srcOnly.values.onlyCh.value": 7
+          },
+          "path": "sources.srcOnly.values",
+          "keys": [
+            "onlyCh"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.srcOnly.values.tA.value": 1
+          },
+          "path": "sources.srcOnly.values",
+          "keys": [
+            "tA"
+          ]
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.srcOnly.values.onlyCh.value": 7
+          },
+          "min": 4
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.srcOnly.values.tA.value": 1
+          },
+          "min": 4
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.srcOnly.values.tA.value": 1
+          },
+          "path": "sources.srcNot.values",
+          "keys": [
+            "tB",
+            "notonlyCh"
+          ]
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.srcNot"
+          ],
+          "where": {
+            "sources.srcOnly.values.onlyCh.value": 7
+          }
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.srcStruct.values",
+          "keys": [
+            "status",
+            "ok"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.srcStruct.values.status.value",
+          "equals": {
+            "state": "RUN"
+          }
+        }
+      ],
+      "priority": "P2",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-COND-SIZE-PATH-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Eq1": {
+            "Operator": "eq",
+            "Value": 1
+          }
+        },
+        "ConditionFilters": {
+          "Sole": {
+            "Operator": "only",
+            "Value": true
+          },
+          "NotSole": {
+            "Operator": "notonly",
+            "Value": true
+          },
+          "SubOk": {
+            "Operator": "present",
+            "Value": "status.state"
+          },
+          "SubBad": {
+            "Operator": "present",
+            "Value": "status.nosuch"
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "srcOnly": [
+                "*"
+              ],
+              "srcNot": [
+                "*"
+              ],
+              "srcStruct": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "srcOnly": {
+            "Name": "srcOnly",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "tA": {
+                "Name": "tA",
+                "ValueFilter": "Eq1",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 1,
+                  "Step": 1
+                }
+              },
+              "onlyCh": {
+                "Name": "onlyCh",
+                "ConditionFilter": "Sole",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 7
+                }
+              }
+            }
+          },
+          "srcNot": {
+            "Name": "srcNot",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "tB": {
+                "Name": "tB",
+                "ValueFilter": "Eq1",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 1,
+                  "Step": 1
+                }
+              },
+              "notonlyCh": {
+                "Name": "notonlyCh",
+                "ConditionFilter": "NotSole",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 8
+                }
+              }
+            }
+          },
+          "srcStruct": {
+            "Name": "srcStruct",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "status": {
+                "Name": "status",
+                "Simulation": {
+                  "SimulationType": "Structure",
+                  "Properties": {
+                    "state": {
+                      "SimulationType": "Constant",
+                      "DataType": "String",
+                      "Value": "RUN"
+                    }
+                  }
+                }
+              },
+              "ok": {
+                "Name": "ok",
+                "ConditionFilter": "SubOk",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 1
+                }
+              },
+              "bad": {
+                "Name": "bad",
+                "ConditionFilter": "SubBad",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 2
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-FILT-FAILOPEN-01",
+      "title": "Malformed value and condition filters are accepted and pass everything (known defect)",
+      "tier": "core",
+      "intent": "Validation only checks the top-level operator name (ControllerServiceConfiguration.kt:154-166, FilterConfiguration.kt:33-40). Everything else fails open: non-object elements of an and/or array are dropped (FilterConfigurationDeserializer.kt:47-58, FilterBuilder.kt:77-82) and a nested unknown operator builds to null and is dropped too (FilterBuilder.kt:94-97), leaving an empty And or Or, which passes every value (AndFilter.kt:16, OrFilter.kt:20). A condition filter with a numeric Value yields no expression (FilterBuilder.kt:99-108), create returns null (PresentConditionFilter.kt:32), the cache drops it (ConditionFiltersCache.kt:16-21) and a missing filter passes (ScheduleReader.kt:631). A typo in a filter therefore silently disables it.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/FilterBuilder.kt:77-108",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/AndFilter.kt:16",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/OrFilter.kt:20",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ConditionFiltersCache.kt:13-21",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:626-632",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ControllerServiceConfiguration.kt:154-166"
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "gate": {
+        "sink": "main",
+        "records": 22,
+        "orExit": true
+      },
+      "failFast": [],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 22
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/FilterBuilder.kt:77",
+        "summary": "Malformed and/or groups, nested unknown operators and non-string condition values build to empty or missing filters, which pass everything instead of being rejected",
+        "assertCurrent": [
+          {
+            "kind": "cycle",
+            "path": "sources.sim.values.c1.value",
+            "cycle": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "minLength": 22
+          },
+          {
+            "kind": "cycle",
+            "path": "sources.sim.values.c2.value",
+            "cycle": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "minLength": 22
+          },
+          {
+            "kind": "cycle",
+            "path": "sources.sim.values.c3.value",
+            "cycle": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10
+            ],
+            "minLength": 22
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.d.value",
+            "equals": 5,
+            "strictTypes": true
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "exitCode",
+            "equals": 1
+          }
+        ]
+      },
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-FAILOPEN-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Broken": {
+            "Operator": "and",
+            "Value": [
+              "ge 5",
+              "le 6"
+            ]
+          },
+          "Empty": {
+            "Operator": "or",
+            "Value": []
+          },
+          "Bogus": {
+            "Operator": "and",
+            "Value": [
+              {
+                "Operator": "bogus",
+                "Value": 5
+              }
+            ]
+          }
+        },
+        "ConditionFilters": {
+          "BadCond": {
+            "Operator": "present",
+            "Value": 123
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "c1": {
+                "Name": "c1",
+                "ValueFilter": "Broken",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "c2": {
+                "Name": "c2",
+                "ValueFilter": "Empty",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "c3": {
+                "Name": "c3",
+                "ValueFilter": "Bogus",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "d": {
+                "Name": "d",
+                "ConditionFilter": "BadCond",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 5
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-FILT-ORDER-01",
+      "title": "Stage order: transformation before value filter; condition filters see the post-change-filter map",
+      "tier": "core",
+      "intent": "processReceivedData applies transformations, then change and value filters, then condition filters (ScheduleReader.kt:331-334, 597-618). 'c' is multiplied by 10 and then filtered with gt 150: it passes for raw 16..20 as 160..200, which is only possible if the filter sees transformed values (raw values never exceed 20). 'd' is conditioned on 't' being present, and 't' sits behind an Absolute 5 change filter: 'd' appears exactly in the reads where 't' survived the change filter, so the condition filter evaluates the post-change-filter map. Over the shared 21-read cycle the records are phases 0,5,10,15 {t,d}, 16..19 {c} and 20 {c,t,d}.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:331-337",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:589-618"
+      ],
+      "records": 18,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 18
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.c.value",
+          "cycle": [
+            160,
+            170,
+            180,
+            190,
+            200
+          ],
+          "minLength": 8
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.t.value",
+          "cycle": [
+            0,
+            5,
+            10,
+            15,
+            20
+          ],
+          "minLength": 8
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.t.value": 0
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "t",
+            "d"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.t.value": 5
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "t",
+            "d"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.t.value": 10
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "t",
+            "d"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.t.value": 15
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "t",
+            "d"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.t.value": 20
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "c",
+            "t",
+            "d"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.c.value": 160
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "c"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.c.value": 170
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "c"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.c.value": 180
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "c"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "where": {
+            "sources.sim.values.c.value": 190
+          },
+          "path": "sources.sim.values",
+          "keys": [
+            "c"
+          ]
+        }
+      ],
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-ORDER-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Transformations": {
+          "Times10": [
+            {
+              "Operator": "Multiply",
+              "Operand": 10
+            }
+          ]
+        },
+        "ValueFilters": {
+          "Gt150": {
+            "Operator": "gt",
+            "Value": 150
+          }
+        },
+        "ChangeFilters": {
+          "Abs5": {
+            "Type": "Absolute",
+            "Value": 5
+          }
+        },
+        "ConditionFilters": {
+          "HasT": {
+            "Operator": "present",
+            "Value": "t"
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Transformation": "Times10",
+                "ValueFilter": "Gt150",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 20,
+                  "Step": 1
+                }
+              },
+              "t": {
+                "Name": "t",
+                "ChangeFilter": "Abs5",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 20,
+                  "Step": 1
+                }
+              },
+              "d": {
+                "Name": "d",
+                "ConditionFilter": "HasT",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-FILT-VAL-OPS-01",
+      "title": "Every value-filter comparator (word and symbol forms), nested and/or groups and a single-object group",
+      "tier": "core",
+      "intent": "Ten lockstep counters 0..10, each behind one value filter. Within a read all counters hold the same value, and each filter's pass set over a full cycle is exact: gt/>, >=, lt, <=, ==, ne, an and-range [3,6], a nested '0 or (>=5 and !=8 and <11)' and an 'or' whose Value is a single object rather than an array (FilterConfigurationDeserializer.kt:61-63). Filter values are compared as doubles (FilterConfigurationDeserializer.kt:41, DataTypes.kt:66-73). Every read passes at least one channel (lt or ge), so records equal reads and a cycle missing from a channel is a filtering error, not a missing record.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ValueFilterBuilder.kt:18-27",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/FilterBuilder.kt:68-86",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/FilterConfigurationDeserializer.kt:39-63",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/AndFilter.kt:15-17",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/OrFilter.kt:19-21",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/DataTypes.kt:66-73"
+      ],
+      "records": 22,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 22
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.gt.value",
+          "cycle": [
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "minLength": 5
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.gts.value",
+          "cycle": [
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "minLength": 5
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.ge.value",
+          "cycle": [
+            5,
+            6,
+            7,
+            8,
+            9,
+            10
+          ],
+          "minLength": 6
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.lt.value",
+          "cycle": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "minLength": 5
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.le.value",
+          "cycle": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "minLength": 6
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.eq.value",
+          "cycle": [
+            7
+          ],
+          "minLength": 2
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.ne.value",
+          "cycle": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            8,
+            9,
+            10
+          ],
+          "minLength": 10
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.band.value",
+          "cycle": [
+            3,
+            4,
+            5,
+            6
+          ],
+          "minLength": 4
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.cplx.value",
+          "cycle": [
+            0,
+            5,
+            6,
+            7,
+            9,
+            10
+          ],
+          "minLength": 6
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.single.value",
+          "cycle": [
+            3
+          ],
+          "minLength": 2
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.lt.value": 0
+          },
+          "min": 2,
+          "comment": "both cycles observed"
+        }
+      ],
+      "priority": "P0",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-VAL-OPS-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Gt5": {
+            "Operator": "gt",
+            "Value": 5
+          },
+          "Gt5s": {
+            "Operator": ">",
+            "Value": 5
+          },
+          "Ge5": {
+            "Operator": ">=",
+            "Value": 5
+          },
+          "Lt5": {
+            "Operator": "lt",
+            "Value": 5
+          },
+          "Le5": {
+            "Operator": "<=",
+            "Value": 5
+          },
+          "Eq7": {
+            "Operator": "==",
+            "Value": 7
+          },
+          "Ne7": {
+            "Operator": "ne",
+            "Value": 7
+          },
+          "Band": {
+            "Operator": "and",
+            "Value": [
+              {
+                "Operator": "ge",
+                "Value": 3
+              },
+              {
+                "Operator": "le",
+                "Value": 6
+              }
+            ]
+          },
+          "Cplx": {
+            "Operator": "||",
+            "Value": [
+              {
+                "Operator": "eq",
+                "Value": 0
+              },
+              {
+                "Operator": "&&",
+                "Value": [
+                  {
+                    "Operator": ">=",
+                    "Value": 5
+                  },
+                  {
+                    "Operator": "!=",
+                    "Value": 8
+                  },
+                  {
+                    "Operator": "<",
+                    "Value": 11
+                  }
+                ]
+              }
+            ]
+          },
+          "Single": {
+            "Operator": "or",
+            "Value": {
+              "Operator": "eq",
+              "Value": 3
+            }
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "gt": {
+                "Name": "gt",
+                "ValueFilter": "Gt5",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "gts": {
+                "Name": "gts",
+                "ValueFilter": "Gt5s",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "ge": {
+                "Name": "ge",
+                "ValueFilter": "Ge5",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "lt": {
+                "Name": "lt",
+                "ValueFilter": "Lt5",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "le": {
+                "Name": "le",
+                "ValueFilter": "Le5",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "eq": {
+                "Name": "eq",
+                "ValueFilter": "Eq7",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "ne": {
+                "Name": "ne",
+                "ValueFilter": "Ne7",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "band": {
+                "Name": "band",
+                "ValueFilter": "Band",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "cplx": {
+                "Name": "cplx",
+                "ValueFilter": "Cplx",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              },
+              "single": {
+                "Name": "single",
+                "ValueFilter": "Single",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-FILT-VAL-TYPES-01",
+      "title": "String and Boolean equality filters; eq with a JSON number never matches a numeric string (known defect)",
+      "tier": "core",
+      "intent": "EqualValueFilter compares a String channel with the filter value's toString() and a Boolean with a Boolean (EqualValueFilter.kt:21-26). An or-group of two string eq filters passes exactly ERROR and CRITICAL of a 4-value range; eq true passes a true constant and eq false blocks it; eq \"5\" passes the string \"5\". But a numeric filter value is deserialized as a Double (FilterConfigurationDeserializer.kt:41), so eq 5 compares \"5\" with \"5.0\" and never matches.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/EqualValueFilter.kt:21-26",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/FilterConfigurationDeserializer.kt:39-44"
+      ],
+      "records": 12,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 12
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.st.value",
+          "cycle": [
+            "ERROR",
+            "CRITICAL"
+          ],
+          "minLength": 4
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.bT.value",
+          "equals": true,
+          "strictTypes": true
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.sim.values.bF"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.sStr.value",
+          "equals": "5",
+          "strictTypes": true
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/EqualValueFilter.kt:23",
+        "summary": "Numeric filter values are Doubles and a String channel is compared with value.toString(), so eq 5 compares \"5\" with \"5.0\" and never matches",
+        "assertCurrent": [
+          {
+            "kind": "keysAbsent",
+            "paths": [
+              "sources.sim.values.sNum"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.sNum.value",
+            "equals": "5",
+            "strictTypes": true
+          }
+        ]
+      },
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-FILT-VAL-TYPES-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Alarm": {
+            "Operator": "or",
+            "Value": [
+              {
+                "Operator": "eq",
+                "Value": "ERROR"
+              },
+              {
+                "Operator": "eq",
+                "Value": "CRITICAL"
+              }
+            ]
+          },
+          "EqT": {
+            "Operator": "eq",
+            "Value": true
+          },
+          "EqF": {
+            "Operator": "eq",
+            "Value": false
+          },
+          "EqNum5": {
+            "Operator": "eq",
+            "Value": 5
+          },
+          "EqStr5": {
+            "Operator": "eq",
+            "Value": "5"
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "st": {
+                "Name": "st",
+                "ValueFilter": "Alarm",
+                "Simulation": {
+                  "SimulationType": "Range",
+                  "DataType": "String",
+                  "Values": [
+                    "ERROR",
+                    "OK",
+                    "CRITICAL",
+                    "WARN"
+                  ]
+                }
+              },
+              "bT": {
+                "Name": "bT",
+                "ValueFilter": "EqT",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "bF": {
+                "Name": "bF",
+                "ValueFilter": "EqF",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "sNum": {
+                "Name": "sNum",
+                "ValueFilter": "EqNum5",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "5"
+                }
+              },
+              "sStr": {
+                "Name": "sStr",
+                "ValueFilter": "EqStr5",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "5"
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

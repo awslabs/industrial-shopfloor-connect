@@ -1,0 +1,3616 @@
+{
+  "cases": [
+    {
+      "id": "CHAIN-SF-MIDRUN-OUTAGE-01",
+      "title": "An MQTT outage after the first connection is reported as ERROR, so store-and-forward discards instead of buffering",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "Once the MQTT client exists, a dropped connection makes publish fail with 'Client is not connected' (automatic reconnect, no offline buffer, MqttHelper.kt:88). MqttTargetWriter NACKs only on a timeout or a never-created client and reports everything else as ERROR (MqttTargetWriter.kt:384-392), and S&F deletes ERROR serials instead of storing them (BufferedWriter.kt:406-409), although the chaining docs map unavailability to NACK (sfc-targets-chaining.md:21). The gate is open first, closed after 10 deliveries until at least 3 ERRORs were logged, then reopened; the records rejected during the outage never arrive. Metrics are on so the result-worker deadlock (CHAIN-SF-RECOVER-MQTT-01) cannot mask a fix.",
+      "pins": [
+        "targets/mqtt-target/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttTargetWriter.kt:388",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttHelper.kt:88",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:406",
+        "docs/sfc-targets-chaining.md:21"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "gate",
+          "kind": "tcpgate",
+          "args": {
+            "to": "broker"
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "mqtt",
+          "service": "broker",
+          "topic": "sfc/e2e/#"
+        },
+        "ref": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 10
+          }
+        },
+        {
+          "do": "gate-close",
+          "service": "gate"
+        },
+        {
+          "wait": {
+            "log": "Received ERROR for target data with serials",
+            "count": 3
+          }
+        },
+        {
+          "do": "gate-open",
+          "service": "gate"
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 30
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "serialSet",
+          "a": "main",
+          "b": "ref",
+          "relation": "subset"
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/mqtt-target/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttTargetWriter.kt:388",
+        "summary": "MQTT reports a lost connection as ERROR instead of NACK and store-and-forward discards ERROR serials, so records produced during a mid-run outage are lost",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "text": "Received ERROR for target data with serials",
+            "min": 3
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "switching from FORWARDING to BUFFERING"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "text": "switching from FORWARDING to BUFFERING"
+          },
+          {
+            "kind": "channelValueRun",
+            "source": "sim",
+            "channel": "ctr",
+            "allowDuplicates": true,
+            "comment": "nothing lost across the outage"
+          }
+        ]
+      },
+      "allowWriteErrors": [
+        "Mqtt"
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-MIDRUN-OUTAGE-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF",
+              "Ref"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Mqtt"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "Mqtt": {
+            "TargetType": "MQTT-TARGET",
+            "EndPoint": "tcp://127.0.0.1:${SFC_E2E_GATE_PORT}",
+            "Port": "${SFC_E2E_GATE_PORT}",
+            "TopicName": "sfc/e2e/chain",
+            "Qos": 1,
+            "BatchCount": 1,
+            "ConnectRetries": 1,
+            "WaitAfterConnectError": 0
+          },
+          "Ref": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_REF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "MqttServer": {
+          "module": "mqtt-target"
+        },
+        "RefServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Mqtt": {
+            "TargetServer": "MqttServer"
+          },
+          "Ref": {
+            "TargetServer": "RefServer"
+          }
+        },
+        "TargetServers": {
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "MqttServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "RefServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-MIDRUN-OUTAGE-02",
+      "title": "An unreachable SQS endpoint is reported as ERROR, so store-and-forward discards instead of buffering",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "The AWS form of CHAIN-SF-MIDRUN-OUTAGE-01, fully local: the SQS target's Endpoint is the AWS wire stub, which is not started until 3 ERRORs were logged, so every early SendMessageBatch fails with connection refused. AWS targets NACK only for an UnknownHostException or 'Connection pool shut down' (Networking.kt:15-18, AwsSqsTargetWriter.kt:288-292), so a refused connection becomes ERROR and S&F drops the records (BufferedWriter.kt:406-409). Once the stub is up, later values arrive, but value 0 and the others sent during the outage never do. Fake credentials and a dead config/credentials file keep the SDK away from AWS.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/Networking.kt:15",
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:288",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:406",
+        "docs/sfc-targets-chaining.md:21"
+      ],
+      "services": [
+        {
+          "name": "stub",
+          "kind": "aws-wire-stub",
+          "start": "deferred",
+          "args": {
+            "spec": "stub.json"
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "aws-stub",
+          "service": "stub"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "e2e-fake",
+        "AWS_SECRET_ACCESS_KEY": "e2e-fake",
+        "AWS_REGION": "us-east-1",
+        "AWS_PROFILE": "",
+        "AWS_CONFIG_FILE": "/dev/null",
+        "AWS_SHARED_CREDENTIALS_FILE": "/dev/null",
+        "AWS_EC2_METADATA_DISABLED": "true"
+      },
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "log": "Received ERROR for target data with serials",
+            "count": 3
+          }
+        },
+        {
+          "do": "start",
+          "service": "stub"
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 15
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "allowDuplicates": true,
+          "comment": "after the outage nothing else is lost"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/Networking.kt:15",
+        "summary": "AWS targets report a refused connection as ERROR rather than NACK, so store-and-forward discards the records instead of buffering them",
+        "assertCurrent": [
+          {
+            "kind": "recordCount",
+            "where": {
+              "sources.sim.values.ctr.value": 0
+            },
+            "max": 0,
+            "comment": "value 0 was sent during the outage and dropped"
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "switching from FORWARDING to BUFFERING"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "where": {
+              "sources.sim.values.ctr.value": 0
+            },
+            "min": 1
+          },
+          {
+            "kind": "logContains",
+            "text": "switching from FORWARDING to BUFFERING"
+          }
+        ]
+      },
+      "allowWriteErrors": [
+        "Sqs"
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-MIDRUN-OUTAGE-02",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Sqs"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "Sqs": {
+            "TargetType": "AWS-SQS",
+            "Endpoint": "http://127.0.0.1:${SFC_E2E_STUB_PORT}",
+            "Region": "us-east-1",
+            "QueueUrl": "http://127.0.0.1:${SFC_E2E_STUB_PORT}/000000000000/sfc-e2e",
+            "BatchSize": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sqs-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "SqsServer": {
+          "module": "aws-sqs-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Sqs": {
+            "TargetServer": "SqsServer"
+          }
+        },
+        "TargetServers": {
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SqsServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "stub.json": "{\n  \"responses\": [\n    {}\n  ]\n}\n"
+      }
+    },
+    {
+      "id": "CHAIN-SF-PASSTHRU-01",
+      "title": "Store-and-forward in front of a healthy target forwards every record once, in order, without buffering",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "The common case: S&F sits in front of a target that always accepts. An in-process target is always initialised, so forwardDataToTarget succeeds and the record never touches the buffer (BufferedWriter.kt:260-277, :369-384). The leaf sink must hold the counter from 0 with step 1, no duplicate serials, an empty buffer directory and no switch to buffering, so a lost, duplicated or needlessly buffered record fails the case. Merges CORE-CHAIN-SF-01; in IPC mode SF and Leaf stay in sfc-main, so all three modes exercise the same in-process forwarding path (the IPC-service chain is CHAIN-SF-PASSTHRU-02).",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:260",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:369",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/StoreForwardTargetWriter.kt:156",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetWriter.kt:24"
+      ],
+      "sinks": {
+        "leaf": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "gate": {
+        "sink": "leaf",
+        "records": 20
+      },
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "sink": "leaf",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "recordCount",
+          "sink": "leaf",
+          "where": {
+            "sources.sim.values.ctr.value": 0
+          },
+          "equals": 1,
+          "comment": "the first record is forwarded, not lost while the writers start"
+        },
+        {
+          "kind": "noDuplicates",
+          "sink": "leaf"
+        },
+        {
+          "kind": "dirFiles",
+          "dir": "buffer",
+          "max": 0,
+          "comment": "nothing was buffered"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "switching from FORWARDING to BUFFERING",
+            "Error creating instance of"
+          ]
+        }
+      ],
+      "modeParity": true,
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-PASSTHRU-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Leaf"
+            ],
+            "RetainFiles": 100,
+            "RetainSize": 100
+          },
+          "Leaf": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_LEAF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "LeafServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Leaf": {
+            "TargetServer": "LeafServer"
+          }
+        },
+        "TargetServers": {
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "LeafServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-PASSTHRU-02",
+      "title": "Store-and-forward running as its own IPC service forwards to a downstream IPC service",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "S&F is not in ipcLocalTargets here, so it runs as service target-SF and reaches its downstream debug target through a second gRPC hop (sfc-main -> target-SF -> target-Dbg); the S&F service creates that client itself from the TargetServer it receives (StoreForwardTargetWriter.kt:336-339). Every counter value from 0 must arrive once and in order with no switch to buffering. IPC only: the other modes have no IPC services to chain.",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/StoreForwardTargetWriter.kt:336",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:369",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetWriter.kt:404"
+      ],
+      "modes": [
+        "ipc"
+      ],
+      "sinks": {
+        "dbg": {
+          "kind": "debug",
+          "target": "Dbg"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "gate": {
+        "sink": "dbg",
+        "records": 15
+      },
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "sink": "dbg",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "recordCount",
+          "sink": "dbg",
+          "where": {
+            "sources.sim.values.ctr.value": 0
+          },
+          "equals": 1
+        },
+        {
+          "kind": "noDuplicates",
+          "sink": "dbg"
+        },
+        {
+          "kind": "logContains",
+          "process": "target-SF",
+          "text": "Creating an IPC process writer for target \"Dbg\"",
+          "comment": "the S&F service, not sfc-main, owns the downstream client"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "switching from FORWARDING to BUFFERING"
+          ]
+        },
+        {
+          "kind": "dirFiles",
+          "dir": "buffer",
+          "max": 0
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-PASSTHRU-02",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Dbg"
+            ],
+            "RetainFiles": 100,
+            "RetainSize": 100
+          },
+          "Dbg": {
+            "TargetType": "DEBUG-TARGET"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "DbgServer": {
+          "module": "debug-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Dbg": {
+            "TargetServer": "DbgServer"
+          }
+        },
+        "TargetServers": {
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "DbgServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-RECOVER-MQTT-01",
+      "title": "Store-and-forward never resubmits its buffer after the downstream recovers (result worker deadlock)",
+      "tier": "local-infra",
+      "priority": "P0",
+      "intent": "The documented core promise: buffer while MQTT is unreachable (tcpgate closed from the start), then forward the buffer once it is back. Root cause of the pilot's losses: the mode setter calls StoreForwardTargetWriter's onModeChanged synchronously (BufferedWriter.kt:65-75), which does a runBlocking send on bufferingModeChannel (StoreForwardTargetWriter.kt:115-123). That channel's capacity is the number of sub-targets (:184) and its only consumer is the buffer-metrics coroutine, which exists only when metrics are collected (:187-224). Without a Metrics section, the FORWARDING->BUFFERING send fills the channel and the BUFFERING->FORWARDING send blocks the result worker forever, before resubmittingBufferedData() (:133-141): the buffer is stranded on disk and no later ACK is processed. Live data flows again, so only serial-level evidence shows the loss: the buffered values never reach the subscriber and their files stay on disk.",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:65",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:133",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/StoreForwardTargetWriter.kt:115",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/StoreForwardTargetWriter.kt:184",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/StoreForwardTargetWriter.kt:187",
+        "targets/mqtt-target/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttTargetWriter.kt:388",
+        "docs/targets/store-and-forward-target.md:5"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "gate",
+          "kind": "tcpgate",
+          "args": {
+            "to": "broker",
+            "closed": true
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "mqtt",
+          "service": "broker",
+          "topic": "sfc/e2e/#"
+        },
+        "ref": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "files": {
+              "dir": "buffer",
+              "min": 8
+            }
+          }
+        },
+        {
+          "do": "gate-open",
+          "service": "gate"
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 40
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "logContains",
+          "text": "switching from FORWARDING to BUFFERING"
+        },
+        {
+          "kind": "logContains",
+          "text": "switching from BUFFERING to FORWARDING",
+          "comment": "the switch back is logged before the setter blocks"
+        },
+        {
+          "kind": "serialSet",
+          "a": "main",
+          "b": "ref",
+          "relation": "subset",
+          "comment": "every delivered record carries an original serial"
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/StoreForwardTargetWriter.kt:115",
+        "summary": "Without a Metrics section, switching BUFFERING->FORWARDING blocks the S&F result worker on an unconsumed bufferingModeChannel, so the buffer is never resubmitted and later ACKs are never processed; queued probes also deliver the same serial more than once",
+        "assertCurrent": [
+          {
+            "kind": "dirFiles",
+            "dir": "buffer",
+            "min": 7,
+            "comment": "the buffered records are stranded on disk"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "dirFiles",
+            "dir": "buffer",
+            "max": 0
+          },
+          {
+            "kind": "recordCount",
+            "where": {
+              "sources.sim.values.ctr.value": 0
+            },
+            "equals": 1,
+            "comment": "the first buffered record arrives, once"
+          },
+          {
+            "kind": "channelValueRun",
+            "source": "sim",
+            "channel": "ctr",
+            "comment": "no gaps, no duplicates"
+          },
+          {
+            "kind": "noDuplicates"
+          }
+        ]
+      },
+      "allowWriteErrors": [
+        "Mqtt"
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-RECOVER-MQTT-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF",
+              "Ref"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Mqtt"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "Mqtt": {
+            "TargetType": "MQTT-TARGET",
+            "EndPoint": "tcp://127.0.0.1:${SFC_E2E_GATE_PORT}",
+            "Port": "${SFC_E2E_GATE_PORT}",
+            "TopicName": "sfc/e2e/chain",
+            "Qos": 1,
+            "BatchCount": 1,
+            "ConnectRetries": 1,
+            "WaitAfterConnectError": 0
+          },
+          "Ref": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_REF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "MqttServer": {
+          "module": "mqtt-target"
+        },
+        "RefServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Mqtt": {
+            "TargetServer": "MqttServer"
+          },
+          "Ref": {
+            "TargetServer": "RefServer"
+          }
+        },
+        "TargetServers": {
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "MqttServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "RefServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-RECOVER-MQTT-02",
+      "title": "With metrics on, store-and-forward drains its buffer, but queued probes deliver the same serial many times",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "The same outage as CHAIN-SF-RECOVER-MQTT-01, but with a Metrics section, so the buffer-metrics coroutine drains bufferingModeChannel (StoreForwardTargetWriter.kt:187-224) and the result worker survives the switch back: the buffer must drain completely and every counter value from 0 must arrive (duplicates allowed). It also pins the duplicate defect seen in the pilot: in BUFFERING mode every incoming record re-sends a buffered item as a probe (BufferedWriter.kt:207-222, :241-257) without waiting for the previous probe's result. With WaitAfterConnectError 1 each failed connect takes a second, so probes for the same file pile up in the MQTT target's queue and are all published on recovery, while the resubmission lists the same files again (:279-305). The docs promise a periodic probe and in-order, loss-free forwarding (store-and-forward-target.md:5, :17).",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/StoreForwardTargetWriter.kt:187",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:207",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:241",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:279",
+        "docs/targets/store-and-forward-target.md:17"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "gate",
+          "kind": "tcpgate",
+          "args": {
+            "to": "broker",
+            "closed": true
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "mqtt",
+          "service": "broker",
+          "topic": "sfc/e2e/#"
+        },
+        "ref": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "files": {
+              "dir": "buffer",
+              "min": 8
+            }
+          }
+        },
+        {
+          "do": "gate-open",
+          "service": "gate"
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 40
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "logContains",
+          "text": "switching from FORWARDING to BUFFERING"
+        },
+        {
+          "kind": "logContains",
+          "text": "switching from BUFFERING to FORWARDING"
+        },
+        {
+          "kind": "dirFiles",
+          "dir": "buffer",
+          "max": 0,
+          "comment": "the buffer drained"
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.ctr.value": 0
+          },
+          "min": 1
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "allowDuplicates": true,
+          "comment": "nothing lost"
+        },
+        {
+          "kind": "serialSet",
+          "a": "main",
+          "b": "ref",
+          "relation": "subset"
+        },
+        {
+          "kind": "metric",
+          "source": "SF",
+          "name": "MessagesBufferedCount",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:221",
+        "summary": "every record received while buffering triggers another probe of a buffered item; probes queued behind a slow failing target are all published on recovery, so one serial is delivered many times",
+        "assertCurrent": [
+          {
+            "kind": "distinct",
+            "path": "serial",
+            "max": 37,
+            "comment": "at least 3 of the 40 deliveries repeat a serial (10+ seen)"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "noDuplicates"
+          },
+          {
+            "kind": "channelValueRun",
+            "source": "sim",
+            "channel": "ctr"
+          }
+        ]
+      },
+      "allowWriteErrors": [
+        "Mqtt"
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-RECOVER-MQTT-02",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF",
+              "Ref"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Mqtt"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "Mqtt": {
+            "TargetType": "MQTT-TARGET",
+            "EndPoint": "tcp://127.0.0.1:${SFC_E2E_GATE_PORT}",
+            "Port": "${SFC_E2E_GATE_PORT}",
+            "TopicName": "sfc/e2e/chain",
+            "Qos": 1,
+            "BatchCount": 1,
+            "ConnectRetries": 1,
+            "WaitAfterConnectError": 1
+          },
+          "Ref": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_REF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "MqttServer": {
+          "module": "mqtt-target"
+        },
+        "RefServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Mqtt": {
+            "TargetServer": "MqttServer"
+          },
+          "Ref": {
+            "TargetServer": "RefServer"
+          }
+        },
+        "TargetServers": {
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "MqttServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "RefServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-RECOVER-MQTT-03",
+      "title": "Store-and-forward running as its own IPC service buffers and drains across two gRPC hops",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "S&F is not in ipcLocalTargets, so it runs as service target-SF and reaches the MQTT target service through its own IpcTargetWriter: NACKs carrying full messages travel back over gRPC (IpcTargetServer.kt:204-232, IpcTargetWriter.kt:360-369), the S&F service stores them, and resubmits after the outage. Metrics are on so the result-worker deadlock of CHAIN-SF-RECOVER-MQTT-01 does not apply. The buffer must drain and every value from 0 must arrive (duplicates allowed, see CHAIN-SF-RECOVER-MQTT-02). IPC only: this is the IPC-service form of the chain.",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/StoreForwardTargetWriter.kt:336",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetServer.kt:204",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetWriter.kt:360",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:411"
+      ],
+      "modes": [
+        "ipc"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "gate",
+          "kind": "tcpgate",
+          "args": {
+            "to": "broker",
+            "closed": true
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "mqtt",
+          "service": "broker",
+          "topic": "sfc/e2e/#"
+        },
+        "ref": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "files": {
+              "dir": "buffer",
+              "min": 8
+            }
+          }
+        },
+        {
+          "do": "gate-open",
+          "service": "gate"
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 40
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "logContains",
+          "process": "target-SF",
+          "text": "switching from FORWARDING to BUFFERING"
+        },
+        {
+          "kind": "logContains",
+          "process": "target-SF",
+          "text": "switching from BUFFERING to FORWARDING"
+        },
+        {
+          "kind": "dirFiles",
+          "dir": "buffer",
+          "max": 0
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.sim.values.ctr.value": 0
+          },
+          "min": 1
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "allowDuplicates": true
+        },
+        {
+          "kind": "serialSet",
+          "a": "main",
+          "b": "ref",
+          "relation": "subset"
+        }
+      ],
+      "allowWriteErrors": [
+        "Mqtt"
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-RECOVER-MQTT-03",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF",
+              "Ref"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Mqtt"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "Mqtt": {
+            "TargetType": "MQTT-TARGET",
+            "EndPoint": "tcp://127.0.0.1:${SFC_E2E_GATE_PORT}",
+            "Port": "${SFC_E2E_GATE_PORT}",
+            "TopicName": "sfc/e2e/chain",
+            "Qos": 1,
+            "BatchCount": 1,
+            "ConnectRetries": 1,
+            "WaitAfterConnectError": 0
+          },
+          "Ref": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_REF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "MqttServer": {
+          "module": "mqtt-target"
+        },
+        "RefServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Mqtt": {
+            "TargetServer": "MqttServer"
+          },
+          "Ref": {
+            "TargetServer": "RefServer"
+          }
+        },
+        "TargetServers": {
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "MqttServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "RefServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-RESTART-REPLAY-01",
+      "title": "Records buffered on disk survive a restart and are replayed on startup",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "Persistence is what distinguishes store-and-forward from an in-memory retry. Run 1 produces exactly 10 records (a value filter drops ctr >= 10) while MQTT is unreachable, so all of them end up as files; sfc-main is then killed. Run 2 starts with the gate open: every BufferedWriter resubmits what it finds on disk at construction (BufferedWriter.kt:96-105, :279-305), and the protobuf store keeps serial and timestamps (FileSystemBufferTargetDirectory.kt:267-284). All 10 run-1 serials must arrive, each once, and the buffer must end empty. No mode switch happens in run 2, so this path also works without metrics. The IPC deployment of the same chain is CHAIN-SF-RESTART-REPLAY-IPC-01.",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:96",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:279",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/FileSystemBufferTargetDirectory.kt:267"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "gate",
+          "kind": "tcpgate",
+          "args": {
+            "to": "broker",
+            "closed": true
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "mqtt",
+          "service": "broker",
+          "topic": "sfc/e2e/#"
+        },
+        "ref": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "sink": "ref",
+            "records": 10
+          }
+        },
+        {
+          "wait": {
+            "files": {
+              "dir": "buffer",
+              "min": 10
+            }
+          }
+        },
+        {
+          "do": "sigterm",
+          "process": "sfc-main",
+          "comment": "also tells the timeline that the old processes are expected to be gone after restart-sfc"
+        },
+        {
+          "wait": {
+            "exit": "sfc-main"
+          }
+        },
+        {
+          "do": "update-config",
+          "patch": {
+            "Schedules": [
+              {
+                "Name": "S",
+                "Interval": 200,
+                "Sources": {
+                  "sim": [
+                    "*"
+                  ]
+                },
+                "Targets": [
+                  "SF"
+                ]
+              }
+            ],
+            "Sources": {
+              "sim": {
+                "Channels": {
+                  "ctr": null,
+                  "live": {
+                    "Name": "live",
+                    "Simulation": {
+                      "SimulationType": "Counter",
+                      "DataType": "Int",
+                      "Min": 0,
+                      "Max": 100000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "comment": "run 2: the counter becomes channel 'live' and Ref leaves the schedule, so ctr records in main can only be replays and ref holds exactly the run-1 records"
+        },
+        {
+          "do": "gate-open",
+          "service": "gate"
+        },
+        {
+          "do": "restart-sfc"
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 15
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "live",
+          "comment": "run 2 forwards live data"
+        },
+        {
+          "kind": "serialSet",
+          "a": "ref",
+          "b": "main",
+          "relation": "subset",
+          "comment": "every run-1 record arrives in run 2 with its original serial"
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "the replayed values 0..9, each once"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.sim.values.ctr.value",
+          "equals": 10
+        },
+        {
+          "kind": "dirFiles",
+          "dir": "buffer",
+          "max": 0
+        }
+      ],
+      "allowWriteErrors": [
+        "Mqtt"
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-RESTART-REPLAY-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF",
+              "Ref"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                },
+                "ValueFilter": "first"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Mqtt"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "Mqtt": {
+            "TargetType": "MQTT-TARGET",
+            "EndPoint": "tcp://127.0.0.1:${SFC_E2E_GATE_PORT}",
+            "Port": "${SFC_E2E_GATE_PORT}",
+            "TopicName": "sfc/e2e/chain",
+            "Qos": 1,
+            "BatchCount": 1,
+            "ConnectRetries": 1,
+            "WaitAfterConnectError": 0
+          },
+          "Ref": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_REF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "ValueFilters": {
+          "first": {
+            "Operator": "lt",
+            "Value": 10
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-RESTART-REPLAY-02",
+      "title": "After a restart, buffered records are not replayed to an IPC downstream that is still initialising",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "The same restart as CHAIN-SF-RESTART-REPLAY-01, but with the MQTT target as its own IPC service, as in a real IPC deployment. The startup resubmission runs as soon as the BufferedWriter is constructed (BufferedWriter.kt:96-105), while the IpcTargetWriter is still connecting, so isInitialized is false (IpcTargetWriter.kt:404-405) and forwardDataToTarget returns false (BufferedWriter.kt:377-383). The resubmit path ignores that result (:190-193): the record is neither re-buffered nor retried, its file stays on disk, and since no mode switch follows, nothing resubmits it again; only the forward worker's 10 s idle probe (BufferedWriter.kt:228) occasionally pushes out a single file. IPC only: the other modes have no IPC downstream.",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:190",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:377",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetWriter.kt:404"
+      ],
+      "modes": [
+        "ipc"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "gate",
+          "kind": "tcpgate",
+          "args": {
+            "to": "broker",
+            "closed": true
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "mqtt",
+          "service": "broker",
+          "topic": "sfc/e2e/#"
+        },
+        "ref": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "sink": "ref",
+            "records": 10
+          }
+        },
+        {
+          "wait": {
+            "files": {
+              "dir": "buffer",
+              "min": 10
+            }
+          }
+        },
+        {
+          "do": "sigterm",
+          "process": "sfc-main",
+          "comment": "also tells the timeline that the old processes are expected to be gone after restart-sfc"
+        },
+        {
+          "wait": {
+            "exit": "sfc-main"
+          }
+        },
+        {
+          "do": "update-config",
+          "patch": {
+            "Schedules": [
+              {
+                "Name": "S",
+                "Interval": 200,
+                "Sources": {
+                  "sim": [
+                    "*"
+                  ]
+                },
+                "Targets": [
+                  "SF"
+                ]
+              }
+            ],
+            "Sources": {
+              "sim": {
+                "Channels": {
+                  "ctr": null,
+                  "live": {
+                    "Name": "live",
+                    "Simulation": {
+                      "SimulationType": "Counter",
+                      "DataType": "Int",
+                      "Min": 0,
+                      "Max": 100000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "comment": "run 2: the counter becomes channel 'live' and Ref leaves the schedule, so ctr records in main can only be replays and ref holds exactly the run-1 records"
+        },
+        {
+          "do": "gate-open",
+          "service": "gate"
+        },
+        {
+          "do": "restart-sfc"
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 15
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "live",
+          "comment": "run 2 forwards live data"
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:190",
+        "summary": "the startup resubmission ignores forwardDataToTarget's result, so records resubmitted before an IPC downstream is initialised are silently skipped and stay on disk",
+        "assertCurrent": [
+          {
+            "kind": "dirFiles",
+            "dir": "buffer",
+            "min": 5,
+            "comment": "most of the run-1 buffer is still on disk; only the 10 s idle probe (BufferedWriter.kt:228) can push out one file per idle period"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "serialSet",
+            "a": "ref",
+            "b": "main",
+            "relation": "subset",
+            "comment": "every run-1 record arrives in run 2 with its original serial"
+          },
+          {
+            "kind": "channelValueRun",
+            "source": "sim",
+            "channel": "ctr",
+            "comment": "the replayed values 0..9, each once"
+          },
+          {
+            "kind": "distinct",
+            "path": "sources.sim.values.ctr.value",
+            "equals": 10
+          },
+          {
+            "kind": "dirFiles",
+            "dir": "buffer",
+            "max": 0
+          }
+        ]
+      },
+      "allowWriteErrors": [
+        "Mqtt"
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-RESTART-REPLAY-02",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF",
+              "Ref"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                },
+                "ValueFilter": "first"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Mqtt"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "Mqtt": {
+            "TargetType": "MQTT-TARGET",
+            "EndPoint": "tcp://127.0.0.1:${SFC_E2E_GATE_PORT}",
+            "Port": "${SFC_E2E_GATE_PORT}",
+            "TopicName": "sfc/e2e/chain",
+            "Qos": 1,
+            "BatchCount": 1,
+            "ConnectRetries": 1,
+            "WaitAfterConnectError": 0
+          },
+          "Ref": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_REF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "ValueFilters": {
+          "first": {
+            "Operator": "lt",
+            "Value": 10
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "MqttServer": {
+          "module": "mqtt-target"
+        },
+        "RefServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Mqtt": {
+            "TargetServer": "MqttServer"
+          },
+          "Ref": {
+            "TargetServer": "RefServer"
+          }
+        },
+        "TargetServers": {
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "MqttServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "RefServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-RESTART-REPLAY-IPC-01",
+      "title": "IPC: store-forward replays only one buffered record after a restart; the rest stay on disk (known defect)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "The chain of CHAIN-SF-RESTART-REPLAY-01, deployed as IPC: store-forward and the MQTT target run as their own IPC servers. Run 1 buffers 10 records while MQTT is unreachable; sfc-main is stopped; run 2 opens the gate and restarts. In-process and uberjar replay all 10 buffered records. In the IPC deployment exactly one is replayed (a different one each run) and the other 9 stay in the buffer directory while live data flows - verified with 60 live records after the restart. The resubmission at construction (BufferedWriter.kt:96-105, launchResubmitWorker :279-305) is the path involved; the line that loses the remaining submissions is not yet identified.",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:96",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:279",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/FileSystemBufferTargetDirectory.kt:267"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "gate",
+          "kind": "tcpgate",
+          "args": {
+            "to": "broker",
+            "closed": true
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "mqtt",
+          "service": "broker",
+          "topic": "sfc/e2e/#"
+        },
+        "ref": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "sink": "ref",
+            "records": 10
+          }
+        },
+        {
+          "wait": {
+            "files": {
+              "dir": "buffer",
+              "min": 10
+            }
+          }
+        },
+        {
+          "do": "sigterm",
+          "process": "sfc-main",
+          "comment": "also tells the timeline that the old processes are expected to be gone after restart-sfc"
+        },
+        {
+          "wait": {
+            "exit": "sfc-main"
+          }
+        },
+        {
+          "do": "update-config",
+          "patch": {
+            "Schedules": [
+              {
+                "Name": "S",
+                "Interval": 200,
+                "Sources": {
+                  "sim": [
+                    "*"
+                  ]
+                },
+                "Targets": [
+                  "SF"
+                ]
+              }
+            ],
+            "Sources": {
+              "sim": {
+                "Channels": {
+                  "ctr": null,
+                  "live": {
+                    "Name": "live",
+                    "Simulation": {
+                      "SimulationType": "Counter",
+                      "DataType": "Int",
+                      "Min": 0,
+                      "Max": 100000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "comment": "run 2: the counter becomes channel 'live' and Ref leaves the schedule, so ctr records in main can only be replays and ref holds exactly the run-1 records"
+        },
+        {
+          "do": "gate-open",
+          "service": "gate"
+        },
+        {
+          "do": "restart-sfc"
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 30
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "live",
+          "comment": "run 2 forwards live data"
+        }
+      ],
+      "allowWriteErrors": [
+        "Mqtt"
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-RESTART-REPLAY-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF",
+              "Ref"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                },
+                "ValueFilter": "first"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Mqtt"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "Mqtt": {
+            "TargetType": "MQTT-TARGET",
+            "EndPoint": "tcp://127.0.0.1:${SFC_E2E_GATE_PORT}",
+            "Port": "${SFC_E2E_GATE_PORT}",
+            "TopicName": "sfc/e2e/chain",
+            "Qos": 1,
+            "BatchCount": 1,
+            "ConnectRetries": 1,
+            "WaitAfterConnectError": 0
+          },
+          "Ref": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_REF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "ValueFilters": {
+          "first": {
+            "Operator": "lt",
+            "Value": 10
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "MqttServer": {
+          "module": "mqtt-target"
+        },
+        "RefServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Mqtt": {
+            "TargetServer": "MqttServer"
+          },
+          "Ref": {
+            "TargetServer": "RefServer"
+          }
+        },
+        "TargetServers": {
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "MqttServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "RefServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        }
+      },
+      "knownDefect": {
+        "ref": "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:96",
+        "summary": "IPC deployment: after a restart store-forward replays one buffered record; the other buffered records are never resubmitted",
+        "assertCurrent": [
+          {
+            "kind": "distinct",
+            "path": "sources.sim.values.ctr.value",
+            "equals": 1,
+            "comment": "one replayed run-1 record"
+          },
+          {
+            "kind": "dirFiles",
+            "dir": "buffer",
+            "equals": 9,
+            "comment": "the other nine are still on disk"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "serialSet",
+            "a": "ref",
+            "b": "main",
+            "relation": "subset"
+          },
+          {
+            "kind": "distinct",
+            "path": "sources.sim.values.ctr.value",
+            "equals": 10
+          },
+          {
+            "kind": "dirFiles",
+            "dir": "buffer",
+            "max": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "CHAIN-SF-VAL-DIR-01",
+      "title": "A store-and-forward Directory that does not exist fails creation, and only that target",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "The buffer directory is validated before retention (StoreForwardTargetConfiguration.kt:126-140): a missing Directory must reject the S&F target with 'Directory directory does not exist' rather than buffering into nowhere. Direct in the same schedule must be unaffected and Leaf must stay empty.",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/config/StoreForwardTargetConfiguration.kt:134"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "leaf": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "failFast": [],
+      "gate": {
+        "sink": "main",
+        "records": 10
+      },
+      "assert": [
+        {
+          "kind": "logContains",
+          "text": "Directory directory does not exist"
+        },
+        {
+          "kind": "recordCount",
+          "sink": "leaf",
+          "max": 0
+        },
+        {
+          "kind": "channelSequence",
+          "sink": "main",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-VAL-DIR-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Direct",
+              "SF"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Direct": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          },
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_WORK}/missing-dir",
+            "Targets": [
+              "Leaf"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "Leaf": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_LEAF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "DirectServer": {
+          "module": "file-target"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "LeafServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Direct": {
+            "TargetServer": "DirectServer"
+          },
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Leaf": {
+            "TargetServer": "LeafServer"
+          }
+        },
+        "TargetServers": {
+          "DirectServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "LeafServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-VAL-NONE-01",
+      "title": "Store-and-forward without a retention criterion is rejected with the wrong message",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "Without any retention criterion the S&F target must not be created, because it could fill the disk. It is rejected today, but by the inverted first check (StoreForwardTargetConfiguration.kt:90-95), so the user is told 'Only one retain criteria can be specified' instead of the intended 'At least one retain criteria ...' (:97-102), which is unreachable. Leaf stays empty in both states; only the message is pinned.",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/config/StoreForwardTargetConfiguration.kt:90",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/config/StoreForwardTargetConfiguration.kt:97"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "leaf": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "failFast": [],
+      "gate": {
+        "sink": "main",
+        "records": 10
+      },
+      "assert": [
+        {
+          "kind": "recordCount",
+          "sink": "leaf",
+          "max": 0
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/config/StoreForwardTargetConfiguration.kt:90",
+        "summary": "no retention criterion is reported as 'Only one retain criteria can be specified'; the 'At least one retain criteria' check at :97 is unreachable",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "text": "Only one retain criteria can be specified"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "text": "At least one retain criteria can be specified"
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "Only one retain criteria can be specified"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-VAL-NONE-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Direct",
+              "SF"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Direct": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          },
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Leaf"
+            ]
+          },
+          "Leaf": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_LEAF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "DirectServer": {
+          "module": "file-target"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "LeafServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Direct": {
+            "TargetServer": "DirectServer"
+          },
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Leaf": {
+            "TargetServer": "LeafServer"
+          }
+        },
+        "TargetServers": {
+          "DirectServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "LeafServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-VAL-ONE-01",
+      "title": "Store-and-forward with exactly one retention criterion (the documented usage) is rejected",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "The docs prescribe exactly one retention criterion ('only one can be active at a time'), but checkRetention requires listOfNotNull(retainSize, retainNumber, retainPeriod).size > 1 while saying 'Only one retain criteria can be specified' (StoreForwardTargetConfiguration.kt:90-95). The config is read eagerly in the constructor (StoreForwardTargetWriter.kt:100-101), InstanceFactory logs the exception and SFC runs on without the S&F target. Direct in the same schedule proves the run itself is healthy; Leaf behind the S&F must stay empty today and receive the records once the check is fixed. Merges CORE-CHAIN-SF-RETAIN-01.",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/config/StoreForwardTargetConfiguration.kt:90",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/StoreForwardTargetWriter.kt:100",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:67",
+        "docs/targets/store-and-forward-target.md:102"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "leaf": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "failFast": [],
+      "gate": {
+        "sink": "main",
+        "records": 10
+      },
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "sink": "main",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1,
+          "comment": "the schedule itself runs"
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/config/StoreForwardTargetConfiguration.kt:90",
+        "summary": "checkRetention is inverted: exactly one retention criterion is rejected with 'Only one retain criteria can be specified', two or three are accepted",
+        "assertCurrent": [
+          {
+            "kind": "recordCount",
+            "sink": "leaf",
+            "max": 0
+          },
+          {
+            "kind": "logContains",
+            "text": "Only one retain criteria can be specified"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "sink": "leaf",
+            "min": 8
+          },
+          {
+            "kind": "channelSequence",
+            "sink": "leaf",
+            "source": "sim",
+            "channel": "ctr",
+            "step": 1
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "Only one retain criteria can be specified"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-VAL-ONE-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Direct",
+              "SF"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Direct": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          },
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Leaf"
+            ],
+            "RetainFiles": 100
+          },
+          "Leaf": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_LEAF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "DirectServer": {
+          "module": "file-target"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "LeafServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Direct": {
+            "TargetServer": "DirectServer"
+          },
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Leaf": {
+            "TargetServer": "LeafServer"
+          }
+        },
+        "TargetServers": {
+          "DirectServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "LeafServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-VAL-TWO-01",
+      "title": "Store-and-forward with two retention criteria is accepted although only one is allowed",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "The mirror image of CHAIN-SF-VAL-ONE-01: because the check at StoreForwardTargetConfiguration.kt:90-95 is inverted, two criteria pass validation although the message, and the docs, allow only one. Cleanup then silently uses only the first non-null criterion (number, then period, then size, BufferedWriter.kt:334-350), so RetainSize here is dead. Today Leaf receives the records; once the check is fixed the S&F target must be rejected with the message. Every other S&F case in this area uses two criteria as the workaround and will need updating when this is fixed.",
+      "pins": [
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/config/StoreForwardTargetConfiguration.kt:90",
+        "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/BufferedWriter.kt:334"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "leaf": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "failFast": [],
+      "gate": {
+        "sink": "main",
+        "records": 10
+      },
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "sink": "main",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/store-forward-target/src/main/kotlin/com/amazonaws/sfc/storeforward/config/StoreForwardTargetConfiguration.kt:90",
+        "summary": "checkRetention is inverted: two retention criteria are accepted although 'Only one retain criteria can be specified'",
+        "assertCurrent": [
+          {
+            "kind": "recordCount",
+            "sink": "leaf",
+            "min": 8
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "Only one retain criteria can be specified",
+              "Error creating instance of"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "sink": "leaf",
+            "max": 0
+          },
+          {
+            "kind": "logContains",
+            "text": "Only one retain criteria can be specified"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-VAL-TWO-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Direct",
+              "SF"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Direct": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          },
+          "SF": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Leaf"
+            ],
+            "RetainFiles": 100,
+            "RetainSize": 1
+          },
+          "Leaf": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_LEAF}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "DirectServer": {
+          "module": "file-target"
+        },
+        "SFServer": {
+          "module": "store-forward-target"
+        },
+        "LeafServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Direct": {
+            "TargetServer": "DirectServer"
+          },
+          "SF": {
+            "TargetServer": "SFServer"
+          },
+          "Leaf": {
+            "TargetServer": "LeafServer"
+          }
+        },
+        "TargetServers": {
+          "DirectServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SFServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "LeafServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        }
+      }
+    }
+  ]
+}

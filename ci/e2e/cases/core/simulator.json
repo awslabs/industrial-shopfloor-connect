@@ -1,0 +1,3185 @@
+{
+  "cases": [
+    {
+      "id": "CORE-SIM-CLAMP-01",
+      "title": "A Min of 0 on a floating-point simulation is honoured, not replaced by the smallest denormal",
+      "tier": "core",
+      "intent": "Guards the minValueForType fix. It used to return Double.MIN_VALUE, which is the smallest POSITIVE denormal (4.9E-324), not the most negative double. Callers use it as a lower clamp via maxOf(), so any configured Min <= 0 was silently discarded and a \"Min\": 0 square wave oscillated between 4.9E-324 and Max instead of between 0 and Max. Note the assertion is set MEMBERSHIP, not a numeric range: 4.9E-324 lies inside [0, 100], so a range check would have passed the bug. Float is included because it had the same defect via Float.MIN_VALUE.",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/SimulationHelper.kt:153"
+      ],
+      "records": 8,
+      "timeoutSeconds": 60,
+      "modeParity": false,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "sim",
+          "channel": "sq",
+          "values": [
+            0.0,
+            100.0
+          ],
+          "comment": "Membership, not range. Square is a function of wall clock, so a short window may legitimately observe only one of the two levels - which is why this is not channelValueSet."
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "sim",
+          "channel": "sqf",
+          "values": [
+            0.0,
+            50.0
+          ]
+        }
+      ],
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-CLAMP-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "sq": {
+                "Name": "sq",
+                "Simulation": {
+                  "SimulationType": "Square",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 100,
+                  "CycleLength": 400
+                }
+              },
+              "sqf": {
+                "Name": "sqf",
+                "Simulation": {
+                  "SimulationType": "Square",
+                  "DataType": "Float",
+                  "Min": 0,
+                  "Max": 50,
+                  "CycleLength": 400
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-SIM-COMPOSITES-01",
+      "title": "Range walks its values in order; List and nested Structure compose their items",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "Composite simulations model multi-value and structured device data. Range without Random advances an index per read and wraps (Range.kt:28-35); List evaluates every item each read and converts it to the List's DataType; Structure evaluates every property, recursively. The embedded counters are bounded (0..3) so their progress can be asserted as an exact cycle inside a list element and inside a structure, and the nested structure must arrive as a nested JSON object in every mode.",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Range.kt:25-35",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Range.kt:57-60",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/List.kt:17-21",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Structure.kt:11-12"
+      ],
+      "records": 9,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 9
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.rs.value",
+          "cycle": [
+            "A",
+            "B",
+            "C"
+          ],
+          "minLength": 9
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.rs.value",
+          "value": "A"
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.ri.value",
+          "cycle": [
+            5,
+            1,
+            3
+          ],
+          "minLength": 9
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ri.value",
+          "type": "int"
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.lst.value",
+          "cycle": [
+            [
+              0,
+              9
+            ],
+            [
+              1,
+              9
+            ],
+            [
+              2,
+              9
+            ],
+            [
+              3,
+              9
+            ]
+          ],
+          "minLength": 9
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.st.value",
+          "cycle": [
+            {
+              "id": 0,
+              "meta": {
+                "ok": true
+              }
+            },
+            {
+              "id": 1,
+              "meta": {
+                "ok": true
+              }
+            },
+            {
+              "id": 2,
+              "meta": {
+                "ok": true
+              }
+            },
+            {
+              "id": 3,
+              "meta": {
+                "ok": true
+              }
+            }
+          ],
+          "minLength": 9
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.st.value.meta",
+          "equals": {
+            "ok": true
+          },
+          "strictTypes": true
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-COMPOSITES-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "rs": {
+                "Name": "rs",
+                "Simulation": {
+                  "SimulationType": "Range",
+                  "DataType": "String",
+                  "Values": [
+                    "A",
+                    "B",
+                    "C"
+                  ]
+                }
+              },
+              "ri": {
+                "Name": "ri",
+                "Simulation": {
+                  "SimulationType": "Range",
+                  "DataType": "Int",
+                  "Values": [
+                    5,
+                    1,
+                    3
+                  ]
+                }
+              },
+              "lst": {
+                "Name": "lst",
+                "Simulation": {
+                  "SimulationType": "List",
+                  "DataType": "Int",
+                  "Items": [
+                    {
+                      "SimulationType": "Counter",
+                      "DataType": "Int",
+                      "Min": 0,
+                      "Max": 3
+                    },
+                    {
+                      "SimulationType": "Constant",
+                      "DataType": "Int",
+                      "Value": 9
+                    }
+                  ]
+                }
+              },
+              "st": {
+                "Name": "st",
+                "Simulation": {
+                  "SimulationType": "Structure",
+                  "Properties": {
+                    "id": {
+                      "SimulationType": "Counter",
+                      "DataType": "Int",
+                      "Min": 0,
+                      "Max": 3
+                    },
+                    "meta": {
+                      "SimulationType": "Structure",
+                      "Properties": {
+                        "ok": {
+                          "SimulationType": "Constant",
+                          "DataType": "Boolean",
+                          "Value": true
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-SIM-COUNTER-01",
+      "title": "A Counter channel produces a gap-free ascending sequence from Min",
+      "tier": "core",
+      "intent": "The foundation every other deterministic case rests on. Counter.next() returns the current value and then advances, and SimulatorSource calls it once per channel per read, so the emitted sequence is a function of read count alone - not of wall-clock time. If this case is not exact, no count-gated assertion elsewhere can be trusted. It also proves the whole harness path end to end: config placeholder substitution, the file sink as a record counter, and SFC's own metrics reaching the JSONL writer.",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Counter.kt:41",
+        "targets/file-target/src/main/kotlin/com/amazonaws/sfc/filetarget/FileTargetWriter.kt:147"
+      ],
+      "records": 12,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 12
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1,
+          "comment": "Valid here because the file sink preserves pipeline order. Over a queue this would be channelValueRun instead."
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ctr.value"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "NoClassDefFoundError",
+            "ClassNotFoundException",
+            "NoSuchMethodError",
+            "NoSuchFieldError",
+            "UnsupportedClassVersionError"
+          ],
+          "comment": "The fingerprint of a dependency version split. These leave the process exiting 0, so nothing else would notice."
+        },
+        {
+          "kind": "metric",
+          "source": "FileTarget",
+          "name": "Writes",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "priority": "P0",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-COUNTER-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-SIM-COUNTER-VARIANTS-01",
+      "title": "Counter direction, step, wrap-around, negative range, Float step and array Size",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "Counters drive most deterministic test data in SFC deployments and in this suite. Counter.next() returns the current value and then steps; UP wraps to Min when the next step would exceed Max, DOWN starts at Max and wraps to Max when it would go below Min, and Size > 0 fills an array by calling next() once per element. Every variant is a pure function of the read count, so each channel must follow its exact cycle in every mode: an off-by-one at the wrap, a DOWN counter starting at Min, a Float step rounded to Int or an array that repeats one value would all break a cycle.",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Counter.kt:41-71",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Counter.kt:75-93"
+      ],
+      "records": 12,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 12
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.down.value",
+          "cycle": [
+            10,
+            7,
+            4,
+            1
+          ],
+          "minLength": 12
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.down.value",
+          "value": 10,
+          "strictTypes": true,
+          "comment": "DOWN starts at Max."
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.up3.value",
+          "cycle": [
+            0,
+            3,
+            6,
+            9
+          ],
+          "minLength": 12
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.up3.value",
+          "value": 0,
+          "strictTypes": true
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.fl.value",
+          "cycle": [
+            0.0,
+            0.25,
+            0.5,
+            0.75,
+            1.0
+          ],
+          "minLength": 12
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.fl.value",
+          "type": "float"
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.neg.value",
+          "cycle": [
+            -3,
+            -1,
+            1,
+            3
+          ],
+          "minLength": 12
+        },
+        {
+          "kind": "cycle",
+          "path": "sources.sim.values.arr.value",
+          "cycle": [
+            [
+              0,
+              1,
+              2
+            ],
+            [
+              3,
+              4,
+              5
+            ],
+            [
+              6,
+              7,
+              8
+            ]
+          ],
+          "minLength": 12
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.arr.value",
+          "value": [
+            0,
+            1,
+            2
+          ],
+          "strictTypes": true
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-COUNTER-VARIANTS-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "down": {
+                "Name": "down",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 3,
+                  "Direction": "DOWN"
+                }
+              },
+              "up3": {
+                "Name": "up3",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10,
+                  "Step": 3
+                }
+              },
+              "fl": {
+                "Name": "fl",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Float",
+                  "Min": 0,
+                  "Max": 1,
+                  "Step": 0.25
+                }
+              },
+              "neg": {
+                "Name": "neg",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": -3,
+                  "Max": 3,
+                  "Step": 2
+                }
+              },
+              "arr": {
+                "Name": "arr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 8,
+                  "Step": 1,
+                  "Size": 3
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-SIM-DATATYPES-01",
+      "title": "JSON representation of every simulator data type and of a Structure",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "Every consumer depends on the JSON type of each value. The simulator converts the configured value with SimulationHelper.asNumericType, and ChannelDataOutputSerializer writes Number/String/Boolean/Char directly and everything else through JsonHelper's adapters: UByte, UShort and UInt become JSON strings, ULong becomes a double, a Char a one-letter string and a Structure a JSON object. strictTypes makes 5000000000 vs 5.0E9 or 7 vs '7' a failure. In-process and uberjar only: the IPC adapter transport encodes the unsigned types as signed numbers, pinned by CORE-SIM-DATATYPES-02.",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/SimulationHelper.kt:12-26",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Constant.kt:29-50",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/ChannelDataOutputSerializer.kt:29-37",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/JsonHelper.kt:74-149",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/JsonHelper.kt:171-183"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.bool.value",
+          "equals": true,
+          "strictTypes": true,
+          "comment": "Boolean True"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.byte.value",
+          "equals": -5,
+          "strictTypes": true,
+          "comment": "Byte -5"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.short.value",
+          "equals": 300,
+          "strictTypes": true,
+          "comment": "Short 300"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.int.value",
+          "equals": 70000,
+          "strictTypes": true,
+          "comment": "Int 70000"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.long.value",
+          "equals": 5000000000,
+          "strictTypes": true,
+          "comment": "Long 5000000000"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.float.value",
+          "equals": 1.5,
+          "strictTypes": true,
+          "comment": "Float 1.5"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.double.value",
+          "equals": 2.25,
+          "strictTypes": true,
+          "comment": "Double 2.25"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.string.value",
+          "equals": "OK",
+          "strictTypes": true,
+          "comment": "String 'OK'"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.char.value",
+          "equals": "A",
+          "strictTypes": true,
+          "comment": "Char 'A'"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ubyte.value",
+          "equals": "200",
+          "strictTypes": true,
+          "comment": "UByte 200"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ushort.value",
+          "equals": "60000",
+          "strictTypes": true,
+          "comment": "UShort 60000"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.uint.value",
+          "equals": "4000000000",
+          "strictTypes": true,
+          "comment": "UInt 4000000000"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ulong.value",
+          "equals": 5.0,
+          "strictTypes": true,
+          "comment": "ULong 5"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.struct.value",
+          "equals": {
+            "k": 1,
+            "s": "z"
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.sim.values",
+          "keys": [
+            "bool",
+            "byte",
+            "short",
+            "int",
+            "long",
+            "float",
+            "double",
+            "string",
+            "char",
+            "ubyte",
+            "ushort",
+            "uint",
+            "ulong",
+            "struct"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-DATATYPES-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "bool": {
+                "Name": "bool",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "byte": {
+                "Name": "byte",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Byte",
+                  "Value": -5
+                }
+              },
+              "short": {
+                "Name": "short",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Short",
+                  "Value": 300
+                }
+              },
+              "int": {
+                "Name": "int",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 70000
+                }
+              },
+              "long": {
+                "Name": "long",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Long",
+                  "Value": 5000000000
+                }
+              },
+              "float": {
+                "Name": "float",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Float",
+                  "Value": 1.5
+                }
+              },
+              "double": {
+                "Name": "double",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 2.25
+                }
+              },
+              "string": {
+                "Name": "string",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "OK"
+                }
+              },
+              "char": {
+                "Name": "char",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Char",
+                  "Value": "A"
+                }
+              },
+              "ubyte": {
+                "Name": "ubyte",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "UByte",
+                  "Value": 200
+                }
+              },
+              "ushort": {
+                "Name": "ushort",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "UShort",
+                  "Value": 60000
+                }
+              },
+              "uint": {
+                "Name": "uint",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "UInt",
+                  "Value": 4000000000
+                }
+              },
+              "ulong": {
+                "Name": "ulong",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "ULong",
+                  "Value": 5
+                }
+              },
+              "struct": {
+                "Name": "struct",
+                "Simulation": {
+                  "SimulationType": "Structure",
+                  "Properties": {
+                    "k": {
+                      "SimulationType": "Constant",
+                      "DataType": "Int",
+                      "Value": 1
+                    },
+                    "s": {
+                      "SimulationType": "Constant",
+                      "DataType": "String",
+                      "Value": "z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-SIM-DATATYPES-02",
+      "title": "IPC adapter transport encodes unsigned simulator values as signed numbers, so their JSON type differs from in-process (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "The IPC-mode half of CORE-SIM-DATATYPES-01, with the same configuration. The gRPC ChannelValue message has unsigned fields and sfc-main decodes them (GrpcSourceValueAsNativeExt.kt:44), but the adapter service encodes UByte and UShort with toInt() and UInt and ULong with toLong() (GrpcSourceValueFromNativeExt.kt:110,195,280,365). sfc-main therefore receives signed values and writes 200, 60000, 4000000000 and 5 where an in-process deployment of the same configuration writes \"200\", \"60000\", \"4000000000\" and 5.0, so a consumer validating types breaks when the deployment mode changes. All other types are asserted equal to the in-process representation, which also proves Char and Structure survive the IPC hop.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcSourceValueFromNativeExt.kt:109-112",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcSourceValueFromNativeExt.kt:194-197",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcSourceValueFromNativeExt.kt:279-282",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcSourceValueFromNativeExt.kt:364-367",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcSourceValueAsNativeExt.kt:44"
+      ],
+      "modes": [
+        "ipc"
+      ],
+      "records": 3,
+      "timeoutSeconds": 90,
+      "modeParity": false,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.bool.value",
+          "equals": true,
+          "strictTypes": true,
+          "comment": "Boolean True: the same as in-process"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.byte.value",
+          "equals": -5,
+          "strictTypes": true,
+          "comment": "Byte -5: the same as in-process"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.short.value",
+          "equals": 300,
+          "strictTypes": true,
+          "comment": "Short 300: the same as in-process"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.int.value",
+          "equals": 70000,
+          "strictTypes": true,
+          "comment": "Int 70000: the same as in-process"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.long.value",
+          "equals": 5000000000,
+          "strictTypes": true,
+          "comment": "Long 5000000000: the same as in-process"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.float.value",
+          "equals": 1.5,
+          "strictTypes": true,
+          "comment": "Float 1.5: the same as in-process"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.double.value",
+          "equals": 2.25,
+          "strictTypes": true,
+          "comment": "Double 2.25: the same as in-process"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.string.value",
+          "equals": "OK",
+          "strictTypes": true,
+          "comment": "String 'OK': the same as in-process"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.char.value",
+          "equals": "A",
+          "strictTypes": true,
+          "comment": "Char 'A': the same as in-process"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.struct.value",
+          "equals": {
+            "k": 1,
+            "s": "z"
+          },
+          "strictTypes": true
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcSourceValueFromNativeExt.kt:280",
+        "summary": "The IPC adapter service encodes UByte/UShort as Int and UInt/ULong as Long instead of the ChannelValue unsigned fields, so IPC deployments emit 200/60000/4000000000/5 where in-process emits \"200\"/\"60000\"/\"4000000000\"/5.0",
+        "assertCurrent": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.ubyte.value",
+            "equals": 200,
+            "strictTypes": true
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.ushort.value",
+            "equals": 60000,
+            "strictTypes": true
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.uint.value",
+            "equals": 4000000000,
+            "strictTypes": true
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.ulong.value",
+            "equals": 5,
+            "strictTypes": true
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.ubyte.value",
+            "equals": "200",
+            "strictTypes": true,
+            "comment": "as in-process (CORE-SIM-DATATYPES-01)"
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.ushort.value",
+            "equals": "60000",
+            "strictTypes": true,
+            "comment": "as in-process (CORE-SIM-DATATYPES-01)"
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.uint.value",
+            "equals": "4000000000",
+            "strictTypes": true,
+            "comment": "as in-process (CORE-SIM-DATATYPES-01)"
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.ulong.value",
+            "equals": 5.0,
+            "strictTypes": true,
+            "comment": "as in-process (CORE-SIM-DATATYPES-01)"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-DATATYPES-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "bool": {
+                "Name": "bool",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "byte": {
+                "Name": "byte",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Byte",
+                  "Value": -5
+                }
+              },
+              "short": {
+                "Name": "short",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Short",
+                  "Value": 300
+                }
+              },
+              "int": {
+                "Name": "int",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 70000
+                }
+              },
+              "long": {
+                "Name": "long",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Long",
+                  "Value": 5000000000
+                }
+              },
+              "float": {
+                "Name": "float",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Float",
+                  "Value": 1.5
+                }
+              },
+              "double": {
+                "Name": "double",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 2.25
+                }
+              },
+              "string": {
+                "Name": "string",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "OK"
+                }
+              },
+              "char": {
+                "Name": "char",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Char",
+                  "Value": "A"
+                }
+              },
+              "ubyte": {
+                "Name": "ubyte",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "UByte",
+                  "Value": 200
+                }
+              },
+              "ushort": {
+                "Name": "ushort",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "UShort",
+                  "Value": 60000
+                }
+              },
+              "uint": {
+                "Name": "uint",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "UInt",
+                  "Value": 4000000000
+                }
+              },
+              "ulong": {
+                "Name": "ulong",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "ULong",
+                  "Value": 5
+                }
+              },
+              "struct": {
+                "Name": "struct",
+                "Simulation": {
+                  "SimulationType": "Structure",
+                  "Properties": {
+                    "k": {
+                      "SimulationType": "Constant",
+                      "DataType": "Int",
+                      "Value": 1
+                    },
+                    "s": {
+                      "SimulationType": "Constant",
+                      "DataType": "String",
+                      "Value": "z"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-SIM-DATATYPES-03",
+      "title": "A Constant simulation with an array Value, as documented, invalidates the whole simulator configuration (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "docs/adapters/simulator.md:320,365,456 document a Constant whose Value is an array ('Simulation returning array of bytes'), and Constant.value() even handles a List. But Constant.fromJson converts the value with asType(), which has no list branch and calls asDouble() on the list, so the documented configuration raises 'must be a number'; the simulator wraps it in an InvalidSimulation, SimulatorChannelConfiguration.validate rejects it, the adapter is not created and SFC idles with no output - including the perfectly valid 'ctr' channel next to it. The case settles for a fixed time and pins that nothing is written; when fixed, records flow and arr is [1, 2, 3]. In-process and uberjar only: in IPC mode the same error surfaces through the adapter service's initialisation, which races with the known first-stream gRPC UNKNOWN retry (it appeared after 1 s in one run and not within 12 s in the next), so a fixed settle cannot observe it reliably; the defect is in the simulator's own parsing, identical in every mode.",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Constant.kt:20-21",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Constant.kt:47",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Constant.kt:61",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/SimulationDeserializer.kt:36-39",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/config/SimulatorChannelConfiguration.kt:35-39"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "seconds": 5,
+            "comment": "Today SFC idles and nothing can be waited for; a log wait would turn a fix into a timeout ERROR instead of a FAIL. A fixed SFC delivers its first records within about 1 s in these modes."
+          }
+        }
+      ],
+      "failFast": [],
+      "timeoutSeconds": 60,
+      "modeParity": false,
+      "assert": [
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Constant.kt:61",
+        "summary": "Constant.fromJson passes an array Value to asType(), which has no list branch (Constant.kt:29-50) and throws 'must be a number'; the documented array Constant disables the whole simulator adapter",
+        "assertCurrent": [
+          {
+            "kind": "recordCount",
+            "equals": 0
+          },
+          {
+            "kind": "logContains",
+            "text": "Value [1.0,2.0,3.0] must be a number"
+          },
+          {
+            "kind": "logContains",
+            "text": "SimulationType \"Constant\" is not valid"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "min": 3
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.arr.value",
+            "equals": [
+              1,
+              2,
+              3
+            ],
+            "strictTypes": true
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-DATATYPES-03",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "arr": {
+                "Name": "arr",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": [
+                    1,
+                    2,
+                    3
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-SIM-DATETIME-01",
+      "title": "A DateTime simulation value is written as Gson's reflective dump of java.time.ZonedDateTime internals, not as a timestamp (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "DateTime.value() returns a java.time.ZonedDateTime. JsonHelper registers a type adapter for Instant only, so ChannelDataOutputSerializer's fallback serialises the object reflectively and consumers receive the private field structure {dateTime: {date, time}, offset: {totalSeconds}, zone: {id}} - an implementation detail of the JDK - instead of an ISO-8601 value (in IPC mode the custom-value hop even turns its integers into doubles). The research claim that serialisation fails and the message is dropped is refuted on Corretto 21: records are delivered, which the case asserts, so the pin is the shape. The control schedule proves SFC is otherwise healthy; the DateTime schedule's counter proves its messages are complete.",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/DateTime.kt:14-18",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/JsonHelper.kt:171-183",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/ChannelDataOutputSerializer.kt:36"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "dt": {
+          "kind": "file"
+        }
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 20
+        },
+        {
+          "sink": "dt",
+          "records": 10
+        }
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": false,
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "source": "srcCtl",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "channelSequence",
+          "sink": "dt",
+          "source": "srcDt",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "dt",
+          "path": "sources.srcDt.values.dt.value"
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/DateTime.kt:16",
+        "summary": "DateTime.value() returns java.time.ZonedDateTime, for which no Gson adapter is registered (JsonHelper.kt:171-183), so the value is serialised reflectively as the JDK's private fields {dateTime, offset, zone} instead of a timestamp",
+        "assertCurrent": [
+          {
+            "kind": "keySet",
+            "sink": "dt",
+            "path": "sources.srcDt.values.dt.value",
+            "keys": [
+              "dateTime",
+              "offset",
+              "zone"
+            ]
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "dt",
+            "path": "sources.srcDt.values.dt.value.zone.id",
+            "equals": "UTC"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "sink": "dt",
+            "path": "sources.srcDt.values.dt.value",
+            "regex": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-DATETIME-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Control",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "srcCtl": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          },
+          {
+            "Name": "DT",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "srcDt": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileDt"
+            ]
+          }
+        ],
+        "Sources": {
+          "srcCtl": {
+            "Name": "srcCtl",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "srcDt": {
+            "Name": "srcDt",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "dt": {
+                "Name": "dt",
+                "Simulation": {
+                  "SimulationType": "DateTime",
+                  "UTC": true
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileDt": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_DT}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "FileDtServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "FileDt": {
+            "TargetServer": "FileDtServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileDtServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-SIM-INTERVAL-BUFFERED-01",
+      "title": "Interval yields a value only every N ms; Buffered emits each buffered value as its own record",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "Interval and Buffered model devices that report sporadically or in bursts. Interval returns its item's next value once the interval has elapsed and null otherwise, so the inner counter advances only on emission: iv is a gap-free sequence from 0 over the records that contain it, and an Interval of an hour never appears. Buffered collects one (timestamp, value) pair per read and returns the batch once its interval elapses; ScheduleReader.sliceResults turns a list of ChannelReadValue into one result per element, so every buffered value arrives as its own record with a scalar value, gap-free across batches. Emission timing is wall-clock, so only presence and gap-free order are asserted; in-process the reads between batches also emit sourceless messages (CORE-OUT-NULLS-01), which skipMissing ignores.",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Interval.kt:17-23",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Buffered.kt:21-32",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorSource.kt:42-57",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:781-830"
+      ],
+      "sinks": {
+        "i": {
+          "kind": "file"
+        },
+        "b": {
+          "kind": "file"
+        }
+      },
+      "gates": [
+        {
+          "sink": "i",
+          "records": 30
+        },
+        {
+          "sink": "b",
+          "records": 20
+        }
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": false,
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "sink": "i",
+          "source": "sI",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "channelSequence",
+          "sink": "i",
+          "source": "sI",
+          "channel": "iv",
+          "step": 1,
+          "skipMissing": true
+        },
+        {
+          "kind": "distinct",
+          "sink": "i",
+          "path": "sources.sI.values.iv.value",
+          "min": 2
+        },
+        {
+          "kind": "noDuplicates",
+          "sink": "i",
+          "path": "sources.sI.values.iv.value"
+        },
+        {
+          "kind": "keysAbsent",
+          "sink": "i",
+          "paths": [
+            "sources.sI.values.never"
+          ]
+        },
+        {
+          "kind": "channelSequence",
+          "sink": "b",
+          "source": "sB",
+          "channel": "bf",
+          "step": 1,
+          "skipMissing": true,
+          "comment": "A list value (no slicing) would fail as not numeric."
+        },
+        {
+          "kind": "distinct",
+          "sink": "b",
+          "path": "sources.sB.values.bf.value",
+          "min": 6
+        },
+        {
+          "kind": "noDuplicates",
+          "sink": "b",
+          "path": "sources.sB.values.bf.value"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-INTERVAL-BUFFERED-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "SchedI",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Channel",
+            "Sources": {
+              "sI": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileI"
+            ]
+          },
+          {
+            "Name": "SchedB",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Channel",
+            "Sources": {
+              "sB": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileB"
+            ]
+          }
+        ],
+        "Sources": {
+          "sI": {
+            "Name": "sI",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "iv": {
+                "Name": "iv",
+                "Simulation": {
+                  "SimulationType": "Interval",
+                  "Interval": 500,
+                  "Item": {
+                    "SimulationType": "Counter",
+                    "DataType": "Int",
+                    "Min": 0,
+                    "Max": 100000
+                  }
+                }
+              },
+              "never": {
+                "Name": "never",
+                "Simulation": {
+                  "SimulationType": "Interval",
+                  "Interval": 3600000,
+                  "Item": {
+                    "SimulationType": "Constant",
+                    "DataType": "Int",
+                    "Value": 1
+                  }
+                }
+              }
+            }
+          },
+          "sB": {
+            "Name": "sB",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "bf": {
+                "Name": "bf",
+                "Simulation": {
+                  "SimulationType": "Buffered",
+                  "Interval": 500,
+                  "Item": {
+                    "SimulationType": "Counter",
+                    "DataType": "Int",
+                    "Min": 0,
+                    "Max": 100000
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileI": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_I}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileB": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_B}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileIServer": {
+          "module": "file-target"
+        },
+        "FileBServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileI": {
+            "TargetServer": "FileIServer"
+          },
+          "FileB": {
+            "TargetServer": "FileBServer"
+          }
+        },
+        "TargetServers": {
+          "FileIServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileBServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-SIM-INVALID-01",
+      "title": "An invalid simulation (Counter without DataType) is reported and disables the simulator, but the error names it \"Companion\" (known defect)",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "Simulation errors must be visible and must say what is wrong. Counter.fromJson returns an InvalidSimulation when DataType is missing, SimulatorChannelConfiguration.validate turns it into a ConfigurationException, the simulator adapter is not created and nothing is written (SFC then idles; that defect is pinned by CORE-SCHED-IDLE-01 and not asserted here). Known defect: every simulation's fromJson takes its name from this::class.java.simpleName inside the companion object, which is 'Companion', so the message reads 'SimulationType \"Companion\" is not valid' and does not name the simulation type. The case waits for the reason text, which a fix would keep.",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Counter.kt:77-78",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/config/SimulatorChannelConfiguration.kt:35-39",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorAdapter.kt:241-251",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:62-71"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "log": "Simulation must have a data type in property DataType",
+            "timeoutSeconds": 30
+          }
+        },
+        {
+          "wait": {
+            "seconds": 2,
+            "comment": "Give a (wrongly) running simulator the time to write something; no condition can observe 'nothing happens'."
+          }
+        }
+      ],
+      "failFast": [],
+      "timeoutSeconds": 60,
+      "modeParity": false,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 0
+        },
+        {
+          "kind": "logContains",
+          "text": "is not valid, Simulation must have a data type in property DataType"
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Counter.kt:77",
+        "summary": "Simulation.fromJson implementations name the InvalidSimulation with this::class.java.simpleName inside the companion object, i.e. 'Companion', so validation errors say 'SimulationType \"Companion\" is not valid' instead of naming the simulation",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "text": "SimulationType \"Companion\" is not valid"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "text": "SimulationType \"Counter\" is not valid"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-INVALID-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "Min": 0,
+                  "Max": 10
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-SIM-WALLCLOCK-01",
+      "title": "Wall-clock and random simulations stay within [Min, Max]; Random Double overshoots Max (known defect)",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "Sinus, Sawtooth and Triangle are functions of wall-clock time and Random is random, so only ranges and types can be asserted: Sawtooth and Triangle clamp to [Min, Max], Sinus oscillates within it, and Random Int draws from [Min, Max) as documented. Known defect: Random Double draws from nextDouble(Min, Max + 1), so a [0, 1] channel yields values up to 2. With 30 draws the chance that none exceeds 1 is 2^-30, so the pin discriminates; rd has its own source and sink so the raw scan for a value starting with '1.' can only match rd.",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Random.kt:35",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Random.kt:37",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Sinus.kt:33-44",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Sawtooth.kt:37-42",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Triangle.kt:36-47"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "rnd": {
+          "kind": "file"
+        }
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 30
+        },
+        {
+          "sink": "rnd",
+          "records": 30
+        }
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": false,
+      "assert": [
+        {
+          "kind": "channelNumericRange",
+          "source": "sim",
+          "channel": "sin",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "sim",
+          "channel": "saw",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "sim",
+          "channel": "tri",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.sin.value",
+          "type": "float"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "sim",
+          "channel": "ri",
+          "min": 0,
+          "max": 9
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ri.value",
+          "type": "int"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.sim.values.ri.value",
+          "min": 2,
+          "comment": "It is random, not constant."
+        },
+        {
+          "kind": "channelNumericRange",
+          "sink": "rnd",
+          "source": "rnd",
+          "channel": "rd",
+          "min": 0,
+          "max": 2
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Random.kt:35",
+        "summary": "Random with DataType Double draws from nextDouble(Min, Max + 1), so values exceed the configured Max by up to 1",
+        "assertCurrent": [
+          {
+            "kind": "rawContains",
+            "sink": "rnd",
+            "text": "\"value\": 1.",
+            "comment": "At least one of 30 draws for Min 0 / Max 1 lies in [1, 2)."
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "channelNumericRange",
+            "sink": "rnd",
+            "source": "rnd",
+            "channel": "rd",
+            "min": 0,
+            "max": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-SIM-WALLCLOCK-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          },
+          {
+            "Name": "R",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "rnd": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileRnd"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "sin": {
+                "Name": "sin",
+                "Simulation": {
+                  "SimulationType": "Sinus",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 100,
+                  "CycleLength": 1000
+                }
+              },
+              "saw": {
+                "Name": "saw",
+                "Simulation": {
+                  "SimulationType": "Sawtooth",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 100,
+                  "CycleLength": 1000
+                }
+              },
+              "tri": {
+                "Name": "tri",
+                "Simulation": {
+                  "SimulationType": "Triangle",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 100,
+                  "CycleLength": 1000
+                }
+              },
+              "ri": {
+                "Name": "ri",
+                "Simulation": {
+                  "SimulationType": "Random",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 10
+                }
+              }
+            }
+          },
+          "rnd": {
+            "Name": "rnd",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "rd": {
+                "Name": "rd",
+                "Simulation": {
+                  "SimulationType": "Random",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileRnd": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_RND}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "FileRndServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "FileRnd": {
+            "TargetServer": "FileRndServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileRndServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

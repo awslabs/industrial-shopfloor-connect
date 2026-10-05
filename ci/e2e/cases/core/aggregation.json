@@ -1,0 +1,3999 @@
+{
+  "cases": [
+    {
+      "id": "CORE-AGG-ARRAY-01",
+      "title": "An array-valued channel is aggregated per position; count counts reads, not elements",
+      "tier": "core",
+      "intent": "For array values aggregationSets builds one set per element position across the buffered reads (Aggregator.kt:97-127) and returns a list of per-position results (:197), so a 3-element counter over a Size 4 window gives min/max/sum/avg as 3-element lists, while count is the number of buffered reads (:414) and values lists the 4 arrays. For window k with b = 12(k-1): min [b, b+1, b+2], max [b+9, b+10, b+11], sum [4b+18, 4b+22, 4b+26] as integers, avg [b+4.5, b+5.5, b+6.5].",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:97-127",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:197",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:288-300",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/Counter.kt:66-71"
+      ],
+      "records": 2,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 2
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.arr.value",
+          "value": {
+            "count": {
+              "value": 4
+            },
+            "avg": {
+              "value": [
+                4.5,
+                5.5,
+                6.5
+              ]
+            },
+            "min": {
+              "value": [
+                0,
+                1,
+                2
+              ]
+            },
+            "max": {
+              "value": [
+                9,
+                10,
+                11
+              ]
+            },
+            "sum": {
+              "value": [
+                18,
+                22,
+                26
+              ]
+            },
+            "values": {
+              "value": [
+                {
+                  "value": [
+                    0,
+                    1,
+                    2
+                  ],
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": [
+                    3,
+                    4,
+                    5
+                  ],
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": [
+                    6,
+                    7,
+                    8
+                  ],
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": [
+                    9,
+                    10,
+                    11
+                  ],
+                  "timestamp": "<ISO>"
+                }
+              ]
+            }
+          },
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.sim.values.arr.value",
+          "value": {
+            "count": {
+              "value": 4
+            },
+            "avg": {
+              "value": [
+                16.5,
+                17.5,
+                18.5
+              ]
+            },
+            "min": {
+              "value": [
+                12,
+                13,
+                14
+              ]
+            },
+            "max": {
+              "value": [
+                21,
+                22,
+                23
+              ]
+            },
+            "sum": {
+              "value": [
+                66,
+                70,
+                74
+              ]
+            },
+            "values": {
+              "value": [
+                {
+                  "value": [
+                    12,
+                    13,
+                    14
+                  ],
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": [
+                    15,
+                    16,
+                    17
+                  ],
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": [
+                    18,
+                    19,
+                    20
+                  ],
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": [
+                    21,
+                    22,
+                    23
+                  ],
+                  "timestamp": "<ISO>"
+                }
+              ]
+            }
+          },
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        }
+      ],
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AGG-ARRAY-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ],
+            "Aggregation": {
+              "Size": 4,
+              "Output": {
+                "sim": {
+                  "arr": [
+                    "count",
+                    "avg",
+                    "min",
+                    "max",
+                    "sum",
+                    "values"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "arr": {
+                "Name": "arr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1,
+                  "Size": 3
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AGG-FILTERED-01",
+      "title": "A change filter feeding an aggregation yields an exact values array per window",
+      "tier": "core",
+      "intent": "Reads whose channels are all filtered out produce nothing (ScheduleReader.kt:339), so the aggregator only receives passing reads. A 0..20 counter behind an Absolute 5 change filter passes exactly 0,5,10,15,20 per 21-read cycle, so each Size 5 window is exactly one cycle: values [0,5,10,15,20], count 5, min 0, max 20 - in every window, which also proves the filter state survives across windows.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:334-352",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:208-218",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFilter.kt:97-114"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.c.value",
+          "value": {
+            "values": {
+              "value": [
+                {
+                  "value": 0,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 5,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 10,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 15,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 20,
+                  "timestamp": "<ISO>"
+                }
+              ]
+            },
+            "min": {
+              "value": 0
+            },
+            "max": {
+              "value": 20
+            },
+            "count": {
+              "value": 5
+            }
+          },
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.sim.values.c.value",
+          "value": {
+            "values": {
+              "value": [
+                {
+                  "value": 0,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 5,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 10,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 15,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 20,
+                  "timestamp": "<ISO>"
+                }
+              ]
+            },
+            "min": {
+              "value": 0
+            },
+            "max": {
+              "value": 20
+            },
+            "count": {
+              "value": 5
+            }
+          },
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        },
+        {
+          "kind": "deepEquals",
+          "index": 2,
+          "path": "sources.sim.values.c.value",
+          "value": {
+            "values": {
+              "value": [
+                {
+                  "value": 0,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 5,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 10,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 15,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 20,
+                  "timestamp": "<ISO>"
+                }
+              ]
+            },
+            "min": {
+              "value": 0
+            },
+            "max": {
+              "value": 20
+            },
+            "count": {
+              "value": 5
+            }
+          },
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        }
+      ],
+      "priority": "P2",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AGG-FILTERED-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ChangeFilters": {
+          "Abs5": {
+            "Type": "Absolute",
+            "Value": 5
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ],
+            "Aggregation": {
+              "Size": 5,
+              "Output": {
+                "sim": {
+                  "c": [
+                    "values",
+                    "min",
+                    "max",
+                    "count"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "ChangeFilter": "Abs5",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 20,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AGG-KEYS-01",
+      "title": "Aggregation Output is keyed by source/channel IDs (comma lists allowed); a Name-keyed Output silently yields messages without sources",
+      "tier": "core",
+      "intent": "Output keys are split on commas and trimmed (AggregationConfiguration.kt:42-50) and matched against source and channel IDs (:99-109), while the payload is written with the configured Names (ScheduleWriter.kt:199-229). So one 's1, s2' x 'c1,c2' entry aggregates four channels, which appear under the names PressSource/Pressure. An Output keyed by the Names instead matches nothing; no validation catches it and the aggregator still submits the empty aggregation map (ScheduleAggregator.kt:76-84), so a message with no 'sources' element is written per window.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/AggregationConfiguration.kt:42-50",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/AggregationConfiguration.kt:99-109",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:430-445",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleAggregator.kt:76-84",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:199-229"
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "sinks": {
+        "main": {},
+        "keyname": {}
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 2
+        },
+        {
+          "sink": "keyname",
+          "records": 2
+        }
+      ],
+      "assert": [
+        {
+          "kind": "keySet",
+          "path": "sources",
+          "keys": [
+            "PressSource",
+            "s2"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.PressSource.values",
+          "keys": [
+            "Pressure",
+            "c2"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.s2.values",
+          "keys": [
+            "c1",
+            "c2"
+          ]
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.PressSource.values.Pressure.value",
+          "value": {
+            "count": {
+              "value": 5
+            },
+            "sum": {
+              "value": 15
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.PressSource.values.c2.value",
+          "value": {
+            "count": {
+              "value": 5
+            },
+            "sum": {
+              "value": 15
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.s2.values.c1.value",
+          "value": {
+            "count": {
+              "value": 5
+            },
+            "sum": {
+              "value": 15
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.s2.values.c2.value",
+          "value": {
+            "count": {
+              "value": 5
+            },
+            "sum": {
+              "value": 15
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.PressSource.values.Pressure.value",
+          "value": {
+            "count": {
+              "value": 5
+            },
+            "sum": {
+              "value": 40
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.PressSource.values.c2.value",
+          "value": {
+            "count": {
+              "value": 5
+            },
+            "sum": {
+              "value": 40
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.s2.values.c1.value",
+          "value": {
+            "count": {
+              "value": 5
+            },
+            "sum": {
+              "value": 40
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.s2.values.c2.value",
+          "value": {
+            "count": {
+              "value": 5
+            },
+            "sum": {
+              "value": 40
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "keysAbsent",
+          "sink": "keyname",
+          "paths": [
+            "sources"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "sink": "keyname",
+          "path": "",
+          "keys": [
+            "schedule",
+            "serial",
+            "timestamp"
+          ]
+        }
+      ],
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AGG-KEYS-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "KeyId",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "s1": [
+                "*"
+              ],
+              "s2": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileKeyId"
+            ],
+            "Aggregation": {
+              "Size": 5,
+              "Output": {
+                "s1, s2": {
+                  "c1,c2": [
+                    "count",
+                    "sum"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "Name": "KeyName",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "s3": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileKeyName"
+            ],
+            "Aggregation": {
+              "Size": 5,
+              "Output": {
+                "Named3": {
+                  "Chan3": [
+                    "count"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "Sources": {
+          "s1": {
+            "Name": "PressSource",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c1": {
+                "Name": "Pressure",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "c2": {
+                "Name": "c2",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          },
+          "s2": {
+            "Name": "s2",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c1": {
+                "Name": "c1",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "c2": {
+                "Name": "c2",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          },
+          "s3": {
+            "Name": "Named3",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c3": {
+                "Name": "Chan3",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileKeyId": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileKeyName": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_KEYNAME}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileKeyIdServer": {
+          "module": "file-target"
+        },
+        "FileKeyNameServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileKeyId": {
+            "TargetServer": "FileKeyIdServer"
+          },
+          "FileKeyName": {
+            "TargetServer": "FileKeyNameServer"
+          }
+        },
+        "TargetServers": {
+          "FileKeyIdServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileKeyNameServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AGG-NUMERIC-01",
+      "title": "All 11 aggregation functions give exact values over disjoint size-based windows (Int and Double inputs, mode ties, first/last/values)",
+      "tier": "core",
+      "intent": "Every aggregation function on a counter whose window contents are known exactly: with no filters each channel is present on every read, so a Size 10 window is exactly 10 consecutive reads and windows are disjoint (Aggregator.kt:58-91, buffers cleared at :483). For window k of an Int counter from 1: count 10, sum 100k-45 as an integer (sum keeps integers as Long, :288-299), avg and median 10k-4.5 as Double, min 10k-9 and max 10k keeping the Int type, and population stddev sqrt(8.25) (:327-347). A Double counter step 0.5 gives sum 22.5 as Double. A 1,2,1,2 counter has a tie, so mode returns both values in first-occurrence order (:381-406). first/last/values carry the per-value timestamps (normalised). Consecutive windows prove no read is lost or counted twice.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:58-91",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:152-160",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:208-414",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:483",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleAggregator.kt:73-82",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/AggregationConfiguration.kt:307-317"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.i.value",
+          "value": {
+            "count": {
+              "value": 10
+            },
+            "sum": {
+              "value": 55
+            },
+            "avg": {
+              "value": 5.5
+            },
+            "min": {
+              "value": 1
+            },
+            "max": {
+              "value": 10
+            },
+            "median": {
+              "value": 5.5
+            },
+            "stddev": {
+              "value": 2.8722813232690143
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.sim.values.i.value",
+          "value": {
+            "count": {
+              "value": 10
+            },
+            "sum": {
+              "value": 155
+            },
+            "avg": {
+              "value": 15.5
+            },
+            "min": {
+              "value": 11
+            },
+            "max": {
+              "value": 20
+            },
+            "median": {
+              "value": 15.5
+            },
+            "stddev": {
+              "value": 2.8722813232690143
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 2,
+          "path": "sources.sim.values.i.value",
+          "value": {
+            "count": {
+              "value": 10
+            },
+            "sum": {
+              "value": 255
+            },
+            "avg": {
+              "value": 25.5
+            },
+            "min": {
+              "value": 21
+            },
+            "max": {
+              "value": 30
+            },
+            "median": {
+              "value": 25.5
+            },
+            "stddev": {
+              "value": 2.8722813232690143
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.d.value",
+          "value": {
+            "count": {
+              "value": 10
+            },
+            "sum": {
+              "value": 22.5
+            },
+            "avg": {
+              "value": 2.25
+            },
+            "min": {
+              "value": 0.0
+            },
+            "max": {
+              "value": 4.5
+            },
+            "median": {
+              "value": 2.25
+            },
+            "stddev": {
+              "value": 1.4361406616345072
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.sim.values.d.value.min.value",
+          "value": 5.0,
+          "strictTypes": true,
+          "comment": "window 2 starts right after window 1's max 4.5"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.m.value",
+          "equals": {
+            "mode": {
+              "value": [
+                1,
+                2
+              ]
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.fl.value",
+          "value": {
+            "first": {
+              "value": 1,
+              "timestamp": "<ISO>"
+            },
+            "last": {
+              "value": 10,
+              "timestamp": "<ISO>"
+            },
+            "values": {
+              "value": [
+                {
+                  "value": 1,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 2,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 3,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 4,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 5,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 6,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 7,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 8,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 9,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 10,
+                  "timestamp": "<ISO>"
+                }
+              ]
+            }
+          },
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.sim.values.fl.value",
+          "value": {
+            "first": {
+              "value": 11,
+              "timestamp": "<ISO>"
+            },
+            "last": {
+              "value": 20,
+              "timestamp": "<ISO>"
+            },
+            "values": {
+              "value": [
+                {
+                  "value": 11,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 12,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 13,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 14,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 15,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 16,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 17,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 18,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 19,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 20,
+                  "timestamp": "<ISO>"
+                }
+              ]
+            }
+          },
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        },
+        {
+          "kind": "pathsEqual",
+          "a": "sources.sim.values.fl.value.first.timestamp",
+          "b": "sources.sim.values.fl.value.values.value[0].timestamp"
+        },
+        {
+          "kind": "pathsEqual",
+          "a": "sources.sim.values.fl.value.last.timestamp",
+          "b": "sources.sim.values.fl.value.values.value[9].timestamp"
+        }
+      ],
+      "priority": "P0",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AGG-NUMERIC-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ],
+            "Aggregation": {
+              "Size": 10,
+              "Output": {
+                "sim": {
+                  "i": [
+                    "count",
+                    "sum",
+                    "avg",
+                    "min",
+                    "max",
+                    "median",
+                    "stddev"
+                  ],
+                  "d": [
+                    "count",
+                    "sum",
+                    "avg",
+                    "min",
+                    "max",
+                    "median",
+                    "stddev"
+                  ],
+                  "m": [
+                    "mode"
+                  ],
+                  "fl": [
+                    "first",
+                    "last",
+                    "values"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "i": {
+                "Name": "i",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "d": {
+                "Name": "d",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 0.5
+                }
+              },
+              "m": {
+                "Name": "m",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 2,
+                  "Step": 1
+                }
+              },
+              "fl": {
+                "Name": "fl",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AGG-PRECEDENCE-01",
+      "title": "Aggregation Output precedence follows JSON key order, not specificity (known defect)",
+      "tier": "core",
+      "intent": "aggregationOutputs walks the Output map in JSON order and returns from inside the first (source, channel) entry that matches, exact or wildcard (AggregationConfiguration.kt:102-115); the specificity order built at :92-97 is only compared against that one entry. So the documented rule 'the best matching entry will be applied' (docs/core/aggregation-configuration.md:30-37, comment at :78-84) is dead: a wildcard listed before the specific entry wins. Three schedules with their own sources isolate three orderings; PC (specific first) is the control that works today.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/AggregationConfiguration.kt:86-117",
+        "docs/core/aggregation-configuration.md:30-37"
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "sinks": {
+        "main": {},
+        "pb": {},
+        "pc": {}
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 2
+        },
+        {
+          "sink": "pb",
+          "records": 2
+        },
+        {
+          "sink": "pc",
+          "records": 2
+        }
+      ],
+      "assert": [
+        {
+          "kind": "keySet",
+          "sink": "pc",
+          "path": "sources.sc.values.c.value",
+          "keys": [
+            "max"
+          ]
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sc.values.c.value.max.value",
+          "value": 3,
+          "strictTypes": true,
+          "sink": "pc"
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.sc.values.c.value.max.value",
+          "value": 6,
+          "strictTypes": true,
+          "sink": "pc"
+        },
+        {
+          "kind": "keySet",
+          "sink": "pc",
+          "path": "sources.sc.values.c2.value",
+          "keys": [
+            "count"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "sink": "pb",
+          "path": "sources.sb.values.c2.value",
+          "keys": [
+            "count"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "sink": "main",
+          "path": "sources.sa.values.c2.value",
+          "keys": [
+            "count"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/AggregationConfiguration.kt:109",
+        "summary": "aggregationOutputs returns at the first matching Output entry in JSON order, so a wildcard listed before a specific source/channel entry overrides it",
+        "assertCurrent": [
+          {
+            "kind": "keySet",
+            "sink": "main",
+            "path": "sources.sa.values.c.value",
+            "keys": [
+              "count"
+            ]
+          },
+          {
+            "kind": "keySet",
+            "sink": "pb",
+            "path": "sources.sb.values.c.value",
+            "keys": [
+              "count"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "keySet",
+            "sink": "main",
+            "path": "sources.sa.values.c.value",
+            "keys": [
+              "max"
+            ]
+          },
+          {
+            "kind": "keySet",
+            "sink": "pb",
+            "path": "sources.sb.values.c.value",
+            "keys": [
+              "max"
+            ]
+          }
+        ]
+      },
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AGG-PRECEDENCE-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "PA",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sa": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FilePA"
+            ],
+            "Aggregation": {
+              "Size": 3,
+              "Output": {
+                "*": {
+                  "*": [
+                    "count"
+                  ]
+                },
+                "sa": {
+                  "c": [
+                    "max"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "Name": "PB",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sb": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FilePB"
+            ],
+            "Aggregation": {
+              "Size": 3,
+              "Output": {
+                "sb": {
+                  "*": [
+                    "count"
+                  ],
+                  "c": [
+                    "max"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "Name": "PC",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sc": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FilePC"
+            ],
+            "Aggregation": {
+              "Size": 3,
+              "Output": {
+                "sc": {
+                  "c": [
+                    "max"
+                  ],
+                  "*": [
+                    "count"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "Sources": {
+          "sa": {
+            "Name": "sa",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "c2": {
+                "Name": "c2",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          },
+          "sb": {
+            "Name": "sb",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "c2": {
+                "Name": "c2",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          },
+          "sc": {
+            "Name": "sc",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "c2": {
+                "Name": "c2",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FilePA": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FilePB": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_PB}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FilePC": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_PC}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FilePAServer": {
+          "module": "file-target"
+        },
+        "FilePBServer": {
+          "module": "file-target"
+        },
+        "FilePCServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FilePA": {
+            "TargetServer": "FilePAServer"
+          },
+          "FilePB": {
+            "TargetServer": "FilePBServer"
+          },
+          "FilePC": {
+            "TargetServer": "FilePCServer"
+          }
+        },
+        "TargetServers": {
+          "FilePAServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FilePBServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "FilePCServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AGG-RAGGED-01",
+      "title": "The aggregation flush uses the depth of the last-iterated channel, so a filtered channel lets the others exceed Size (known defect)",
+      "tier": "core",
+      "intent": "Aggregator.add returns the timestamp count of whichever channel it stored last (Aggregator.kt:80, 90), and ScheduleAggregator flushes when that count reaches Size (ScheduleAggregator.kt:75). With a, then b, where b passes only every other read: read 0 stores {a} (a=1), read 1 stores {a, b} but b is last with depth 1, so no flush although a holds 2 values; read 2 flushes a with 3 values. After that the windows happen to realign to 2. Restricted to inprocess/uberjar: the defect depends on channel-map iteration order, and in IPC the channels cross a protobuf map whose order the protobuf spec does not guarantee.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:58-91",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleAggregator.kt:73-75"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "records": 4,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 4
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.b.value.count.value",
+          "equals": 1,
+          "strictTypes": true
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:90",
+        "summary": "add() returns the buffered depth of the last channel iterated, so a channel missing from some reads delays the flush and the first window holds Size+1 values",
+        "assertCurrent": [
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "path": "sources.sim.values.a.value",
+            "value": {
+              "count": {
+                "value": 3
+              },
+              "min": {
+                "value": 0
+              },
+              "max": {
+                "value": 2
+              }
+            },
+            "strictTypes": true
+          },
+          {
+            "kind": "deepEquals",
+            "index": 1,
+            "path": "sources.sim.values.a.value",
+            "value": {
+              "count": {
+                "value": 2
+              },
+              "min": {
+                "value": 3
+              },
+              "max": {
+                "value": 4
+              }
+            },
+            "strictTypes": true
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.a.value.count.value",
+            "equals": 2,
+            "strictTypes": true
+          }
+        ]
+      },
+      "priority": "P2",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AGG-RAGGED-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Eq1": {
+            "Operator": "eq",
+            "Value": 1
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ],
+            "Aggregation": {
+              "Size": 2,
+              "Output": {
+                "sim": {
+                  "a": [
+                    "count",
+                    "min",
+                    "max"
+                  ],
+                  "b": [
+                    "count"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "a": {
+                "Name": "a",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "b": {
+                "Name": "b",
+                "ValueFilter": "Eq1",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 1,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AGG-SHAPE-01",
+      "title": "Aggregated envelope: an extra value level per function, function order kept, metadata kept; TimestampLevel has no effect (known defect)",
+      "tier": "core",
+      "intent": "An aggregated channel's value is a map from function name to {value[, timestamp]} (Aggregator.kt:448-479), in the order the Output lists them, and the source/channel Metadata and the schedule Metadata (which overrides the top-level one key by key) still apply. But the aggregated SourceOutputData is built without a timestamp (ScheduleAggregator.kt:76-82) and the reader bypasses buildOutputValues on the aggregated path (ScheduleReader.kt:340-352), so TimestampLevel is ignored: 'Both' yields no source or channel timestamp, while 'None' still yields first.timestamp. The docs say first/last/values timestamps depend on the schedule's TimestampLevel (docs/core/aggregation-configuration.md:118,122). Exact metadata is asserted, so the harness marker is not injected.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleAggregator.kt:73-84",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:340-352",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:448-479",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:148",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:207-229",
+        "docs/core/aggregation-configuration.md:118",
+        "docs/core/aggregation-configuration.md:122"
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": false,
+      "sinks": {
+        "main": {},
+        "none": {}
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 2
+        },
+        {
+          "sink": "none",
+          "records": 2
+        }
+      ],
+      "assert": [
+        {
+          "kind": "everyRecord",
+          "path": "metadata",
+          "equals": {
+            "site": "F1",
+            "env": "sched",
+            "line": "A"
+          }
+        },
+        {
+          "kind": "keyOrder",
+          "path": "sources.ab",
+          "keys": [
+            "values",
+            "metadata"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ab.metadata",
+          "equals": {
+            "asset": "M1"
+          }
+        },
+        {
+          "kind": "keyOrder",
+          "path": "sources.ab.values.c",
+          "keys": [
+            "value",
+            "metadata"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ab.values.c.metadata",
+          "equals": {
+            "unit": "bar"
+          }
+        },
+        {
+          "kind": "keyOrder",
+          "path": "sources.ab.values.c.value",
+          "keys": [
+            "min",
+            "count",
+            "max",
+            "first"
+          ]
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.ab.values.c.value",
+          "value": {
+            "min": {
+              "value": 1
+            },
+            "count": {
+              "value": 5
+            },
+            "max": {
+              "value": 5
+            },
+            "first": {
+              "value": 1,
+              "timestamp": "<ISO>"
+            }
+          },
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.ab.values.c.value.min.value",
+          "value": 6,
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "none",
+          "path": "metadata",
+          "equals": {
+            "site": "F1",
+            "env": "cfg"
+          },
+          "comment": "Schedule Metadata overrides the top-level Metadata per schedule only (ScheduleWriter.kt:148)"
+        },
+        {
+          "kind": "keysAbsent",
+          "sink": "none",
+          "paths": [
+            "sources.an.metadata",
+            "sources.an.values.c.metadata"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleAggregator.kt:78",
+        "summary": "Aggregated SourceOutputData is built without a timestamp and the aggregated path skips buildOutputValues, so TimestampLevel is ignored: Both gives no timestamps, None still gives first/last/values timestamps",
+        "assertCurrent": [
+          {
+            "kind": "keysAbsent",
+            "paths": [
+              "sources.ab.timestamp",
+              "sources.ab.values.c.timestamp"
+            ]
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "none",
+            "path": "sources.an.values.c.value.first.timestamp"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.ab.timestamp"
+          },
+          {
+            "kind": "keysAbsent",
+            "sink": "none",
+            "paths": [
+              "sources.an.values.c.value.first.timestamp"
+            ]
+          }
+        ]
+      },
+      "priority": "P0",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AGG-SHAPE-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Metadata": {
+          "site": "F1",
+          "env": "cfg"
+        },
+        "Schedules": [
+          {
+            "Name": "AggBoth",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "ab": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileBoth"
+            ],
+            "Metadata": {
+              "line": "A",
+              "env": "sched"
+            },
+            "Aggregation": {
+              "Size": 5,
+              "Output": {
+                "ab": {
+                  "c": [
+                    "min",
+                    "count",
+                    "max",
+                    "first"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "Name": "AggNone",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "an": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileNone"
+            ],
+            "Aggregation": {
+              "Size": 5,
+              "Output": {
+                "an": {
+                  "c": [
+                    "min",
+                    "count",
+                    "max",
+                    "first"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "Sources": {
+          "ab": {
+            "Name": "ab",
+            "ProtocolAdapter": "SimAdapter",
+            "Metadata": {
+              "asset": "M1"
+            },
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Metadata": {
+                  "unit": "bar"
+                },
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          },
+          "an": {
+            "Name": "an",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileBoth": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileNone": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_NONE}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileBothServer": {
+          "module": "file-target"
+        },
+        "FileNoneServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileBoth": {
+            "TargetServer": "FileBothServer"
+          },
+          "FileNone": {
+            "TargetServer": "FileNoneServer"
+          }
+        },
+        "TargetServers": {
+          "FileBothServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileNoneServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AGG-SIZE1-01",
+      "title": "Aggregation Size 1 short-circuits: stddev returns the value, avg/median keep the integer type, mode becomes a timestamped scalar (known defect)",
+      "tier": "core",
+      "intent": "applyNumericAggregation returns the raw buffered value when the buffer holds one value (Aggregator.kt:177-180), bypassing the aggregation itself, and mode has its own size-1 branch that returns the value with its timestamp (:389-392). Size 1 is accepted (AggregationConfiguration.kt:289-295). With a constant 7: count 1, sum 7, min 7, max 7 and values are right, but stddev is 7 instead of 0.0 (the 'fewer than 2 values' guard at :331 is unreachable), avg and median are the Int 7 instead of 7.0, and mode is {value: 7, timestamp} instead of {value: [7]}.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:170-199",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:327-347",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:382-406",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/AggregationConfiguration.kt:289-295"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.c.value.count.value",
+          "equals": 1,
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.c.value.sum.value",
+          "equals": 7,
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.c.value.min.value",
+          "equals": 7,
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.c.value.max.value",
+          "equals": 7,
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.c.value.values.value",
+          "value": [
+            {
+              "value": 7,
+              "timestamp": "<ISO>"
+            }
+          ],
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:178",
+        "summary": "A 1-element buffer returns the raw value: stddev 7 instead of 0.0, avg/median Int 7 instead of 7.0, mode {value: 7, timestamp} instead of {value: [7]}",
+        "assertCurrent": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.c.value.stddev.value",
+            "equals": 7,
+            "strictTypes": true
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.c.value.avg.value",
+            "equals": 7,
+            "strictTypes": true
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.c.value.median.value",
+            "equals": 7,
+            "strictTypes": true
+          },
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "path": "sources.sim.values.c.value.mode",
+            "value": {
+              "value": 7,
+              "timestamp": "<ISO>"
+            },
+            "strictTypes": true,
+            "normalise": {
+              "isoTimestamps": "<ISO>"
+            }
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.c.value.stddev.value",
+            "equals": 0.0,
+            "strictTypes": true
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.c.value.avg.value",
+            "equals": 7.0,
+            "strictTypes": true
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.sim.values.c.value.median.value",
+            "equals": 7.0,
+            "strictTypes": true
+          },
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "path": "sources.sim.values.c.value.mode",
+            "value": {
+              "value": [
+                7
+              ]
+            },
+            "strictTypes": true
+          }
+        ]
+      },
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AGG-SIZE1-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ],
+            "Aggregation": {
+              "Size": 1,
+              "Output": {
+                "sim": {
+                  "c": [
+                    "count",
+                    "sum",
+                    "avg",
+                    "min",
+                    "max",
+                    "median",
+                    "stddev",
+                    "mode",
+                    "values"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 7
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AGG-WILDCARD-01",
+      "title": "Output [\"*\"] expands by data type (9 numeric, 5 non-numeric including first/last); avg on a String is dropped with an error",
+      "tier": "core",
+      "intent": "A wildcard output list expands to NUMERIC_AGGREGATIONS for a numeric channel and NON_NUMERIC_AGGREGATIONS otherwise (Aggregator.kt:617-631, 646-666), in that set order. So the numeric channel gets 9 functions (no first/last) and the String channel gets first, last, mode, count, values - the docs list only count, mode and values for non-numeric data (docs/core/aggregation-configuration.md:73-75). An explicit avg on a String logs 'aggregation requires numeric datatype' (:183-187) and, being null, 'returns a null value' (:471), so only count remains.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:183-187",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:460-472",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:617-631",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:646-666",
+        "docs/core/aggregation-configuration.md:73-75"
+      ],
+      "records": 2,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 2
+        },
+        {
+          "kind": "keyOrder",
+          "path": "sources.sim.values.num.value",
+          "keys": [
+            "avg",
+            "count",
+            "max",
+            "median",
+            "min",
+            "mode",
+            "stddev",
+            "sum",
+            "values"
+          ]
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.num.value",
+          "value": {
+            "avg": {
+              "value": 3.0
+            },
+            "count": {
+              "value": 5
+            },
+            "max": {
+              "value": 5
+            },
+            "median": {
+              "value": 3.0
+            },
+            "min": {
+              "value": 1
+            },
+            "mode": {
+              "value": [
+                1,
+                2,
+                3,
+                4,
+                5
+              ]
+            },
+            "stddev": {
+              "value": 1.4142135623730951
+            },
+            "sum": {
+              "value": 15
+            },
+            "values": {
+              "value": [
+                {
+                  "value": 1,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 2,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 3,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 4,
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": 5,
+                  "timestamp": "<ISO>"
+                }
+              ]
+            }
+          },
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        },
+        {
+          "kind": "keyOrder",
+          "path": "sources.sim.values.str.value",
+          "keys": [
+            "first",
+            "last",
+            "mode",
+            "count",
+            "values"
+          ]
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.str.value",
+          "value": {
+            "first": {
+              "value": "OK",
+              "timestamp": "<ISO>"
+            },
+            "last": {
+              "value": "OK",
+              "timestamp": "<ISO>"
+            },
+            "mode": {
+              "value": [
+                "OK"
+              ]
+            },
+            "count": {
+              "value": 5
+            },
+            "values": {
+              "value": [
+                {
+                  "value": "OK",
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": "OK",
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": "OK",
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": "OK",
+                  "timestamp": "<ISO>"
+                },
+                {
+                  "value": "OK",
+                  "timestamp": "<ISO>"
+                }
+              ]
+            }
+          },
+          "strictTypes": true,
+          "normalise": {
+            "isoTimestamps": "<ISO>"
+          }
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.sim.values.strAvg.value",
+          "keys": [
+            "count"
+          ]
+        },
+        {
+          "kind": "logContains",
+          "text": "aggregation requires numeric datatype"
+        },
+        {
+          "kind": "logContains",
+          "text": "returns a null value"
+        }
+      ],
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AGG-WILDCARD-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ],
+            "Aggregation": {
+              "Size": 5,
+              "Output": {
+                "sim": {
+                  "num": [
+                    "*"
+                  ],
+                  "str": [
+                    "*"
+                  ],
+                  "strAvg": [
+                    "avg",
+                    "count"
+                  ]
+                }
+              }
+            }
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "num": {
+                "Name": "num",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "str": {
+                "Name": "str",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "OK"
+                }
+              },
+              "strAvg": {
+                "Name": "strAvg",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "OK"
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-AGG-XFORM-01",
+      "title": "Aggregation-output transformations (named and wildcard) versus channel transformations; array-valued aggregates get rewrapped (known defect)",
+      "tier": "core",
+      "intent": "An aggregation's Transformations map applies a transformation to one aggregated output after aggregation (Aggregator.kt:583-599; matching at AggregationConfiguration.kt:137-183), while a channel's own Transformation runs before buffering (ScheduleReader.kt:331). XA: only c.avg is transformed (100k-45.0), c.min/max stay raw Ints, and the channel-transformed ct aggregates already-multiplied values. XB: the '*' output wildcard transforms every output, including count (100) and the integer sum (1000k-450). XC: transforming an array-valued aggregate (an array channel's min, a mode list) goes through applyTransformationOnArray, which wraps every element in a ChannelReadValue (:567-576) that asChannelOutputData then serializes as an object (:499-503): [{value: 0}, ...] instead of [0, ...].",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:559-607",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:497-509",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/AggregationConfiguration.kt:137-183",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:331-342"
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "sinks": {
+        "main": {},
+        "xb": {},
+        "xc": {}
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 2
+        },
+        {
+          "sink": "xb",
+          "records": 2
+        },
+        {
+          "sink": "xc",
+          "records": 2
+        }
+      ],
+      "assert": [
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.xa.values.c.value",
+          "value": {
+            "avg": {
+              "value": 55.0
+            },
+            "min": {
+              "value": 1
+            },
+            "max": {
+              "value": 10
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.xa.values.c.value",
+          "value": {
+            "avg": {
+              "value": 155.0
+            },
+            "min": {
+              "value": 11
+            },
+            "max": {
+              "value": 20
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.xa.values.ct.value",
+          "value": {
+            "avg": {
+              "value": 55.0
+            },
+            "min": {
+              "value": 10
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.xa.values.ct.value",
+          "value": {
+            "avg": {
+              "value": 155.0
+            },
+            "min": {
+              "value": 110
+            }
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.xb.values.c.value",
+          "value": {
+            "avg": {
+              "value": 55.0
+            },
+            "min": {
+              "value": 10
+            },
+            "max": {
+              "value": 100
+            },
+            "count": {
+              "value": 100
+            },
+            "sum": {
+              "value": 550
+            }
+          },
+          "strictTypes": true,
+          "sink": "xb"
+        },
+        {
+          "kind": "deepEquals",
+          "index": 1,
+          "path": "sources.xb.values.c.value",
+          "value": {
+            "avg": {
+              "value": 155.0
+            },
+            "min": {
+              "value": 110
+            },
+            "max": {
+              "value": 200
+            },
+            "count": {
+              "value": 100
+            },
+            "sum": {
+              "value": 1550
+            }
+          },
+          "strictTypes": true,
+          "sink": "xb"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:575",
+        "summary": "applyTransformationOnArray wraps each transformed element in a ChannelReadValue, so an array-valued aggregate is serialized as [{value: x}, ...] instead of [x, ...]",
+        "assertCurrent": [
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "path": "sources.xc.values.arr.value.min.value",
+            "value": [
+              {
+                "value": 0
+              },
+              {
+                "value": 10
+              },
+              {
+                "value": 20
+              }
+            ],
+            "strictTypes": true,
+            "sink": "xc"
+          },
+          {
+            "kind": "deepEquals",
+            "index": 1,
+            "path": "sources.xc.values.arr.value.min.value",
+            "value": [
+              {
+                "value": 120
+              },
+              {
+                "value": 130
+              },
+              {
+                "value": 140
+              }
+            ],
+            "strictTypes": true,
+            "sink": "xc"
+          },
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "path": "sources.xc.values.m.value.mode.value",
+            "value": [
+              {
+                "value": 10
+              },
+              {
+                "value": 20
+              }
+            ],
+            "strictTypes": true,
+            "sink": "xc"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "path": "sources.xc.values.arr.value.min.value",
+            "value": [
+              0,
+              10,
+              20
+            ],
+            "strictTypes": true,
+            "sink": "xc"
+          },
+          {
+            "kind": "deepEquals",
+            "index": 1,
+            "path": "sources.xc.values.arr.value.min.value",
+            "value": [
+              120,
+              130,
+              140
+            ],
+            "strictTypes": true,
+            "sink": "xc"
+          },
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "path": "sources.xc.values.m.value.mode.value",
+            "value": [
+              10,
+              20
+            ],
+            "strictTypes": true,
+            "sink": "xc"
+          }
+        ]
+      },
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-AGG-XFORM-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Transformations": {
+          "x10": [
+            {
+              "Operator": "Multiply",
+              "Operand": 10
+            }
+          ]
+        },
+        "Schedules": [
+          {
+            "Name": "XA",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "xa": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileXA"
+            ],
+            "Aggregation": {
+              "Size": 10,
+              "Output": {
+                "xa": {
+                  "c": [
+                    "avg",
+                    "min",
+                    "max"
+                  ],
+                  "ct": [
+                    "avg",
+                    "min"
+                  ]
+                }
+              },
+              "Transformations": {
+                "xa": {
+                  "c": {
+                    "avg": "x10"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "Name": "XB",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "xb": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileXB"
+            ],
+            "Aggregation": {
+              "Size": 10,
+              "Output": {
+                "xb": {
+                  "c": [
+                    "avg",
+                    "min",
+                    "max",
+                    "count",
+                    "sum"
+                  ]
+                }
+              },
+              "Transformations": {
+                "xb": {
+                  "c": {
+                    "*": "x10"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "Name": "XC",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "xc": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileXC"
+            ],
+            "Aggregation": {
+              "Size": 4,
+              "Output": {
+                "xc": {
+                  "arr": [
+                    "min"
+                  ],
+                  "m": [
+                    "mode"
+                  ]
+                }
+              },
+              "Transformations": {
+                "xc": {
+                  "arr": {
+                    "min": "x10"
+                  },
+                  "m": {
+                    "mode": "x10"
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "Sources": {
+          "xa": {
+            "Name": "xa",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "ct": {
+                "Name": "ct",
+                "Transformation": "x10",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          },
+          "xb": {
+            "Name": "xb",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": {
+                "Name": "c",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          },
+          "xc": {
+            "Name": "xc",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "arr": {
+                "Name": "arr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1,
+                  "Size": 3
+                }
+              },
+              "m": {
+                "Name": "m",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 2,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileXA": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileXB": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_XB}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileXC": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_XC}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileXAServer": {
+          "module": "file-target"
+        },
+        "FileXBServer": {
+          "module": "file-target"
+        },
+        "FileXCServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileXA": {
+            "TargetServer": "FileXAServer"
+          },
+          "FileXB": {
+            "TargetServer": "FileXBServer"
+          },
+          "FileXC": {
+            "TargetServer": "FileXCServer"
+          }
+        },
+        "TargetServers": {
+          "FileXAServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileXBServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "FileXCServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

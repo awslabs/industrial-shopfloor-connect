@@ -1,0 +1,1483 @@
+{
+  "cases": [
+    {
+      "id": "AWS-KIN-01",
+      "title": "Kinesis BatchSize 1: every record is its own PutRecords call and arrives in the real stream, in order",
+      "tier": "aws",
+      "priority": "P0",
+      "intent": "The basic Kinesis contract against the real service: with BatchSize 1 each record is flushed on arrival (handleTargetData, AwsKinesisTargetWriter.kt:209-211) as a one-entry PutRecords request whose data is the record JSON (:340-345), authorised by kinesis:PutRecords from stream.grantReadWrite on the project role (sfc-it-stack.ts:425). One writer coroutine sends the requests one after the other into the stack's one-shard stream, so the stream keeps SFC's order and the counter must read back as an unbroken sequence. The case fails if a record is lost, duplicated or reordered (channelSequence), if SFC batches despite BatchSize 1 (Messages/Writes must be exactly 1), if the data is not the full SFC record (schedule, Int counter, serial), or if a write error is counted. A PutRecords entry the service rejects is only logged (:285-293) - Writes and WriteSuccess are counted for the whole request before its per-entry results are read (:263-266) - so the case also requires that log line to be absent.",
+      "pins": [
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:209-211",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:261-266",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:285-293",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:340-345",
+        "ci/cdk/lib/sfc-it-stack.ts:192-198",
+        "ci/cdk/lib/sfc-it-stack.ts:425",
+        "ci/e2e/lib/sinks/aws.py:277-312"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kinesis"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Kin",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1,
+          "comment": "one PutRecords at a time into one shard: the stream keeps SFC's order"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ctr.value",
+          "type": "int"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "serial",
+          "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "Kin",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "Kin",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1,
+          "comment": "BatchSize 1: one entry per PutRecords request"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to kinesis",
+            ", error code : ",
+            "No records to send to kinesis stream",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ],
+          "comment": "', error code : ' is the per-entry rejection line (AwsKinesisTargetWriter.kt:289); it is not counted as WriteError"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-KIN-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Kin"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Kin": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "${SFC_E2E_KINESIS_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "KinServer": {
+          "module": "aws-kinesis-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Kin": {
+            "TargetServer": "KinServer"
+          }
+        },
+        "TargetServers": {
+          "KinServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-KIN-02",
+      "title": "Kinesis batching: the default BatchSize of 10 fills PutRecords calls under a steady stream; Interval flushes a partial batch once the stream is idle",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Batching is how SFC keeps the PutRecords rate down, and Interval is what flushes a partial batch. KinBatch sets no BatchSize, so the documented default of 10 applies (AwsKinesisTargetConfiguration.kt:55-62, :134; aws-kinesis.md:47); it gets a record every 100 ms with Interval 2000, so every request must carry exactly ten entries (handleTargetData, AwsKinesisTargetWriter.kt:209-211). KinIdle gets a record every second with BatchSize 10 and Interval 200, so only the timer (:166-169, :217-226) can flush it, one record at a time. Both write to the stack's stream and are told apart by schedule name. The case fails if batching is off or the default changed (Messages/Writes would leave 7..10 for KinBatch), if the Interval flush does not happen (no Slow record would arrive before ten had accumulated, 10 s), or if records are lost or duplicated. PutRecords does not promise order inside one request, so the counters are checked as contiguous sets. Every entry's partition key is its index in the batch (:342), '0'..'9' for KinBatch and always '0' for KinIdle; on a one-shard stream that cannot change where a record goes and the sink does not return keys, so keys are not asserted. Interval resets on every record instead of bounding the wait: AWS-KIN-DEF-01.",
+      "pins": [
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:166-171",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:209-211",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:217-226",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:340-342",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/config/AwsKinesisTargetConfiguration.kt:55-71",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/config/AwsKinesisTargetConfiguration.kt:133-134",
+        "docs/targets/aws-kinesis.md:42-47"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kinesis"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "KinIdle",
+              "name": "Writes",
+              "op": "ge",
+              "value": 4
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "KinBatch",
+              "name": "Writes",
+              "op": "ge",
+              "value": 3
+            }
+          }
+        }
+      ],
+      "records": 34,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Slow"
+          },
+          "min": 3
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Fast"
+          },
+          "min": 20
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Slow"
+          },
+          "source": "simSlow",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Fast"
+          },
+          "source": "simFast",
+          "channel": "ctr"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "KinBatch",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "KinBatch",
+            "name": "Writes"
+          },
+          "op": "ge",
+          "value": 7,
+          "comment": "full batches of the default 10 (one stalled partial batch tolerated); 1 would mean no batching"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "KinBatch",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "KinBatch",
+            "name": "Writes"
+          },
+          "op": "le",
+          "value": 10,
+          "comment": "no request above the default BatchSize"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "KinIdle",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "KinIdle",
+            "name": "Writes"
+          },
+          "op": "lt",
+          "value": 2,
+          "comment": "the 200 ms timer flushes each slow record (the start-up reads can share a write); without it a write would carry 10"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to kinesis",
+            ", error code : "
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-KIN-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Fast",
+            "Interval": 100,
+            "Sources": {
+              "simFast": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "KinBatch"
+            ]
+          },
+          {
+            "Name": "Slow",
+            "Interval": 1000,
+            "Sources": {
+              "simSlow": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "KinIdle"
+            ]
+          }
+        ],
+        "Sources": {
+          "simFast": {
+            "Name": "simFast",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "simSlow": {
+            "Name": "simSlow",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "KinBatch": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "${SFC_E2E_KINESIS_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "Interval": 2000
+          },
+          "KinIdle": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "${SFC_E2E_KINESIS_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 10,
+            "Interval": 200
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "KinBatchServer": {
+          "module": "aws-kinesis-target"
+        },
+        "KinIdleServer": {
+          "module": "aws-kinesis-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "KinBatch": {
+            "TargetServer": "KinBatchServer"
+          },
+          "KinIdle": {
+            "TargetServer": "KinIdleServer"
+          }
+        },
+        "TargetServers": {
+          "KinBatchServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "KinIdleServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-KIN-03",
+      "title": "Kinesis GZip and Zip: a 1.1 MB record, over the 1 MiB Kinesis record limit uncompressed, is accepted compressed and decodes back intact",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Kinesis compresses each entry's data on its own and sends the raw GZip or Zip bytes, with no {compression, payload} envelope as for SQS (AwsKinesisTargetWriter.kt:344-350, Compress.kt:45-49; one UUID-named zip entry, :348). A template renders every record to about 1.1 MB, more than the 1 MiB a record in the stack's stream may hold (no larger limit is set, sfc-it-stack.ts:192-198), so the real service accepts it only because SFC compressed it; BytesWritten counts the uncompressed payload (:323, TargetDataBuffer.kt:29) and proves each write carried such a record. The sink picks gzip or zip by magic number, both checked by CRC, and the whole JSON document must parse with every key present and the same padding in every record, the counter in order per target. The case fails if a target sends the record uncompressed (PutRecords rejects it and nothing arrives), if the compressed bytes do not decode, or if records are lost, duplicated or reordered. The padding is compared by distinct count, so a failure does not copy 1.1 MB strings into the report.",
+      "pins": [
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:193-194",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:198-200",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:309-326",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:344-350",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/Compress.kt:45-57",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/CompressionTypes.kt:10-27",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/config/AwsKinesisTargetConfiguration.kt:74-78",
+        "docs/targets/aws-kinesis.md:60-71",
+        "ci/e2e/lib/sinks/aws.py:42-60"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kinesis"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "KinGzip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 3
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "KinZip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 3
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "via": "gzip"
+          },
+          "min": 3
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "via": "zip"
+          },
+          "min": 3
+        },
+        {
+          "kind": "channelSequence",
+          "where": {
+            "via": "gzip"
+          },
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "channelSequence",
+          "where": {
+            "via": "zip"
+          },
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "keySet",
+          "keys": [
+            "metadata",
+            "via",
+            "sources",
+            "pad"
+          ]
+        },
+        {
+          "kind": "distinct",
+          "path": "pad",
+          "equals": 1,
+          "comment": "the same 22000 x 50 character padding in every decoded record"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "KinGzip",
+            "name": "BytesWritten"
+          },
+          "denominator": {
+            "source": "KinGzip",
+            "name": "Writes"
+          },
+          "op": "ge",
+          "value": 1048576,
+          "comment": "every write carried an uncompressed payload above the 1 MiB record limit"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "KinZip",
+            "name": "BytesWritten"
+          },
+          "denominator": {
+            "source": "KinZip",
+            "name": "Writes"
+          },
+          "op": "ge",
+          "value": 1048576,
+          "comment": "every write carried an uncompressed payload above the 1 MiB record limit"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "KinGzip",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "KinGzip",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "KinZip",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "KinZip",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to kinesis",
+            ", error code : ",
+            "Error transforming data with template",
+            "Error creating velocity template"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-KIN-03",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 500,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "KinGzip",
+              "KinZip"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "KinGzip": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "${SFC_E2E_KINESIS_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Compression": "GZip",
+            "Template": "${SFC_E2E_CASE_DIR}/big-gzip.vm"
+          },
+          "KinZip": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "${SFC_E2E_KINESIS_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Compression": "Zip",
+            "Template": "${SFC_E2E_CASE_DIR}/big-zip.vm"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "KinGzipServer": {
+          "module": "aws-kinesis-target"
+        },
+        "KinZipServer": {
+          "module": "aws-kinesis-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "KinGzip": {
+            "TargetServer": "KinGzipServer"
+          },
+          "KinZip": {
+            "TargetServer": "KinZipServer"
+          }
+        },
+        "TargetServers": {
+          "KinGzipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "KinZipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "big-gzip.vm": "#set($v = $sources[\"sim\"][\"values\"][\"ctr\"][\"value\"])#if(\"$!v\" != \"\"){\"metadata\":{\"marker\":\"$!metadata[\"marker\"]\"},\"via\":\"gzip\",\"sources\":{\"sim\":{\"values\":{\"ctr\":{\"value\":$v}}}},\"pad\":\"#foreach($i in [1..22000])01234567890123456789012345678901234567890123456789#end\"}#end\n",
+        "big-zip.vm": "#set($v = $sources[\"sim\"][\"values\"][\"ctr\"][\"value\"])#if(\"$!v\" != \"\"){\"metadata\":{\"marker\":\"$!metadata[\"marker\"]\"},\"via\":\"zip\",\"sources\":{\"sim\":{\"values\":{\"ctr\":{\"value\":$v}}}},\"pad\":\"#foreach($i in [1..22000])01234567890123456789012345678901234567890123456789#end\"}#end\n"
+      }
+    },
+    {
+      "id": "AWS-KIN-DEF-01",
+      "title": "Kinesis Interval is an inactivity timer: under a steady stream nothing is sent until BatchSize is reached, not after Interval as documented (known defect)",
+      "tier": "aws",
+      "priority": "P2",
+      "intent": "aws-kinesis.md:75 promises that the buffer is sent when BatchSize is reached or when Interval has elapsed, whichever comes first, so that records do not sit in the buffer waiting for the batch to fill. The writer instead cancels the timer on every received record and starts a new one after each select (AwsKinesisTargetWriter.kt:161-171), so it fires only after Interval without any record. KinClock (BatchSize 1) and KinSteady (BatchSize 500, Interval 1500, a template that marks its records via=steady) receive the same record every 200 ms. By the time KinClock has written 40 records (8 s), the documented behaviour has sent KinSteady's buffer about five times; today KinSteady has sent nothing, and would only at 500 records, 100 s in. KinClock's records prove the stream and the schedule ran the whole time. The pin tolerates one flush, from a stall of 1.5 s between two records; with the defect fixed KinSteady writes at least three times and its records arrive.",
+      "pins": [
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:152-177",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:217-226",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/config/AwsKinesisTargetConfiguration.kt:64-71",
+        "docs/targets/aws-kinesis.md:74-79"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kinesis"
+        }
+      },
+      "records": 40,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "KinClock",
+              "name": "Writes",
+              "op": "ge",
+              "value": 40
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "S"
+          },
+          "min": 30
+        },
+        {
+          "kind": "channelSequence",
+          "where": {
+            "schedule": "S"
+          },
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1,
+          "comment": "KinClock's records: the schedule delivered every 200 ms throughout"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "KinClock",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "KinClock",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to kinesis",
+            ", error code : ",
+            "Error transforming data with template",
+            "Error creating velocity template"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:161-171",
+        "summary": "Interval restarts with every received record, so it bounds idle time, not the time a record waits: with records arriving more often than Interval nothing is sent until BatchSize records have accumulated (docs/targets/aws-kinesis.md:75 says whichever comes first)",
+        "assertCurrent": [
+          {
+            "kind": "metric",
+            "source": "KinSteady",
+            "name": "Writes",
+            "op": "le",
+            "value": 1,
+            "comment": "no flush while records keep arriving within Interval; 1 tolerates one 1.5 s stall"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "metric",
+            "source": "KinSteady",
+            "name": "Writes",
+            "op": "ge",
+            "value": 3
+          },
+          {
+            "kind": "recordCount",
+            "where": {
+              "via": "steady"
+            },
+            "min": 5
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-KIN-DEF-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "KinClock",
+              "KinSteady"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "KinClock": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "${SFC_E2E_KINESIS_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1
+          },
+          "KinSteady": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "${SFC_E2E_KINESIS_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 500,
+            "Interval": 1500,
+            "Template": "${SFC_E2E_CASE_DIR}/steady.vm"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "KinClockServer": {
+          "module": "aws-kinesis-target"
+        },
+        "KinSteadyServer": {
+          "module": "aws-kinesis-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "KinClock": {
+            "TargetServer": "KinClockServer"
+          },
+          "KinSteady": {
+            "TargetServer": "KinSteadyServer"
+          }
+        },
+        "TargetServers": {
+          "KinClockServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "KinSteadyServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "steady.vm": "#set($v = $sources[\"sim\"][\"values\"][\"ctr\"][\"value\"])#if(\"$!v\" != \"\"){\"metadata\":{\"marker\":\"$!metadata[\"marker\"]\"},\"via\":\"steady\",\"sources\":{\"sim\":{\"values\":{\"ctr\":{\"value\":$v}}}}}#end\n"
+      }
+    },
+    {
+      "id": "AWS-KIN-DEF-02",
+      "title": "Kinesis: a record whose template renders empty fails its whole PutRecords batch - the valid records batched with it are lost (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "A template may render nothing for a record, to send only some of them. TargetDataBuffer.add keeps no payload for an empty string but still counts the record (TargetDataBuffer.kt:26-36), and buildRecords then reads buffer.payloads[i] for every buffered item (AwsKinesisTargetWriter.kt:340-345): the IndexOutOfBoundsException is caught by flush, counted as one WriteError and the whole batch is dropped (:295-304). Both targets use a template that renders only even counter values. KinOne (BatchSize 1) delivers every even record and pays a WriteError with a stack trace for each odd one; KinFour (BatchSize 4) has two odd records in every batch, so none of its even records ever arrives. KinOne's records prove the template renders correctly (consecutive even values in order, no template error), so the loss is the writer's. The timeline waits for KinFour's second write or its second WriteError, whichever comes first, so it serves the pin and the fix.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetDataBuffer.kt:26-36",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:228-234",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:295-304",
+        "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:340-345",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/OutputTransformation.kt:45",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/OutputTransformation.kt:103"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kinesis"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "KinOne",
+              "name": "Writes",
+              "op": "ge",
+              "value": 5
+            }
+          }
+        },
+        {
+          "wait": {
+            "any": [
+              {
+                "metric": {
+                  "source": "KinFour",
+                  "name": "Writes",
+                  "op": "ge",
+                  "value": 2
+                }
+              },
+              {
+                "metric": {
+                  "source": "KinFour",
+                  "name": "WriteError",
+                  "op": "ge",
+                  "value": 2
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "records": 5,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "allowWriteErrors": [
+        "KinOne",
+        "KinFour"
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "via": "one"
+          },
+          "min": 5
+        },
+        {
+          "kind": "channelSequence",
+          "where": {
+            "via": "one"
+          },
+          "source": "sim",
+          "channel": "ctr",
+          "step": 2,
+          "comment": "every even value, in order, and no odd one"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error transforming data with template",
+            "Error creating velocity template"
+          ],
+          "comment": "the empty renders are the template's choice, not a template failure"
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-kinesis-target/src/main/kotlin/com/amazonaws/sfc/awskinesis/AwsKinesisTargetWriter.kt:340-345",
+        "summary": "An empty template result is not buffered as a payload but still counts as an item (TargetDataBuffer.kt:27-35), so buildRecords indexes buffer.payloads past its end: the IndexOutOfBoundsException drops the whole PutRecords batch with one WriteError, including its valid records",
+        "assertCurrent": [
+          {
+            "kind": "recordCount",
+            "where": {
+              "via": "four"
+            },
+            "equals": 0,
+            "comment": "every batch of four holds two empty renders, so every batch is dropped"
+          },
+          {
+            "kind": "metric",
+            "source": "KinFour",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 2
+          },
+          {
+            "kind": "metric",
+            "source": "KinFour",
+            "name": "Writes",
+            "op": "eq",
+            "value": 0
+          },
+          {
+            "kind": "metric",
+            "source": "KinOne",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 2,
+            "comment": "an odd record alone in its batch throws as well"
+          },
+          {
+            "kind": "logContains",
+            "text": "IndexOutOfBoundsException",
+            "min": 2
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "where": {
+              "via": "four"
+            },
+            "min": 2
+          },
+          {
+            "kind": "metric",
+            "source": "KinFour",
+            "name": "Writes",
+            "op": "ge",
+            "value": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-KIN-DEF-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "KinOne",
+              "KinFour"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "KinOne": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "${SFC_E2E_KINESIS_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Template": "${SFC_E2E_CASE_DIR}/even-one.vm"
+          },
+          "KinFour": {
+            "TargetType": "AWS-KINESIS",
+            "StreamName": "${SFC_E2E_KINESIS_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 4,
+            "Template": "${SFC_E2E_CASE_DIR}/even-four.vm"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-KINESIS": {
+            "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "KinOneServer": {
+          "module": "aws-kinesis-target"
+        },
+        "KinFourServer": {
+          "module": "aws-kinesis-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "KinOne": {
+            "TargetServer": "KinOneServer"
+          },
+          "KinFour": {
+            "TargetServer": "KinFourServer"
+          }
+        },
+        "TargetServers": {
+          "KinOneServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "KinFourServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "even-one.vm": "#set($v = $sources[\"sim\"][\"values\"][\"ctr\"][\"value\"])#if(\"$!v\" != \"\" && $math.mod($v, 2) == 0){\"metadata\":{\"marker\":\"$!metadata[\"marker\"]\"},\"via\":\"one\",\"sources\":{\"sim\":{\"values\":{\"ctr\":{\"value\":$v}}}}}#end\n",
+        "even-four.vm": "#set($v = $sources[\"sim\"][\"values\"][\"ctr\"][\"value\"])#if(\"$!v\" != \"\" && $math.mod($v, 2) == 0){\"metadata\":{\"marker\":\"$!metadata[\"marker\"]\"},\"via\":\"four\",\"sources\":{\"sim\":{\"values\":{\"ctr\":{\"value\":$v}}}}}#end\n"
+      }
+    }
+  ]
+}
