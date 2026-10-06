@@ -777,6 +777,23 @@
             ],
             "comment": "Xform has read and failed (today) or delivered (fixed) - in IPC its first read can come 10 s late"
           }
+        },
+        {
+          "wait": {
+            "any": [
+              {
+                "log": "Can not compare value RUNNING"
+              },
+              {
+                "sink": "main",
+                "records": 40,
+                "where": {
+                  "schedule": "Always"
+                }
+              }
+            ],
+            "comment": "Always has read and failed (today) or delivered (fixed) - in IPC its first read can come 10 s late"
+          }
         }
       ]
     }

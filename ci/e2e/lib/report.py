@@ -40,28 +40,43 @@ def _truncate(text: str, limit: int = 2000) -> str:
     return text[:limit] + f"\n... [{len(text) - limit} more characters, see the artifact]"
 
 
-def _evidence_links(run: dict, case_dir: str) -> list[tuple[str, str]]:
-    """S3 console links to a case run's evidence (evidence.py's layout), or none without an S3 location.
+def _console_url(run: dict, key: str, folder: bool = True) -> str | None:
+    """S3 console link to a key under the run's evidence location, or None without an S3 location.
 
     Console links rather than presigned URLs: they never expire, and only people with access to the
     stack's account can open them.
     """
     evidence, region = run.get("evidence") or "", run.get("region")
     if not evidence.startswith("s3://") or not region:
-        return []
+        return None
     bucket, _, prefix = evidence[len("s3://"):].partition("/")
-    base = f"{prefix.rstrip('/')}/{case_dir}" if prefix else case_dir
-    console = f"https://{region}.console.aws.amazon.com/s3"
+    full = f"{prefix.rstrip('/')}/{key}" if prefix else key
+    kind = "buckets" if folder else "object"
+    return f"https://{region}.console.aws.amazon.com/s3/{kind}/{bucket}?region={region}&prefix={quote(full, safe='')}"
 
-    def folder(key: str) -> str:
-        return f"{console}/buckets/{bucket}?region={region}&prefix={quote(key, safe='')}"
 
-    def file(key: str) -> str:
-        return f"{console}/object/{bucket}?region={region}&prefix={quote(key, safe='')}"
+def _case_url(run: dict, c: dict | None) -> str | None:
+    """The S3 console folder of one case run's evidence (evidence.py's layout). None for a unit that never
+    ran and so has no folder of its own, such as a mode the case does not support."""
+    if not c:
+        return None
+    case_dir = f"{c.get('id')}.{c.get('mode')}"
+    if not str(c.get("artifacts", "")).rstrip("/").endswith(case_dir):
+        return None
+    return _console_url(run, f"cases/{case_dir}/")
 
-    return [("case folder", folder(base)), ("config.json", file(base + "config.json")),
-            ("logs", folder(base + "logs/")), ("collected records", folder(base + "collected/")),
-            ("metrics", file(base + "metrics.jsonl"))]
+
+def _link(text: str, url: str | None) -> str:
+    return f"[{text}]({url})" if url else text
+
+
+def _evidence_links(run: dict, case_dir: str) -> list[tuple[str, str]]:
+    """All S3 console links to a case run's evidence, or none without an S3 location."""
+    if _console_url(run, case_dir) is None:
+        return []
+    return [("case folder", _console_url(run, case_dir)), ("config.json", _console_url(run, case_dir + "config.json", False)),
+            ("logs", _console_url(run, case_dir + "logs/")), ("collected records", _console_url(run, case_dir + "collected/")),
+            ("metrics", _console_url(run, case_dir + "metrics.jsonl", False))]
 
 
 def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
@@ -72,6 +87,8 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
     """
     cases: list[dict] = results.get("cases", [])
     run = results.get("run", {})
+    # Every case run named below links to its evidence folder in the S3 console.
+    units = {(c.get("id"), c.get("mode")): c for c in cases}
 
     counts = {v: sum(1 for c in cases if c.get("verdict") == v) for v in (PASS, FAIL, SKIP, ERROR)}
     total = len(cases)
@@ -139,7 +156,8 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
         w("|---|---|---|")
         for p in parity:
             mark = _MARK[PASS] if p.get("identical") else _MARK[FAIL]
-            w(f"| `{p.get('id')}` | {', '.join(p.get('modes', []))} | {mark} {p.get('detail', '')} |")
+            modes_cell = ", ".join(_link(m, _case_url(run, units.get((p.get("id"), m)))) for m in p.get("modes", []))
+            w(f"| `{p.get('id')}` | {modes_cell} | {mark} {p.get('detail', '')} |")
         w("")
 
     # ------------------------------------------------------------------ 4. failures
@@ -199,10 +217,11 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
         w("| Case | Mode | Target | Writes | WriteSuccess | WriteError | Messages | BytesWritten |")
         w("|---|---|---|---:|---:|---:|---:|---:|")
         for c in counters:
+            case_cell = _link(f"`{c.get('id')}`", _case_url(run, c))
             for row in c["metrics"]:
                 flag = " ⚠️" if row.get("WriteError") else ""
                 w(
-                    f"| `{c.get('id')}` | {c.get('mode')} | `{row.get('target')}` | "
+                    f"| {case_cell} | {c.get('mode')} | `{row.get('target')}` | "
                     f"{row.get('Writes', 0):g} | {row.get('WriteSuccess', 0):g} | "
                     f"{row.get('WriteError', 0):g}{flag} | "
                     f"{row.get('Messages', 0):g} | {row.get('BytesWritten', 0):g} |"
@@ -225,7 +244,8 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
         w("|---|---|---|---|")
         for case_id, runs in defects.items():
             d = runs[0]["knownDefect"]
-            status = ", ".join(f"{r.get('mode')} {'pinned' if r.get('verdict') == PASS else '**' + r.get('verdict', '?') + ' - review**'}"
+            status = ", ".join(f"{_link(r.get('mode'), _case_url(run, r))} "
+                               f"{'pinned' if r.get('verdict') == PASS else '**' + r.get('verdict', '?') + ' - review**'}"
                                for r in runs)
             w(f"| `{case_id}` | {d.get('summary', '')} | `{d.get('ref', '')}` | {status} |")
         w("")
@@ -238,7 +258,8 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
         w("| Case | Mode | Reason |")
         w("|---|---|---|")
         for c in skips:
-            w(f"| `{c.get('id')}` | {c.get('mode')} | {c.get('skipReason', 'no reason given')} |")
+            case_cell = _link(f"`{c.get('id')}`", _case_url(run, c))
+            w(f"| {case_cell} | {c.get('mode')} | {c.get('skipReason', 'no reason given')} |")
         w("")
 
     # ------------------------------------------------------------------ 8. AWS resources
@@ -284,7 +305,8 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
         cells = []
         for mode in modes:
             r = row["modes"].get(mode)
-            cells.append("·" if r is None else f"{_MARK.get(r.get('verdict'), '?')} {_fmt_duration(r.get('durationSeconds'))}")
+            cells.append("·" if r is None else _link(f"{_MARK.get(r.get('verdict'), '?')} {_fmt_duration(r.get('durationSeconds'))}",
+                                                     _case_url(run, r)))
         w(f"| `{case_id}` | `{c.get('area')}` | {c.get('priority', '-')} | " + " | ".join(cells) + f" | {c.get('title', '')} |")
     w("")
     w("</details>")

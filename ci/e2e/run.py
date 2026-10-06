@@ -10,6 +10,7 @@
 Requires only a JVM and a prior `./gradlew build` - the core tier touches no AWS service and no network.
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -18,4 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lib.runner import main  # noqa: E402
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    code = main()
+    # Exit even if a library thread is still running (asyncua's sync client, for one): the report is
+    # written and uploaded by now, and a lingering thread would otherwise hold the build until its timeout.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)

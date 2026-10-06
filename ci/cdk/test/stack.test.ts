@@ -204,6 +204,6 @@ describe('teardown and access', () => {
   });
   test('the CI role may stop a build and its session outlives a queued plus running build', () => {
     expect(policies).toContain('codebuild:StopBuild');
-    T.hasResourceProperties('AWS::IAM::Role', Match.objectLike({ MaxSessionDuration: 7200 }));
+    T.hasResourceProperties('AWS::IAM::Role', Match.objectLike({ MaxSessionDuration: 21600 }));
   });
 });

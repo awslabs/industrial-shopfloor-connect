@@ -59,7 +59,7 @@ npx cdk deploy -c githubRepo=<owner>/<repo> --outputs-file outputs.json
 | Destinations | S3 prefixes `s3-target/`, `firehose/`, `lambda-evidence/`; SNS topic with a raw-delivery queue; IoT rule `sfc/it/#` into a queue, plus an error queue; Kinesis stream (1 shard); Firehose (0 s buffering); the evidence Lambda; MSK Provisioned (2 × kafka.m5.large, IAM auth, public access on 9198) |
 | Created per case run, by the sinks | SQS queue `sfc-it-<marker>`; MSK topic `sfc_it_<utc>_<marker>`; the S3 Tables namespaces and buckets and SiteWise models and assets that AutoCreate and AssetCreation cases name with the marker |
 | Fixtures | S3 Tables bucket `sfc-it-fixture-<acct>` with namespace `sfc_it` and tables `sim_a`, `sim_b`; a SiteWise model and two assets with aliases `/sfc-it/fixture/a{1,2}/<prop>`; a secret; an IoT role alias and device policy |
-| Build | `sfc-integration-test` (LARGE, 50 min, 4 concurrent builds, no VPC); `sfc-integration-test-image` (builds the image); ECR `sfc-it-ci-image`; a report group. The VPC holds only the MSK brokers. |
+| Build | `sfc-integration-test` (LARGE, 5 h, 4 concurrent builds, no VPC); `sfc-integration-test-image` (builds the image); ECR `sfc-it-ci-image`; a report group. The VPC holds only the MSK brokers. |
 | Access | SFC runs as the project role, which holds every target's permissions. `SfcItCiRole` is for GitHub: upload the source, start, stop and inspect builds, read the evidence. |
 | Teardown | The janitor Lambda, run on every finished build and hourly |
 
@@ -103,12 +103,61 @@ flowchart LR
 3. **Push any branch.** A run starts in the repository's Actions tab. Its "Start the build" step shows
    `build: sfc-integration-test:<id>`.
 
+#### Pull requests from forks
+
+A fork PR's code runs in CodeBuild with the test account's permissions. Its run therefore waits until
+a maintainer approves it. Until you complete the setup below, fork-PR runs stop at the gate and test
+nothing.
+
+Setup, once:
+1. In the repository, go to Settings → Environments → New environment. Name it `fork-pr-approval` and
+   select Configure environment.
+2. Tick **Required reviewers**, add the maintainers who may approve, and select Save protection rules.
+
+
+To approve a run:
+1. In the Actions tab, the PR's run waits at `approve-fork-pr`. **Read the PR's diff first.**
+2. Open the run, select Review deployments, tick `fork-pr-approval`, and select Approve and deploy.
+
+Each new push to the PR needs a new approval. PRs from branches of this repository are not run again,
+because the push of the branch already ran the tests. Fork PRs trigger the workflow only once it is on
+the default branch. Required reviewers work only in public repositories, or in private ones on GitHub
+Enterprise.
+
+### 2.3 Ruleset for main
+
+Every change reaches `main` through a pull request, from a branch or a fork, and the pull request can
+merge only when the integration tests passed on its latest commit. Direct pushes to `main` are
+blocked. Each run sets the commit status `sfc-integration-tests` on the commit it tested, and the
+ruleset requires that status.
+
+1. **Let one run finish first.** Push any branch. A status can be selected in the ruleset only after a
+   run has recently reported it.
+2. In the repository, go to Settings → Rules → Rulesets, select **New ruleset**, then **New branch
+   ruleset**.
+3. Under Ruleset name, type `protect-main`. Set Enforcement status to **Active**.
+4. Leave the **Bypass list** empty. Anyone on it, admins included, could still push to `main` directly.
+5. Under Target branches, select **Add a target** → **Include default branch**.
+6. Under Branch rules, keep **Restrict deletions** and **Block force pushes**, which are ticked by
+   default, and tick two more:
+   - **Require a pull request before merging.** This blocks direct pushes. If merges also need a
+     review, set Required approvals to that number.
+   - **Require status checks to pass before merging.** Add the check `sfc-integration-tests` and set
+     its source to **GitHub Actions**, so a status from anyone else does not count. Don't add
+     `integration`, the job's own check: on a fork PR it lands on `main`'s commit, not on the PR's.
+7. Select **Create**.
+
+When a run fails, it sets the status to failure, and the PR stays blocked until a new push passes. A
+cancelled run sets no status, which blocks the PR too. Every merge to `main` then runs the `full`
+profile.
+
 
 ## 3. How a run works
 
 | Trigger | Profile | Runs |
 |---|---|---|
 | push to any branch | `push` | P0 and P1 cases |
+| fork PR, once approved (see 2.2) | `push` | P0 and P1 cases |
 | push to `main`, nightly at 02:17 UTC, *Run workflow* | `full` | all cases |
 
 A new push to the same branch cancels the previous run and stops its build.
@@ -207,9 +256,10 @@ sequenceDiagram
   - JUnit results in the CodeBuild report group.
 - **Verdicts:** ✅ pass · ❌ fail (a check did not hold) · 💥 error (the case could not run, for example
   a timeout) · — skipped (with the reason).
+- **Links:** every case run named in the report links to its evidence folder in the S3 console. Opening
+  the links needs a login to the stack's account.
 - **A failure** shows each failed check with its expected and actual values.
-  - It links that case run's evidence in the S3 console: the case folder, config.json, logs, collected
-    records and metrics. Opening the links needs a login to the stack's account.
+  - It also links config.json, logs, collected records and metrics directly.
   - The case folder `cases/<ID>.<mode>/` holds:
 
   | Path | What it holds |

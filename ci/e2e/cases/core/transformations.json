@@ -745,6 +745,23 @@
         "main": {},
         "ctl": {}
       },
+      "steps": [
+        {
+          "wait": {
+            "any": [
+              {
+                "log": "Error processing data from reader",
+                "count": 10
+              },
+              {
+                "sink": "main",
+                "records": 15
+              }
+            ],
+            "comment": "Test has wedged (today: the error repeats on every read) or delivered (fixed) - in IPC its first read can come 10 s late"
+          }
+        }
+      ],
       "gates": [
         {
           "sink": "ctl",

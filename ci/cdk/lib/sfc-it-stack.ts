@@ -399,7 +399,7 @@ export class SfcItStack extends Stack {
       },
       buildSpec: buildSpec({ artifactsBucket: artifacts.bucketName, reportGroupArn: reportGroup.reportGroupArn }),
       cache: codebuild.Cache.bucket(artifacts, { prefix: 'cache' }),
-      timeout: Duration.minutes(50),
+      timeout: Duration.hours(5),
       queuedTimeout: Duration.minutes(10),
       concurrentBuildLimit: 4,
       logging: { cloudWatch: { logGroup: projectLogs } },
@@ -497,7 +497,7 @@ export class SfcItStack extends Stack {
         DEVICE_POLICY: devicePolicyName,
         MAX_AGE_SECONDS: '7200',
         // Certificates carry no run id, so they are only ever removed once older than any build could be.
-        CERT_MIN_AGE_SECONDS: '4200',
+        CERT_MIN_AGE_SECONDS: '19200',  // 5 h 20 min: the 5 h build timeout plus its 10 min queue
       },
       logGroup: new logs.LogGroup(this, 'JanitorLogs', { retention: logs.RetentionDays.ONE_WEEK, removalPolicy: RemovalPolicy.DESTROY }),
     });
@@ -543,8 +543,8 @@ export class SfcItStack extends Stack {
         StringLike: { 'token.actions.githubusercontent.com:sub': `repo:${props.githubRepo}:*` },
       }),
       description: 'Assumed from GitHub Actions to upload source, start a build and fetch its evidence',
-      // A build can queue for 10 minutes and run for 50; the session must outlive both.
-      maxSessionDuration: Duration.hours(2),
+      // A build can queue for 10 minutes and run for 5 hours; the session must outlive both.
+      maxSessionDuration: Duration.hours(6),
     });
     artifacts.grantPut(ciRole, 'src/*');
     artifacts.grantRead(ciRole, 'evidence/*');
