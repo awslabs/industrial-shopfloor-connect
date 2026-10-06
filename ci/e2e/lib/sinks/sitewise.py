@@ -54,6 +54,7 @@ class SiteWiseSink(Sink):
         self.alias_prefix = self.spec.get("aliasPrefix")
         self._ids: dict[str, dict] = self._fixture_ids() if self.alias_prefix else {}
         self.asset_name = (self.spec.get("assetName") or "").replace("<marker>", self.ctx.marker)
+        self._by_ts: dict[str, dict] = {}
         return {}
 
     def _fixture_ids(self) -> dict[str, dict]:
@@ -125,11 +126,13 @@ class SiteWiseSink(Sink):
                 return []
             idents = {p: {"assetId": self._ids[p]["assetId"], "propertyId": self._ids[p]["propertyId"]}
                       for p in self.properties if p in self._ids}
-        by_ts: dict[str, dict] = {}
+        # Accumulated across reads: a read can come back empty (or NotFound) after values were already read,
+        # and with completeRows one empty property would drop every row. Values once read never change, so
+        # the union is exact.
         for prop, ident in idents.items():
             for tqv in self._history(**ident):
-                by_ts.setdefault(_ts(tqv), {"_ts": _ts(tqv)})[prop] = _variant(tqv["value"])
-        rows = [r for _, r in sorted(by_ts.items())]
+                self._by_ts.setdefault(_ts(tqv), {"_ts": _ts(tqv)})[prop] = _variant(tqv["value"])
+        rows = [dict(r) for _, r in sorted(self._by_ts.items())]
         if self.marker_property in self.properties:
             rows = [r for r in rows if r.get(self.marker_property) == self.ctx.marker]
         if self.spec.get("completeRows"):

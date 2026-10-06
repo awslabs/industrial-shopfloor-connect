@@ -26,6 +26,7 @@ import argparse
 import http.client
 import json
 import os
+import random
 import re
 import signal
 import socket
@@ -276,9 +277,22 @@ def cmd_metrics(a) -> dict:
 # ------------------------------------------------------------------------------------------------ svc
 
 def free_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return int(s.getsockname()[1])
+    """A port for the probed service, picked like the harness's sfcproc.free_port.
+
+    bind(127.0.0.1:0) handed out a port from the ephemeral range that an outgoing connection on the
+    container address already held ("Failed to bind to address /172.17.0.2:44431"). 10000-19999 lies
+    below the Linux (32768-60999) and macOS (49152-65535) ephemeral ranges and outside the harness's own
+    20000-32767; binding 0.0.0.0 checks every local address the service may bind.
+    """
+    for _ in range(500):
+        port = random.randint(10000, 19999)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind(("0.0.0.0", port))
+            except OSError:
+                continue
+        return port
+    raise SystemExit("svc: no free port in 10000-19999 after 500 attempts")
 
 
 def listening(port: int) -> str | None:
