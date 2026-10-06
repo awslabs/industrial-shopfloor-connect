@@ -107,17 +107,6 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
         f"{counts[SKIP]} skipped** of {total} in {_fmt_duration(run.get('durationSeconds'))}"
     )
     w("")
-    w("| | |")
-    w("|---|---|")
-    w(f"| Commit | `{run.get('commit', 'unknown')}`{' **(dirty working tree)**' if run.get('dirty') else ''} |")
-    w(f"| Branch / ref | `{run.get('ref', '-')}` |")
-    w(f"| SFC version | `{run.get('sfcVersion', '-')}` |")
-    w(f"| Uberjar | `{run.get('uberjar', '-')}` |")
-    w(f"| Uberjar sha256 | `{run.get('uberjarSha256', '-')}` |")
-    w(f"| Modes exercised | {', '.join(f'`{m}`' for m in run.get('modes', [])) or '-'} |")
-    w(f"| Tiers | {', '.join(f'`{t}`' for t in run.get('tiers', [])) or '-'} |")
-    w(f"| Run id | `{run.get('runId', '-')}` |")
-    w("")
 
     # ------------------------------------------------------------------ 2. matrix
     modes = run.get("modes", [])
