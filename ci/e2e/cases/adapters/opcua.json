@@ -5107,6 +5107,19 @@
         }
       },
       "records": 10,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "OpcuaTarget",
+              "name": "WriteSuccess",
+              "op": "ge",
+              "value": 1
+            },
+            "comment": "the target's metrics are written once per interval: don't stop SFC before the first one"
+          }
+        }
+      ],
       "assert": [
         {
           "kind": "everyRecord",
@@ -5436,6 +5449,19 @@
         }
       },
       "records": 10,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "OpcuaTarget",
+              "name": "WriteSuccess",
+              "op": "ge",
+              "value": 1
+            },
+            "comment": "the target's metrics are written once per interval: don't stop SFC before the first one"
+          }
+        }
+      ],
       "assert": [
         {
           "kind": "everyRecord",
@@ -5777,6 +5803,19 @@
         }
       },
       "records": 10,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "OpcuaTarget",
+              "name": "WriteSuccess",
+              "op": "ge",
+              "value": 1
+            },
+            "comment": "the target's metrics are written once per interval: don't stop SFC before the first one"
+          }
+        }
+      ],
       "assert": [
         {
           "kind": "everyRecord",
