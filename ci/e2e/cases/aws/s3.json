@@ -1517,9 +1517,15 @@
           "comment": "one WriteError per refused record, keeping pace with S3Ok's writes of the same records"
         },
         {
+          "kind": "logContains",
+          "text": "for target \"S3Denied\"",
+          "min": 3,
+          "comment": "the error line of AwsS3TargetWriter.kt:237, once per refused PutObject"
+        },
+        {
           "kind": "logRegex",
-          "regex": "Error writing to bucket \"[^\"]+\" for target \"S3Denied\" : [^\\n]*S3Exception: [^\\n]*(?:Access Denied|explicit deny)[^\\n]*Status Code: 403",
-          "comment": "S3's AccessDenied - 'Access Denied', or for a same-account caller '... with an explicit deny in a resource-based policy' - not another 403 such as SignatureDoesNotMatch"
+          "regex": "(?i)access ?denied|explicit deny|not authorized",
+          "comment": "S3's AccessDenied, in whichever wording - not another 403 such as SignatureDoesNotMatch; SFC logs the exception as a full stack trace (Logger.kt:189-191), so no single-line layout is assumed"
         },
         {
           "kind": "logContains",

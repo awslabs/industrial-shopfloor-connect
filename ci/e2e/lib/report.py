@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from urllib.parse import quote
 
 PASS, FAIL, SKIP, ERROR = "pass", "fail", "skip", "error"
 
@@ -37,6 +38,30 @@ def _truncate(text: str, limit: int = 2000) -> str:
     if len(text) <= limit:
         return text
     return text[:limit] + f"\n... [{len(text) - limit} more characters, see the artifact]"
+
+
+def _evidence_links(run: dict, case_dir: str) -> list[tuple[str, str]]:
+    """S3 console links to a case run's evidence (evidence.py's layout), or none without an S3 location.
+
+    Console links rather than presigned URLs: they never expire, and only people with access to the
+    stack's account can open them.
+    """
+    evidence, region = run.get("evidence") or "", run.get("region")
+    if not evidence.startswith("s3://") or not region:
+        return []
+    bucket, _, prefix = evidence[len("s3://"):].partition("/")
+    base = f"{prefix.rstrip('/')}/{case_dir}" if prefix else case_dir
+    console = f"https://{region}.console.aws.amazon.com/s3"
+
+    def folder(key: str) -> str:
+        return f"{console}/buckets/{bucket}?region={region}&prefix={quote(key, safe='')}"
+
+    def file(key: str) -> str:
+        return f"{console}/object/{bucket}?region={region}&prefix={quote(key, safe='')}"
+
+    return [("case folder", folder(base)), ("config.json", file(base + "config.json")),
+            ("logs", folder(base + "logs/")), ("collected records", folder(base + "collected/")),
+            ("metrics", file(base + "metrics.jsonl"))]
 
 
 def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
@@ -154,7 +179,11 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
                 w(c["repro"])
                 w("```")
                 w("")
-            if c.get("artifacts"):
+            links = _evidence_links(run, f"cases/{c.get('id')}.{c.get('mode')}/")
+            if links:
+                w("Evidence (S3 console): " + " · ".join(f"[{name}]({url})" for name, url in links))
+                w("")
+            elif c.get("artifacts"):
                 w(f"Artifacts: `{c['artifacts']}`")
                 w("")
 

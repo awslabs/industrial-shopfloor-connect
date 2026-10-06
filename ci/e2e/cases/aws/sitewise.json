@@ -22,11 +22,13 @@
       "sinks": {
         "main": {
           "kind": "sitewise",
-          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}"
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}",
+          "completeRows": true
         },
         "a2": {
           "kind": "sitewise",
-          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A2}"
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A2}",
+          "completeRows": true
         }
       },
       "gates": [
@@ -447,7 +449,8 @@
       "sinks": {
         "main": {
           "kind": "sitewise",
-          "assetName": "sfc-it-<marker>-sim"
+          "assetName": "sfc-it-<marker>-sim",
+          "completeRows": true
         }
       },
       "records": 8,
@@ -784,11 +787,13 @@
       "sinks": {
         "main": {
           "kind": "sitewise",
-          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}"
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}",
+          "completeRows": true
         },
         "a2": {
           "kind": "sitewise",
-          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A2}"
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A2}",
+          "completeRows": true
         }
       },
       "gates": [

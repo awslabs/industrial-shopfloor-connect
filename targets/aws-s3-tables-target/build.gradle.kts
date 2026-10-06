@@ -36,6 +36,10 @@ dependencies {
     implementation(libs.awssdk.s3tables)
     implementation(libs.awssdk.sts)
     implementation(libs.awssdk.url.connection.client)
+    // iceberg-aws declares the AWS SDK compileOnly. Its S3FileIO, the table I/O of the S3 Tables catalog,
+    // needs the S3 client at runtime. In-process it comes from sfc-main's lib; the IPC service had
+    // none: NoClassDefFoundError: software/amazon/awssdk/services/s3/model/S3Exception.
+    runtimeOnly(libs.awssdk.s3)
 
     implementation(libs.parquet.avro)
     implementation(libs.parquet.column)

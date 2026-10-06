@@ -132,6 +132,10 @@ class SiteWiseSink(Sink):
         rows = [r for _, r in sorted(by_ts.items())]
         if self.marker_property in self.properties:
             rows = [r for r in rows if r.get(self.marker_property) == self.ctx.marker]
+        if self.spec.get("completeRows"):
+            # History of a brand-new time series can lag ~20 s behind its first write: count a row only
+            # once every property of it is visible, so a gate never passes on half-read rows.
+            rows = [r for r in rows if all(p in r for p in self.properties)]
         return rows
 
     def describe(self):

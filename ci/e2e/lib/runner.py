@@ -871,6 +871,9 @@ def _write(results, out_root, run_id, arts, modes, tiers, args, started, stack, 
             "ref": os.environ.get("SFC_E2E_REF", "local"),
             "dirty": os.environ.get("SFC_E2E_DIRTY") == "1",
             "knownDefectPolicy": args.known_defects,
+            # Where each case run's evidence lands (evidence.py), for the report's S3 console links.
+            "evidence": args.evidence,
+            "region": os.environ.get("SFC_E2E_REGION") or os.environ.get("AWS_REGION"),
             "awsTier": ("offline smoke" if args.offline_aws else
                         "configured" if stackenv.configured(stack) else "not configured"),
             "environment": {"python": sys.version.split()[0], "platform": sys.platform,

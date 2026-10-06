@@ -145,7 +145,7 @@ These are `${...}` placeholders. SFC substitutes them itself, and sink specs get
 | `kinesis` | `{}` | The shared stream from just before the case started, filtered by marker |
 | `firehose`, `lambda` | `{}` | The delivered objects; for Lambda, what the evidence function received |
 | `s3tables` | `{"table": "sim_a"}`; `namespace`/`bucket` may contain `<marker>`, `<run>`, `<mode>` | A pyiceberg scan where `label = marker` |
-| `sitewise` | `{"aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}"}` or `{"assetName": "sfc-it-<marker>-..."}` | Property history by asset and property id, joined by timestamp, filtered by `label` |
+| `sitewise` | `{"aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}"}` or `{"assetName": "sfc-it-<marker>-..."}`; `"completeRows": true` counts only rows with every property visible | Property history by asset and property id, joined by timestamp, filtered by `label` |
 | `kafka` | `{"format": "json" \| "raw" \| "headers"}` | The case's own MSK topic, read to its end offset; `headers` for binary (protobuf) values |
 | `mqtt`, `nats` | `{"service": "broker", "topic": "sfc/#"}`, `{"service": "nats", "subject": ">"}` | A subscriber connected before SFC starts |
 | `opcua`, `opcua-writes` | `{"port": "SFC_E2E_OPCUA_PORT", "nodes": {...}}`, `{"service": "opcua"}` | Polls the server opcua-target serves; what opcua-writer-target wrote |

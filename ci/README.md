@@ -207,8 +207,10 @@ sequenceDiagram
   - JUnit results in the CodeBuild report group.
 - **Verdicts:** ✅ pass · ❌ fail (a check did not hold) · 💥 error (the case could not run, for example
   a timeout) · — skipped (with the reason).
-- **A failure** shows each failed check with its expected and actual values. To dig deeper, open
-  `cases/<ID>.<mode>/` in the evidence:
+- **A failure** shows each failed check with its expected and actual values.
+  - It links that case run's evidence in the S3 console: the case folder, config.json, logs, collected
+    records and metrics. Opening the links needs a login to the stack's account.
+  - The case folder `cases/<ID>.<mode>/` holds:
 
   | Path | What it holds |
   |---|---|
