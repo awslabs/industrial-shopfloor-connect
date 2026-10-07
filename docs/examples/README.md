@@ -18,6 +18,7 @@ listed only where it is part of the point.
 | Example | Gist | Protocol adapter | Target | Mode |
 |---|---|---|---|---|
 | [Simulator to S3 Tables][ex-sim-s3tables] | High-frequency simulated machine tags into Apache Iceberg on S3 Tables, with tuning guidance for sustained writes. Ships an optional Cognito-secured web app that queries the tables with DuckDB in Lambda. Runnable either way — `run-inprocess.sh` with per-module `JarFiles`, or `run-uberjar.sh` with none — so the two deployment shapes sit side by side on one pipeline. | [Simulator][simulator] | [S3 Tables][s3tables], [Debug][debug] | [in-process][m-inproc] or [uberjar][m-uberjar] |
+| [PLC simulator to file and S3 Tables][ex-plc-sim-s3tables] | No hardware needed. A Siemens S7-1500, a Beckhoff TwinCAT 3 and an Allen-Bradley MicroLogix 1400, all simulated by [`omni-plc-sim`](../../ci/omni-plc-sim/README.md), are read every 100 ms and written to the console, to local JSON files and to an Iceberg table on S3 Tables. Install SFC with `sfcup`, run one configuration, then chart the table in the explorer of the Simulator to S3 Tables example. | [S7][s7], [ADS][ads], [PCCC][pccc] | [File][file], [S3 Tables][s3tables], [Debug][debug] | [uberjar][m-uberjar] |
 | [OPC-UA to SiteWise][ex-opcua-sitewise] | Step-by-step workshop: OPC-UA server on EC2 into SiteWise, including asset models, assets and SiteWise Monitor dashboards. | [OPC-UA][opcua] | [SiteWise][sitewise], [Debug][debug] | [in-process][m-inproc] |
 | [OPC-UA to SiteWise Edge][ex-opcua-swedge] | The same ingestion, but to SiteWise Edge on-premises, so it keeps working through intermittent connectivity. | [OPC-UA][opcua] | [SiteWise Edge][swedge], [Debug][debug] | [in-process][m-inproc] |
 | [OPC-UA to MSK][ex-opcua-msk] | OPC-UA into an Amazon MSK topic. | [OPC-UA][opcua] | [MSK][msk], [Debug][debug] | [in-process][m-inproc] |
@@ -78,6 +79,7 @@ which walks OPC-UA to S3 end to end.
 
 <!-- examples -->
 [ex-sim-s3tables]: ../../examples/in-process-sim-s3tables/README.md
+[ex-plc-sim-s3tables]: ../../examples/uberjar-plc-sim-s3tables/README.md
 [ex-opcua-sitewise]: ../../examples/in-process-opcua-sitewise/README.md
 [ex-opcua-swedge]: ../../examples/in-process-opcua-sitewiseedge/README.md
 [ex-opcua-msk]: ../../examples/in-process-opcua-msk/README.md
@@ -124,6 +126,7 @@ which walks OPC-UA to S3 end to end.
 
 <!-- targets -->
 [debug]: ../targets/debug.md
+[file]: ../targets/file.md
 [iotcore]: ../targets/aws-iot-core.md
 [msk]: ../targets/aws-msk.md
 [opcua-target]: ../targets/opcua.md

@@ -158,5 +158,6 @@ See Also
 
 - [Running the core process from a single jar](./sfc-running-core-process.md#running-the-process-from-a-single-jar-file)
 - [Uberjar OPC-UA tests example](../examples/uberjar-opcua-tests/README.md) — both directions run from the uberjar
+- [Uberjar PLC simulator example](../examples/uberjar-plc-sim-s3tables/README.md) — S7, ADS and PCCC from `omni-plc-sim` to a file and S3 Tables
 - [Greengrass uberjar example](../examples/greengrass-uberjar/README.md) — the uberjar as a Greengrass V2 component
 

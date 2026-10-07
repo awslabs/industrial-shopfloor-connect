@@ -1,5 +1,9 @@
 # omni-plc-sim
 
+> **Highly experimental.** This crate exists only to test SFC's protocol adapters. Any use outside that
+> scope is not advised. It is no reference implementation of any protocol, and it is not meant to
+> stand in for a real PLC.
+
 `omni-plc-sim` is a simulated PLC for the SFC end-to-end suite (`ci/e2e`). It serves the protocols of
 SFC's PLC adapters, so a case can run the real adapter against something that answers like a PLC:
 
@@ -141,3 +145,9 @@ A case declares the simulator as a counterpart of kind `plc-sim`:
   proposal had an mpsc actor in this place.
 - **Scope:** everything SFC's adapters send, plus the identity and status reads of a real controller.
   Writes, notifications and fault injection are not simulated.
+
+## Credits
+
+`[package.metadata.credits]` in `Cargo.toml` lists every source the simulator rests on: the libraries and
+documentation consulted, the protocol specifications it follows, and the crates compiled into it. No
+third-party source code is copied into the crate.

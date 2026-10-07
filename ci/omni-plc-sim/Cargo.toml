@@ -32,3 +32,165 @@ tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util", "macro
 
 [profile.release]
 codegen-units = 4
+
+# ------------------------------------------------------------------------------------------------ credits
+# Every source the simulator rests on. Cargo ignores [package.metadata].
+#
+# No third-party source code is copied into this crate; that was checked against everything the research
+# fetched. The references and specifications supplied protocol facts: frame layouts, function, device and
+# error codes, limits and identity strings. The crates are compiled in.
+
+# Libraries and documentation consulted for how real PLCs and SFC's clients behave.
+[[package.metadata.credits.references]]
+name = "Apache PLC4X 0.9.1"
+by = "The Apache Software Foundation"
+url = "https://plc4x.apache.org"
+license = "Apache-2.0"
+used = "s7: the client SFC's S7 adapter runs. Its jars, read with javap, gave the COTP and S7 parameters, the TSAP encoding, the SZL request and the item encoding the simulator answers"
+
+[[package.metadata.credits.references]]
+name = "snap7"
+by = "Davide Nardella"
+url = "https://github.com/davenardella/snap7"
+license = "LGPL-3.0"
+used = "s7: the SZL 0x0011 and 0x001C record offsets its GetOrderCode and GetCpuInfo read, and its timer and counter numbering"
+
+[[package.metadata.credits.references]]
+name = "pycomm3"
+by = "Ian Ottoway, Agostino Ruscito"
+url = "https://github.com/ottowayi/pycomm3"
+license = "MIT"
+files = ["pycomm3/slc_driver.py", "pycomm3/cip/pccc.py", "pycomm3/cip/status_info.py"]
+used = "pccc: SLC and MicroLogix address syntax, PCCC data-type codes and element sizes, STS and EXT STS codes"
+
+[[package.metadata.credits.references]]
+name = "Nmap enip-info script documentation"
+by = "The Nmap Project"
+url = "https://nmap.org/nsedoc/scripts/enip-info.html"
+used = "pccc: the ListIdentity fields a real controller reports"
+
+[[package.metadata.credits.references]]
+name = "pymcprotocol"
+by = "Yohei Osawa"
+url = "https://github.com/senrust/pymcprotocol"
+license = "MIT"
+files = ["src/pymcprotocol/mcprotocolconst.py", "src/pymcprotocol/type3e.py", "src/pymcprotocol/mcprotocolerror.py"]
+used = "slmp: MELSEC device codes, the 3E binary device specification per CPU series, the subcommands, end code C059"
+
+[[package.metadata.credits.references]]
+name = "plc-comm-slmp-rust"
+by = "fa-yoshinobu"
+url = "https://github.com/fa-yoshinobu/plc-comm-slmp-rust"
+license = "MIT"
+files = ["README.md", "src/client_rules.rs", "src/client.rs", "src/address.rs"]
+used = "slmp: which devices, including the long timers and counters (LTN, LSTN, LCN, LZ), each CPU series can read, and how"
+
+[[package.metadata.credits.references]]
+name = "PLC communication docs: SLMP"
+by = "fa-yoshinobu"
+url = "https://plc-comm-docs-site.fa-labo.com/slmp/"
+used = "slmp: per-CPU point limits and the end codes for exceeding them, the SD registers that hold device point counts, end codes, iQ-R Ethernet settings"
+
+[[package.metadata.credits.references]]
+name = "Shop Floor Connectivity (this repository)"
+by = "Amazon.com, Inc. or its affiliates"
+url = "https://github.com/awslabs/industrial-shopfloor-connect"
+license = "Apache-2.0"
+used = "the client code of the adapters (adapters/s7, ads, pccc, slmp, modbus-tcp): the exact requests the simulator answers; examples/in-process-ads-s3/main.tmc: the ADS MAIN symbols"
+
+# The published specifications the servers follow.
+[[package.metadata.credits.specifications]]
+name = "RFC 1006: ISO Transport Service on top of the TCP"
+by = "IETF"
+url = "https://www.rfc-editor.org/rfc/rfc1006"
+used = "s7: TPKT framing"
+
+[[package.metadata.credits.specifications]]
+name = "ISO 8073 / ITU-T X.224: Connection-oriented transport protocol"
+by = "ISO, ITU-T"
+url = "https://www.itu.int/rec/T-REC-X.224"
+used = "s7: COTP class 0 (CR, CC, DT, DR, DC)"
+
+[[package.metadata.credits.specifications]]
+name = "Beckhoff Information System: ADS and AMS (TC1000 TwinCAT 3 ADS)"
+by = "Beckhoff Automation"
+url = "https://infosys.beckhoff.com"
+used = "ads: AMS/TCP header, ADS commands, index groups, error codes"
+
+[[package.metadata.credits.specifications]]
+name = "The CIP Networks Library, Volume 2: EtherNet/IP Adaptation of CIP"
+by = "ODVA"
+url = "https://www.odva.org"
+used = "pccc: encapsulation, RegisterSession, SendRRData, ListIdentity, common packet format"
+
+[[package.metadata.credits.specifications]]
+name = "DF1 Protocol and Command Set Reference Manual (1770-6.5.16)"
+by = "Rockwell Automation"
+url = "https://literature.rockwellautomation.com/idc/groups/literature/documents/rm/1770-rm516_-en-p.pdf"
+used = "pccc: protected typed logical read (CMD 0F, FNC A2), STS and EXT STS codes"
+
+[[package.metadata.credits.specifications]]
+name = "SLMP Reference Manual (SH-080956ENG)"
+by = "Mitsubishi Electric"
+used = "slmp: 3E binary frame, batch and random reads, end codes"
+
+[[package.metadata.credits.specifications]]
+name = "MELSEC Communication Protocol Reference Manual (SH-080008)"
+by = "Mitsubishi Electric"
+used = "slmp: the QnA-compatible 3E frame of the Q and L series"
+
+[[package.metadata.credits.specifications]]
+name = "Modbus Application Protocol Specification V1.1b3"
+by = "Modbus Organization"
+url = "https://modbus.org/specs.php"
+used = "modbus: function codes 1 to 4 and 0x2B/0x0E, exceptions"
+
+[[package.metadata.credits.specifications]]
+name = "MODBUS Messaging on TCP/IP Implementation Guide V1.0b"
+by = "Modbus Organization"
+url = "https://modbus.org/specs.php"
+used = "modbus: MBAP header"
+
+[[package.metadata.credits.specifications]]
+name = "RFC 3339: Date and Time on the Internet: Timestamps"
+by = "IETF"
+url = "https://www.rfc-editor.org/rfc/rfc3339"
+used = "--clock-base"
+
+# Compiled into the binary (cargo tree -e normal --target x86_64-unknown-linux-musl); Cargo.lock pins the
+# versions.
+[package.metadata.credits.crates]
+linked = [
+    { name = "anyhow", license = "MIT OR Apache-2.0", url = "https://github.com/dtolnay/anyhow" },
+    { name = "bytes", license = "MIT", url = "https://github.com/tokio-rs/bytes" },
+    { name = "equivalent", license = "Apache-2.0 OR MIT", url = "https://github.com/indexmap-rs/equivalent" },
+    { name = "errno", license = "MIT OR Apache-2.0", url = "https://github.com/lambda-fairy/rust-errno" },
+    { name = "hashbrown", license = "MIT OR Apache-2.0", url = "https://github.com/rust-lang/hashbrown" },
+    { name = "indexmap", license = "Apache-2.0 OR MIT", url = "https://github.com/indexmap-rs/indexmap" },
+    { name = "itoa", license = "MIT OR Apache-2.0", url = "https://github.com/dtolnay/itoa" },
+    { name = "libc", license = "MIT OR Apache-2.0", url = "https://github.com/rust-lang/libc" },
+    { name = "memchr", license = "Unlicense OR MIT", url = "https://github.com/BurntSushi/memchr" },
+    { name = "mio", license = "MIT", url = "https://github.com/tokio-rs/mio" },
+    { name = "pin-project-lite", license = "Apache-2.0 OR MIT", url = "https://github.com/taiki-e/pin-project-lite" },
+    { name = "serde, serde_core", license = "MIT OR Apache-2.0", url = "https://github.com/serde-rs/serde" },
+    { name = "serde_json", license = "MIT OR Apache-2.0", url = "https://github.com/serde-rs/json" },
+    { name = "signal-hook-registry", license = "MIT OR Apache-2.0", url = "https://github.com/vorner/signal-hook" },
+    { name = "socket2", license = "MIT OR Apache-2.0", url = "https://github.com/rust-lang/socket2" },
+    { name = "tokio", license = "MIT", url = "https://github.com/tokio-rs/tokio" },
+    { name = "toml, toml_datetime, toml_edit, toml_write, serde_spanned", license = "MIT OR Apache-2.0", url = "https://github.com/toml-rs/toml" },
+    { name = "winnow", license = "MIT", url = "https://github.com/winnow-rs/winnow" },
+    { name = "zmij", license = "MIT", url = "https://github.com/dtolnay/zmij" },
+]
+# Run by the compiler only (procedural macros and their dependencies); none of their code is in the binary.
+build-only = [
+    { name = "serde_derive", license = "MIT OR Apache-2.0", url = "https://github.com/serde-rs/serde" },
+    { name = "tokio-macros", license = "MIT", url = "https://github.com/tokio-rs/tokio" },
+    { name = "proc-macro2", license = "MIT OR Apache-2.0", url = "https://github.com/dtolnay/proc-macro2" },
+    { name = "quote", license = "MIT OR Apache-2.0", url = "https://github.com/dtolnay/quote" },
+    { name = "syn", license = "MIT OR Apache-2.0", url = "https://github.com/dtolnay/syn" },
+    { name = "unicode-ident", license = "(MIT OR Apache-2.0) AND Unicode-3.0", url = "https://github.com/dtolnay/unicode-ident" },
+]
+toolchain = [
+    { name = "Rust standard library", license = "MIT OR Apache-2.0", url = "https://github.com/rust-lang/rust" },
+    { name = "musl libc, statically linked into the Linux build", license = "MIT", url = "https://musl.libc.org" },
+]

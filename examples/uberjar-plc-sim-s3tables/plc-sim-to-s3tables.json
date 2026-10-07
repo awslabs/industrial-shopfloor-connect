@@ -1,0 +1,130 @@
+{
+  "AWSVersion": "2022-04-02",
+  "Name": "omni-plc-sim to file and S3 Tables",
+  "Description": "Reads a simulated Siemens S7-1500, Beckhoff TwinCAT 3 and Allen-Bradley MicroLogix 1400 every 100 ms and writes the values to the console, to local JSON files and to an S3 Tables (Iceberg) table",
+  "LogLevel": "Info",
+  "Schedules": [
+    {
+      "Name": "PLCs",
+      "Interval": 100,
+      "Sources": {
+        "s7": ["*"],
+        "ads": ["*"],
+        "pccc": ["*"]
+      },
+      "Targets": ["#DebugTarget", "File", "S3Tables"]
+    }
+  ],
+  "Sources": {
+    "s7": {
+      "Name": "s7",
+      "ProtocolAdapter": "S7",
+      "AdapterController": "PLC",
+      "Channels": {
+        "int": { "Name": "int", "Address": "%DB1.DBW4:INT" },
+        "string": { "Name": "string", "Address": "%DB1:84:STRING(16)" },
+        "sine": { "Name": "sine", "Address": "%DB100.DBD12:REAL" },
+        "cosine": { "Name": "cosine", "Address": "%DB100.DBD16:REAL" }
+      }
+    },
+    "ads": {
+      "Name": "ads",
+      "ProtocolAdapter": "ADS",
+      "AdapterDevice": "PLC",
+      "SourceAmsNetId": "192.168.100.1.1.1",
+      "SourceAmsPort": 32905,
+      "TargetAmsNetId": "192.168.100.10.1.1",
+      "TargetAmsPort": 851,
+      "Channels": {
+        "int": { "SymbolName": "GVL_Static.nInt" },
+        "string": { "SymbolName": "GVL_Static.sString" },
+        "sine": { "SymbolName": "GVL_Dynamic.fSine" },
+        "sawtooth": { "SymbolName": "GVL_Dynamic.fSawtooth" }
+      }
+    },
+    "pccc": {
+      "Name": "pccc",
+      "ProtocolAdapter": "PCCC",
+      "AdapterController": "PLC",
+      "Channels": {
+        "int": { "Name": "int", "Address": "N7:0" },
+        "string": { "Name": "string", "Address": "ST9:0" },
+        "sine": { "Name": "sine", "Address": "F8:10" },
+        "triangle": { "Name": "triangle", "Address": "F8:17" }
+      }
+    }
+  },
+  "ProtocolAdapters": {
+    "S7": {
+      "AdapterType": "S7",
+      "Controllers": {
+        "PLC": { "Address": "127.0.0.1:10102" }
+      }
+    },
+    "ADS": {
+      "AdapterType": "ADS",
+      "Devices": {
+        "PLC": { "Address": "127.0.0.1", "Port": 48898 }
+      }
+    },
+    "PCCC": {
+      "AdapterType": "PCCC",
+      "Controllers": {
+        "PLC": { "Address": "127.0.0.1", "Port": 44818 }
+      }
+    }
+  },
+  "Targets": {
+    "DebugTarget": {
+      "TargetType": "DEBUG-TARGET"
+    },
+    "File": {
+      "TargetType": "FILE-TARGET",
+      "Directory": "out",
+      "Json": true,
+      "Extension": ".json"
+    },
+    "S3Tables": {
+      "TargetType": "AWS-S3-TABLES",
+      "Region": "${AWS_REGION}",
+      "TableBucket": "sfc-industrial-data-bucket",
+      "Namespace": "sfc",
+      "AutoCreate": true,
+      "Tables": [
+        {
+          "TableName": "plc_signals",
+          "Schema": [
+            { "Name": "event_time", "Type": "timestamptz", "Optional": false },
+            { "Name": "s7_sine", "Type": "float" },
+            { "Name": "s7_cosine", "Type": "float" },
+            { "Name": "ads_sine", "Type": "float" },
+            { "Name": "ads_sawtooth", "Type": "float" },
+            { "Name": "pccc_sine", "Type": "float" },
+            { "Name": "pccc_triangle", "Type": "float" }
+          ],
+          "Mappings": [
+            {
+              "event_time": { "ValueQuery": "@.timestamp" },
+              "s7_sine": { "ValueQuery": "@.sources.s7.values.sine.value" },
+              "s7_cosine": { "ValueQuery": "@.sources.s7.values.cosine.value" },
+              "ads_sine": { "ValueQuery": "@.sources.ads.values.sine.value" },
+              "ads_sawtooth": { "ValueQuery": "@.sources.ads.values.sawtooth.value" },
+              "pccc_sine": { "ValueQuery": "@.sources.pccc.values.sine.value" },
+              "pccc_triangle": { "ValueQuery": "@.sources.pccc.values.triangle.value" }
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "AdapterTypes": {
+    "S7": { "FactoryClassName": "com.amazonaws.sfc.s7.S7Adapter" },
+    "ADS": { "FactoryClassName": "com.amazonaws.sfc.ads.AdsAdapter" },
+    "PCCC": { "FactoryClassName": "com.amazonaws.sfc.pccc.PcccAdapter" }
+  },
+  "TargetTypes": {
+    "DEBUG-TARGET": { "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter" },
+    "FILE-TARGET": { "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter" },
+    "AWS-S3-TABLES": { "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter" }
+  }
+}
