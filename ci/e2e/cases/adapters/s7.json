@@ -1,0 +1,1145 @@
+{
+  "cases": [
+    {
+      "id": "ADP-S7-PILOT",
+      "title": "pilot: omni-plc-sim S7 (s7-1500 profile) -> s7 adapter (PLC4X 0.9.1) -> file",
+      "intent": "The S7 adapter's first case on an S7 server. PLC4X 0.9.1 connects with ControllerType unset (COTP CR/CC with SFC's default TSAPs, Setup Communication negotiated down to the s7-1500's PDU 960 and AmQ 3, SZL 0x0011 identification) and reads 53 channels in one Read Var PDU per poll: every static DB1 type, including the raw SINT/USINT forms SFC builds for LINT, ULINT, LWORD, WCHAR, DATE_AND_TIME, STRING and WSTRING; M, I and Q bits, words and reals; and the dynamic DB100 signals, in all three deployment modes. Static values must arrive exactly and dynamic values stay in range and change over 8 records; the simulator's request log proves the handshake, the single PDU and that no error reply or dropped frame occurred. If it fails: a wrong handshake byte hangs connect() (PLC4X has no timer) and fails the record gate; a decoding or IPC conversion regression shows as a missing channel (keySet) or a wrong value. It avoids every adapter defect of the S7 spec (section 8): D1 (negative LREAL: lreal and sine64 are left out and t is never negative), D2 (raw forms outside DBs: only simple types in M, I and Q), D3 and D4 (the simulator always answers the handshake and returns the SZL record 0x0001), D5 (ULINT at or above 2^53), D6 (negative TIME), D7 and D8 (DATE_AND_TIME and TIME_OF_DAY instead of the DT and TOD aliases; DTL is read as SINT[12]), D9 (non-ASCII text), D10 (DATE outside UTC: the harness sets TZ=UTC), D11 (no reload), D12 (no metric assertions), D13 (rack 0) and D14 (offsets below 65536); it reads no BOOL arrays.",
+      "pins": [
+        "adapters/s7/src/main/kotlin/com/amazonaws/sfc/s7/S7Controller.kt:132-141",
+        "adapters/s7/src/main/kotlin/com/amazonaws/sfc/s7/S7Controller.kt:159-161",
+        "adapters/s7/src/main/kotlin/com/amazonaws/sfc/s7/S7Controller.kt:187-220",
+        "adapters/s7/src/main/kotlin/com/amazonaws/sfc/s7/S7Controller.kt:299-307",
+        "adapters/s7/src/main/kotlin/com/amazonaws/sfc/s7/S7Controller.kt:369-446",
+        "adapters/s7/src/main/kotlin/com/amazonaws/sfc/s7/S7Controller.kt:488-653",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/JsonHelper.kt:74-149",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourcesValuesAsFlow.kt:133-146",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcSourceValueFromNativeExt.kt:109-112"
+      ],
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "plc",
+          "kind": "plc-sim",
+          "args": {
+            "protocol": "s7",
+            "profile": "s7-1500"
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "plc": {
+          "kind": "jsonl",
+          "service": "plc",
+          "file": "events.jsonl"
+        }
+      },
+      "records": 8,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.s7.values",
+          "keys": [
+            "bool_true",
+            "bool_false",
+            "byte",
+            "sint",
+            "usint",
+            "int",
+            "uint",
+            "word",
+            "dint",
+            "udint",
+            "dword",
+            "real",
+            "lint",
+            "ulint",
+            "time",
+            "date",
+            "tod",
+            "dt",
+            "dtl_raw",
+            "char",
+            "wchar",
+            "string",
+            "wstring",
+            "int_array",
+            "real_array",
+            "ltime",
+            "lword",
+            "m_bit",
+            "m_int",
+            "m_real",
+            "m_sine",
+            "i_bit0",
+            "i_bit1",
+            "i_int",
+            "q_bit",
+            "q_int",
+            "scan",
+            "t",
+            "sine",
+            "cosine",
+            "tangent",
+            "cotangent",
+            "exp",
+            "quadratic",
+            "sawtooth",
+            "triangle",
+            "square",
+            "damped",
+            "noise",
+            "randomwalk",
+            "sine_int",
+            "blink_1hz",
+            "blink_5hz"
+          ],
+          "comment": "every channel in every record: a failing item is logged and left out (S7Controller.kt:299-307), and so is a value the decoder returns as null"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "bool_true",
+          "values": [
+            true
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "bool_false",
+          "values": [
+            false
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "sint",
+          "values": [
+            -100
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "int",
+          "values": [
+            -12345
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "dint",
+          "values": [
+            -1234567890
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "real",
+          "values": [
+            12345.5
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "lint",
+          "values": [
+            -1234567890123
+          ],
+          "comment": "LINT is read raw as SINT[8] and decoded by SFC (S7Controller.kt:377, 530-535)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "ulint",
+          "values": [
+            12345678901234
+          ],
+          "comment": "a ULong: a double in-process and uberjar (JsonHelper.kt:74-80), an int64 over IPC (GrpcSourceValueFromNativeExt.kt:364-367); 12345678901234.0 == 12345678901234 in Python, and the value stays below 2^53 (defect D5)"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "s7",
+          "channel": "usint",
+          "values": [
+            "200",
+            200
+          ],
+          "comment": "USINT, UINT and UDINT become UByte, UShort and UInt (S7Controller.kt:512-528): JSON strings in-process and uberjar (JsonHelper.kt:91-149), numbers over IPC (GrpcSourceValueFromNativeExt.kt:109-112, 194-197, 279-282)"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "s7",
+          "channel": "uint",
+          "values": [
+            "54321",
+            54321
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "s7",
+          "channel": "udint",
+          "values": [
+            "3000000000",
+            3000000000
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "time",
+          "values": [
+            "PT1.234S"
+          ],
+          "comment": "TIME and LTIME arrive as Duration.toString() (S7Controller.kt:594-607); PLC4X decodes TIME unsigned, so the value is positive (defect D6)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "ltime",
+          "values": [
+            "PT1.5S"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "date",
+          "values": [
+            "2024-02-29"
+          ],
+          "comment": "PlcDATE converts in the JVM's default zone; the harness runs every SFC process with TZ=UTC (defect D10)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "tod",
+          "values": [
+            "08:30:15.250"
+          ],
+          "comment": "TIME_OF_DAY, not the unconverted TOD alias (defect D8)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "dt",
+          "values": [
+            "2024-02-29T13:45:30.123Z"
+          ],
+          "comment": "DATE_AND_TIME, not the DT alias (defect D7): read raw as SINT[8] and decoded from BCD (S7Controller.kt:357-364, 655-670)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "char",
+          "values": [
+            "S"
+          ],
+          "comment": "ASCII only: single-byte text is decoded as UTF-8 (defect D9)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "wchar",
+          "values": [
+            "W"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "string",
+          "values": [
+            "SFC-SIM"
+          ],
+          "comment": "STRING(16) is read as USINT[16] at offset 86 (S7Controller.kt:422-446)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "wstring",
+          "values": [
+            "SFC-SIM"
+          ],
+          "comment": "WSTRING(16) is read as USINT[32] at offset 106"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "m_bit",
+          "values": [
+            true
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "m_int",
+          "values": [
+            -12345
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "m_real",
+          "values": [
+            12345.5
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "i_bit0",
+          "values": [
+            true
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "i_bit1",
+          "values": [
+            false
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "i_int",
+          "values": [
+            12345
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "q_bit",
+          "values": [
+            true
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "s7",
+          "channel": "q_int",
+          "values": [
+            -2
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.s7.values.byte.value",
+          "equals": [
+            true,
+            false,
+            true,
+            false,
+            false,
+            true,
+            false,
+            true
+          ],
+          "comment": "BYTE, WORD, DWORD and LWORD are lists of booleans, most significant bit first (S7Controller.kt:495-510, 775-788)"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.s7.values.word.value",
+          "equals": [
+            true,
+            true,
+            false,
+            true,
+            false,
+            true,
+            false,
+            false,
+            false,
+            false,
+            true,
+            true,
+            false,
+            false,
+            false,
+            true
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.s7.values.dword.value",
+          "equals": [
+            true,
+            false,
+            true,
+            true,
+            false,
+            false,
+            true,
+            false,
+            true,
+            true,
+            false,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.s7.values.lword.value",
+          "equals": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
+            false,
+            false,
+            true,
+            false,
+            false,
+            false,
+            true,
+            true,
+            false,
+            true,
+            false,
+            false,
+            false,
+            true,
+            false,
+            true,
+            false,
+            true,
+            true,
+            false,
+            false,
+            true,
+            true,
+            true,
+            true,
+            false,
+            false,
+            false,
+            true,
+            false,
+            false,
+            true,
+            true,
+            false,
+            true,
+            false,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            false,
+            false,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true,
+            false,
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.s7.values.dtl_raw.value",
+          "equals": [
+            7,
+            -24,
+            2,
+            29,
+            5,
+            13,
+            45,
+            30,
+            7,
+            91,
+            -51,
+            21
+          ],
+          "comment": "DTL#2024-02-29-13:45:30.123456789 as SINT[12]: SFC has no DTL type"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.s7.values.int_array.value",
+          "equals": [
+            1,
+            -2,
+            300,
+            -32768
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.s7.values.real_array.value",
+          "equals": [
+            0.5,
+            -1.25,
+            1024.0,
+            -0.0078125
+          ]
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "scan",
+          "min": 0,
+          "max": 2147483647
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.scan.value",
+          "min": 3,
+          "comment": "the scan counter starts at 0 when the simulator starts, so the DINT stays positive"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "t",
+          "min": 0,
+          "max": 100000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.t.value",
+          "min": 3,
+          "comment": "LREAL is read raw and parsed through a bit string that fails for negative values (defect D1); t is never negative"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "sine",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.sine.value",
+          "min": 3,
+          "comment": "8 records: the first two reads can run back to back (SourcesValuesAsFlow.kt:133-146), the other six are 200 ms apart and cover five phases of a 1 Hz or 2 Hz signal, so a symmetric waveform shows at least 3 values; with 5 records it can show 2"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "cosine",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.cosine.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "tangent",
+          "min": -1000,
+          "max": 1000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.tangent.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "cotangent",
+          "min": -1000,
+          "max": 1000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.cotangent.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "exp",
+          "min": 4.97,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.exp.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "quadratic",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.quadratic.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "sawtooth",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.sawtooth.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "triangle",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.triangle.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "damped",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.damped.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "noise",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.noise.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "randomwalk",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.randomwalk.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "sine_int",
+          "min": -10000,
+          "max": 10000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.sine_int.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "s7",
+          "channel": "m_sine",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.s7.values.m_sine.value",
+          "min": 3,
+          "comment": "the marker mirror of sine, written in the same scan"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "s7",
+          "channel": "square",
+          "values": [
+            100.0,
+            -100.0
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "s7",
+          "channel": "blink_1hz",
+          "values": [
+            true,
+            false
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "s7",
+          "channel": "blink_5hz",
+          "values": [
+            true,
+            false
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "plc",
+          "path": "status",
+          "equals": "ok",
+          "comment": "the simulator sent no error reply (header error, item return code, UserData error) and dropped no frame; the harness readiness probe's connect and disconnect are ok too"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "cr"
+          },
+          "path": "detail.called",
+          "values": [
+            "0x0100"
+          ],
+          "comment": "SFC's defaults RemoteRack/RemoteSlot 0/0: connection type 01, rack 0, slot 0, which the s7-1500 TSAP rule accepts"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "setup"
+          },
+          "path": "detail.pdu",
+          "values": [
+            960
+          ],
+          "comment": "PduSize 1024 asks for 1008; the s7-1500 grants 960, so SFC packs up to 942 data bytes per request (S7Controller.kt:159-161)"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "szl"
+          },
+          "path": "detail.szl_id",
+          "values": [
+            "0x0011"
+          ],
+          "comment": "ControllerType unset: PLC4X identifies the CPU before connect() completes (S7Controller.kt:140-141)"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read"
+          },
+          "path": "detail.n",
+          "values": [
+            53
+          ],
+          "comment": "all 53 channels in one Read Var PDU per poll (S7Controller.kt:187-220)"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error reading from source",
+            "Error field",
+            "Can not connect to PLC",
+            "Can connect but not read from PLC",
+            "Size of S7 field",
+            "Invalid date time",
+            "Error parsing field item",
+            "Error decoding package",
+            "Got an error response from the PLC",
+            "Got an unknown error response from the PLC",
+            "number of requested items",
+            "Switching calling TSAP id",
+            "Got unknown parameter type",
+            "Timeout during Connection establishing",
+            "Fatal error converting value"
+          ],
+          "comment": "S7Controller.kt:255, 274, 306, 349, 353, 201, 637; PLC4X 0.9.1 WARN lines (S7ProtocolLogic, GeneratedDriverByteToMessageCodec); the IPC conversion (GrpcSourceValueFromNativeExt.kt:762)"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-S7-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "s7": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "s7": {
+            "Name": "s7",
+            "ProtocolAdapter": "S7",
+            "AdapterController": "PLC",
+            "Channels": {
+              "bool_true": {
+                "Name": "bool_true",
+                "Address": "%DB1.DBX0.0:BOOL"
+              },
+              "bool_false": {
+                "Name": "bool_false",
+                "Address": "%DB1.DBX0.1:BOOL"
+              },
+              "byte": {
+                "Name": "byte",
+                "Address": "%DB1.DBB1:BYTE"
+              },
+              "sint": {
+                "Name": "sint",
+                "Address": "%DB1.DBB2:SINT"
+              },
+              "usint": {
+                "Name": "usint",
+                "Address": "%DB1.DBB3:USINT"
+              },
+              "int": {
+                "Name": "int",
+                "Address": "%DB1.DBW4:INT"
+              },
+              "uint": {
+                "Name": "uint",
+                "Address": "%DB1.DBW6:UINT"
+              },
+              "word": {
+                "Name": "word",
+                "Address": "%DB1.DBW8:WORD"
+              },
+              "dint": {
+                "Name": "dint",
+                "Address": "%DB1.DBD10:DINT"
+              },
+              "udint": {
+                "Name": "udint",
+                "Address": "%DB1.DBD14:UDINT"
+              },
+              "dword": {
+                "Name": "dword",
+                "Address": "%DB1.DBD18:DWORD"
+              },
+              "real": {
+                "Name": "real",
+                "Address": "%DB1.DBD22:REAL"
+              },
+              "lint": {
+                "Name": "lint",
+                "Address": "%DB1:34:LINT"
+              },
+              "ulint": {
+                "Name": "ulint",
+                "Address": "%DB1:42:ULINT"
+              },
+              "time": {
+                "Name": "time",
+                "Address": "%DB1:50:TIME"
+              },
+              "date": {
+                "Name": "date",
+                "Address": "%DB1:54:DATE"
+              },
+              "tod": {
+                "Name": "tod",
+                "Address": "%DB1:56:TIME_OF_DAY"
+              },
+              "dt": {
+                "Name": "dt",
+                "Address": "%DB1:60:DATE_AND_TIME"
+              },
+              "dtl_raw": {
+                "Name": "dtl_raw",
+                "Address": "%DB1:68:SINT[12]"
+              },
+              "char": {
+                "Name": "char",
+                "Address": "%DB1.DBB80:CHAR"
+              },
+              "wchar": {
+                "Name": "wchar",
+                "Address": "%DB1:82:WCHAR"
+              },
+              "string": {
+                "Name": "string",
+                "Address": "%DB1:84:STRING(16)"
+              },
+              "wstring": {
+                "Name": "wstring",
+                "Address": "%DB1:102:WSTRING(16)"
+              },
+              "int_array": {
+                "Name": "int_array",
+                "Address": "%DB1.DBW138:INT[4]"
+              },
+              "real_array": {
+                "Name": "real_array",
+                "Address": "%DB1.DBD146:REAL[4]"
+              },
+              "ltime": {
+                "Name": "ltime",
+                "Address": "%DB1:162:LTIME"
+              },
+              "lword": {
+                "Name": "lword",
+                "Address": "%DB1:170:LWORD"
+              },
+              "m_bit": {
+                "Name": "m_bit",
+                "Address": "%M0.0:BOOL"
+              },
+              "m_int": {
+                "Name": "m_int",
+                "Address": "%MW2:INT"
+              },
+              "m_real": {
+                "Name": "m_real",
+                "Address": "%MD4:REAL"
+              },
+              "m_sine": {
+                "Name": "m_sine",
+                "Address": "%MD12:REAL"
+              },
+              "i_bit0": {
+                "Name": "i_bit0",
+                "Address": "%I0.0:BOOL"
+              },
+              "i_bit1": {
+                "Name": "i_bit1",
+                "Address": "%I0.1:BOOL"
+              },
+              "i_int": {
+                "Name": "i_int",
+                "Address": "%IW2:INT"
+              },
+              "q_bit": {
+                "Name": "q_bit",
+                "Address": "%Q0.2:BOOL"
+              },
+              "q_int": {
+                "Name": "q_int",
+                "Address": "%QW2:INT"
+              },
+              "scan": {
+                "Name": "scan",
+                "Address": "%DB100.DBD0:DINT"
+              },
+              "t": {
+                "Name": "t",
+                "Address": "%DB100:4:LREAL"
+              },
+              "sine": {
+                "Name": "sine",
+                "Address": "%DB100.DBD12:REAL"
+              },
+              "cosine": {
+                "Name": "cosine",
+                "Address": "%DB100.DBD16:REAL"
+              },
+              "tangent": {
+                "Name": "tangent",
+                "Address": "%DB100.DBD20:REAL"
+              },
+              "cotangent": {
+                "Name": "cotangent",
+                "Address": "%DB100.DBD24:REAL"
+              },
+              "exp": {
+                "Name": "exp",
+                "Address": "%DB100.DBD28:REAL"
+              },
+              "quadratic": {
+                "Name": "quadratic",
+                "Address": "%DB100.DBD32:REAL"
+              },
+              "sawtooth": {
+                "Name": "sawtooth",
+                "Address": "%DB100.DBD36:REAL"
+              },
+              "triangle": {
+                "Name": "triangle",
+                "Address": "%DB100.DBD40:REAL"
+              },
+              "square": {
+                "Name": "square",
+                "Address": "%DB100.DBD44:REAL"
+              },
+              "damped": {
+                "Name": "damped",
+                "Address": "%DB100.DBD48:REAL"
+              },
+              "noise": {
+                "Name": "noise",
+                "Address": "%DB100.DBD52:REAL"
+              },
+              "randomwalk": {
+                "Name": "randomwalk",
+                "Address": "%DB100.DBD56:REAL"
+              },
+              "sine_int": {
+                "Name": "sine_int",
+                "Address": "%DB100.DBW68:INT"
+              },
+              "blink_1hz": {
+                "Name": "blink_1hz",
+                "Address": "%DB100.DBX70.0:BOOL"
+              },
+              "blink_5hz": {
+                "Name": "blink_5hz",
+                "Address": "%DB100.DBX70.1:BOOL"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "S7": {
+            "AdapterType": "S7",
+            "WaitAfterError": 1000,
+            "Controllers": {
+              "PLC": {
+                "Address": "127.0.0.1:${SFC_E2E_PLC_PORT}"
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "S7": {
+            "FactoryClassName": "com.amazonaws.sfc.s7.S7Adapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "S7": {
+            "FactoryClassName": "com.amazonaws.sfc.s7.S7Adapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/s7/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "S7Server": {
+          "module": "s7"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "S7": {
+            "AdapterServer": "S7Server"
+          }
+        },
+        "AdapterServers": {
+          "S7Server": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

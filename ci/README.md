@@ -17,6 +17,7 @@ The result is a report in the GitHub run summary.
 | AWS Test Backend | `ci/cdk` | One CDK stack: the CodeBuild project, a destination for every SFC AWS target except SiteWise Edge, test fixtures, a cleanup Lambda, and the role GitHub uses |
 | GitHub workflow | `.github/workflows/integration-test.yml` | Starts the build on every push and posts the report |
 | The suite | `ci/e2e` | The harness (`run.py`) and the test cases (`cases/<group>/<area>.json`). How to write tests: [ci/e2e/README.md](e2e/README.md) |
+| PLC simulator | `ci/omni-plc-sim` | A Rust binary that plays the PLC for the S7, ADS, PCCC, SLMP and Modbus TCP cases. Built in AWS by its own CodeBuild project; see [ci/omni-plc-sim/README.md](omni-plc-sim/README.md) |
 | Build scripts | `ci/start-build.sh`, `ci/wait-build.sh` | Package the source and start a build; follow a build |
 
 A case checks:
@@ -59,7 +60,7 @@ npx cdk deploy -c githubRepo=<owner>/<repo> --outputs-file outputs.json
 | Destinations | S3 prefixes `s3-target/`, `firehose/`, `lambda-evidence/`; SNS topic with a raw-delivery queue; IoT rule `sfc/it/#` into a queue, plus an error queue; Kinesis stream (1 shard); Firehose (0 s buffering); the evidence Lambda; MSK Provisioned (2 × kafka.m5.large, IAM auth, public access on 9198) |
 | Created per case run, by the sinks | SQS queue `sfc-it-<marker>`; MSK topic `sfc_it_<utc>_<marker>`; the S3 Tables namespaces and buckets and SiteWise models and assets that AutoCreate and AssetCreation cases name with the marker |
 | Fixtures | S3 Tables bucket `sfc-it-fixture-<acct>` with namespace `sfc_it` and tables `sim_a`, `sim_b`; a SiteWise model and two assets with aliases `/sfc-it/fixture/a{1,2}/<prop>`; a secret; an IoT role alias and device policy |
-| Build | `sfc-integration-test` (LARGE, 5 h, 4 concurrent builds, no VPC); `sfc-integration-test-image` (builds the image); ECR `sfc-it-ci-image`; a report group. The VPC holds only the MSK brokers. |
+| Build | `sfc-integration-test` (LARGE, 5 h, 4 concurrent builds, no VPC); `sfc-integration-test-image` (builds the image); ECR `sfc-it-ci-image`; `sfc-integration-test-plc-sim` (builds the PLC simulator into `plc-sim/` of the artifacts bucket); a report group. The VPC holds only the MSK brokers. |
 | Access | SFC runs as the project role, which holds every target's permissions. `SfcItCiRole` is for GitHub: upload the source, start, stop and inspect builds, read the evidence. |
 | Teardown | The janitor Lambda, run on every finished build and hourly |
 
@@ -170,6 +171,7 @@ sequenceDiagram
     participant S3 as S3 artifacts bucket
     participant ECR as ECR sfc-it-ci-image
     participant IMG as CodeBuild<br/>sfc-integration-test-image
+    participant SIM as CodeBuild<br/>sfc-integration-test-plc-sim
     participant CB as CodeBuild<br/>sfc-integration-test
     participant RUN as run.py
     participant SFC as SFC processes
@@ -186,10 +188,16 @@ sequenceDiagram
         IMG->>IMG: [7] docker build ci/cdk/image/Dockerfile
         IMG->>ECR: [8] push :tag and :latest
     end
+    SB->>S3: [8a] simulator binary plc-sim/hash(ci/omni-plc-sim)?
+    opt not in S3: first run, or the crate changed
+        SB->>SIM: [8b] start the simulator build (same source zip), in parallel with [6]
+        SIM->>SIM: [8c] docker build ci/omni-plc-sim/Dockerfile: cargo build, cargo test
+        SIM->>S3: [8d] upload the static binary
+    end
     SB->>CB: [9] start the test build on image :tag
     GH->>CB: [10] wait-build.sh polls (stops the build if the job is cancelled)
     CB->>ECR: [11] pull the image
-    CB->>S3: [12] fetch the source zip
+    CB->>S3: [12] fetch the source zip and the simulator binary
     CB->>CB: [13] ./gradlew build (38 tarballs), harness selftests, Kafka topic sweep
     CB->>RUN: [14] run.py --profile push|full --jobs 8 --parity
     RUN->>RUN: [15] unpack the tarballs, generate the run PKI
@@ -223,7 +231,8 @@ sequenceDiagram
 ```
 
 **The steps:**
-- **[1]–[12]:** GitHub packages the source and makes sure the build image exists in ECR. The image is
+- **[1]–[12]:** GitHub packages the source and makes sure the build image exists in ECR and the PLC
+  simulator binary in S3, each built in AWS when missing. The image is
   built in AWS on the first run. Then GitHub starts the build.
 - **[13]:** The build compiles SFC (38 tarballs). It then runs the harness's own tests, including a check
   that every case's configuration follows SFC's deployment rules.
@@ -270,8 +279,8 @@ sequenceDiagram
   | `metrics.jsonl` | SFC's own metrics |
   | `services/` | the test servers' logs |
 
-- **Known defects** have their own table. If one starts failing, the bug was probably fixed: move the
-  case's expected behaviour from `assertCorrect` into `assert`.
+- **Known defects:** a pinned case that starts failing shows up under Failures. The bug was probably
+  fixed: move the case's expected behaviour from `assertCorrect` into `assert`.
 
 ## 5. Coverage
 
@@ -289,6 +298,8 @@ sequenceDiagram
 | `crosscutting/ipc`, `ipc-tls` | 15 | core | — / 15 / — | IPC startup; PlainText, ServerSideTLS and MutualTLS between sfc-main and the services | file, TLS probe | 8 | `CORE-IPC-STARTUP-01` `CORE-IPC-SVC-CLI-01` `CORE-IPC-SVC-CONFIG-01` `CORE-IPC-SVC-CONFIG-02` `CORE-IPC-TLS-CERTEXPIRY-01` `CORE-IPC-TLS-FAILOPEN-01` `CORE-IPC-TLS-MISMATCH-01` `CORE-IPC-TLS-MISMATCH-02` `CORE-IPC-TLS-MTLS-01` `CORE-IPC-TLS-MTLS-NOCLIENTCERT-01` `CORE-IPC-TLS-PLAIN-01` `CORE-IPC-TLS-SST-01` `CORE-IPC-TLS-SST-TOFU-01` `CORE-IPC-TLS-TARGET-01` `CORE-IPC-TLS-WRONGCA-01` |
 | `crosscutting/secrets` | 1 | local-infra | 1 / 1 / 1 | Secrets Manager placeholders, encrypted store, log blanking | local Secrets Manager stand-in | 1 | `LOC-SEC-SM-01` |
 | `adapters/opcua` | 24 | local-infra | 22 / 21 / 22 | polling, subscriptions, events, data types, namespaces, deadbands, reconnects | asyncua server, SFC OPC-UA target | 8 | `ADP-OPCUA-BADNODE-01` `ADP-OPCUA-DEADBAND-ABS-01` `ADP-OPCUA-DEADBAND-PCT-01` `ADP-OPCUA-DOWN-01` `ADP-OPCUA-DTYPES-01` `ADP-OPCUA-DTYPES-02` `ADP-OPCUA-DTYPES-03` `ADP-OPCUA-DTYPES-UNSIGNED-01` `ADP-OPCUA-EVENTS-01` `ADP-OPCUA-LATESERVER-01` `ADP-OPCUA-NS-01` `ADP-OPCUA-PILOT` `ADP-OPCUA-POLL-INDEXRANGE-01` `ADP-OPCUA-POLL-INDEXRANGE-02` `ADP-OPCUA-POLL-STD-01` `ADP-OPCUA-POLL-STRUCT-01` `ADP-OPCUA-RECONNECT-SUB-01` `ADP-OPCUA-RT-AUTOCREATE-01` `ADP-OPCUA-RT-POLL-01` `ADP-OPCUA-RT-SUB-01` `ADP-OPCUA-SELECTOR-INVALID-01` `ADP-OPCUA-SUB-CURTIME-01` `ADP-OPCUA-TS-PROPAGATION-01` `ADP-OPCUA-TS-PROPAGATION-IPC-01` |
+| `adapters/s7`, `ads`, `pccc`, `slmp`, `modbus` | 5 | local-infra | 5 / 5 / 5 | each PLC adapter against a simulated PLC: handshake, identification, every data type exact, fast-changing floats (sin, cos, tan, cot, exp, quadratic, …), the adapter's request plan | omni-plc-sim (S7-1500, TwinCAT 3, MicroLogix 1400, MELSEC iQ-R, Modbus generic) | 0 | `ADP-S7-PILOT` `ADP-ADS-PILOT` `ADP-PCCC-PILOT` `ADP-SLMP-PILOT` `ADP-MODBUS-PILOT` |
+| `adapters/snmp`, `rest`, `sql`, `nats` | 4 | local-infra | 4 / 4 / 4 | SNMPv2c GET of the system group; REST selectors and retry on 500; SQL single- and multi-row reads with typed columns; NATS KeepAll on a wildcard subject | snmpd, http fake, PostgreSQL, nats-server and a publisher | 0 | `ADP-SNMP-PILOT` `ADP-REST-PILOT` `ADP-SQL-PILOT` `ADP-NATS-PILOT` |
 | `adapters/mqtt` | 21 | local-infra | 18 / 18 / 18 | read modes, retained messages, wildcards, raw / JSON, broker outage, auth | mosquitto, tcpgate, publisher | 11 | `ADP-MQTT-AUTH-01` `ADP-MQTT-CONNMETRIC-01` `ADP-MQTT-DOWN-01` `ADP-MQTT-EXPLICITCHANNELS-01` `ADP-MQTT-INVALIDJSON-01` `ADP-MQTT-KEEPLAST-IPC-01` `ADP-MQTT-KEEPLAST-NESTED-01` `ADP-MQTT-MULTIADAPTER-01` `ADP-MQTT-MULTIADAPTER-02` `ADP-MQTT-RAW-01` `ADP-MQTT-RESTART-01` `ADP-MQTT-RETAINED-01` `ADP-MQTT-RETAINED-02` `ADP-MQTT-RT-KEEPALL-01` `ADP-MQTT-RT-KEEPALL-02` `ADP-MQTT-RT-KEEPALL-03` `ADP-MQTT-SELECTOR-INVALID-01` `ADP-MQTT-TOPICMAP-UNMAPPED-01` `ADP-MQTT-UTF8-01` `ADP-MQTT-WILDCARD-01` `ADP-MQTT-XFORM-FILTER-01` |
 | `adapters/cross-adapter` | 3 | local-infra | 2 / 3 / 2 | read errors, isolation between adapters | dead / silent peers | 2 | `ADP-XCUT-IPC-NULLMAP-01` `ADP-XCUT-ISOLATION-01` `ADP-XCUT-READERROR-NOTLOGGED-01` |
 | `targets/file`, `debug` | 28 | core | 26 / 26 / 26 | framing, compression, templates, formatters, buffering, write errors | file, debug output | 12 | `TGT-FILE-BATCH-JSON-01` `TGT-FILE-BUFFERSIZE-01` `TGT-FILE-COMPRESS-EDGE-01` `TGT-FILE-DIR-01` `TGT-FILE-ELEMNAMES-01` `TGT-FILE-ELEMNAMES-IPC-01` `TGT-FILE-FMT-01` `TGT-FILE-FMT-NEG-01` `TGT-FILE-FMT-NONASCII-01` `TGT-FILE-FMT-TPL-EXCL-NEG-01` `TGT-FILE-GZIP-01` `TGT-FILE-JSON-FALSE-BATCH-01` `TGT-FILE-JSONL-01` `TGT-FILE-NONASCII-01` `TGT-FILE-PATH-EXT-01` `TGT-FILE-SHUTDOWN-FLUSH-IPC-01` `TGT-FILE-SHUTDOWN-LOSS-01` `TGT-FILE-TPL-01` `TGT-FILE-TPL-BROKEN-01` `TGT-FILE-TPL-EPOCH-01` `TGT-FILE-TPL-MISSING-NEG-01` `TGT-FILE-TPL-TOOLS-01` `TGT-FILE-UNQUOTE-01` `TGT-FILE-VAL-DEAD-01` `TGT-FILE-WRITEERROR-METRIC-01` `TGT-FILE-ZIP-01` `TGT-FILE-ZIP-NOJSON-01` `TGT-DEBUG-PILOT` |
@@ -312,6 +323,5 @@ sequenceDiagram
 |---|---|
 | SiteWise Edge | out of scope |
 | J1939/CAN | needs vcan and `CAP_NET_ADMIN` |
-| PCCC, ADS, SLMP | no maintained emulators |
 | SQL Server, Oracle | Docker only (driver loading is still covered) |
 | Greengrass-only paths, cross-host IPC, Windows | not available in CodeBuild |

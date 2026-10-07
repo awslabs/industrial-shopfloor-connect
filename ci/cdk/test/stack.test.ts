@@ -137,6 +137,25 @@ describe('the build image', () => {
   });
 });
 
+describe('the PLC simulator build', () => {
+  const sim = () => Object.values(T.findResources('AWS::CodeBuild::Project'))
+    .find((p: any) => p.Properties.Name === 'sfc-integration-test-plc-sim')!.Properties;
+  test('a privileged project builds ci/omni-plc-sim in AWS and stores the binary under plc-sim/', () => {
+    expect(sim().Environment.PrivilegedMode).toBe(true);
+    const spec = JSON.stringify(sim().Source.BuildSpec);
+    expect(spec).toContain('docker build -f ci/omni-plc-sim/Dockerfile');
+    expect(spec).toContain('plc-sim/$SIM_TAG/omni-plc-sim');
+  });
+  test('the test build installs the binary, and may read it', () => {
+    expect(buildSpecText(T)).toContain('SFC_E2E_PLC_SIM_KEY');
+    expect(policies).toContain('plc-sim/*');
+  });
+  test('the CI role may start and stop the simulator build', () => {
+    const statements = JSON.stringify(T.findResources('AWS::IAM::Policy'));
+    expect(statements).toContain('PlcSimBuild');
+  });
+});
+
 describe('the build project', () => {
   test('runs outside any VPC on LARGE compute', () => {
     const project = Object.values(T.findResources('AWS::CodeBuild::Project')).find((p: any) => p.Properties.Name === 'sfc-integration-test')!.Properties;

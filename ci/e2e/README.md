@@ -18,6 +18,7 @@ ci/
 │   ├── image/Dockerfile     the build image (built in AWS, no local Docker needed)
 │   ├── lambda/              janitor.py (teardown), evidence.py (observer for the Lambda target), msk_public.py
 │   └── test/stack.test.ts   synth-time regression tests of the stack
+├── omni-plc-sim/            the PLC simulator (Rust): S7, ADS, PCCC, SLMP and Modbus TCP, built in AWS
 ├── e2e/                     the suite
 │   ├── run.py               entry point (lib/runner.py)
 │   ├── cases/<group>/<area>.json   the cases, one file per area
@@ -165,6 +166,7 @@ The runner allocates every service's ports and exports them as `SFC_E2E_<NAME>_P
 | `silent` | — | Accepts and never answers, for timeouts |
 | `http` | `scenario: file.json` | A scripted REST server; logs `requests.jsonl` |
 | `opcua-server` | `spec: file.json` | An asyncua server with counters, writable nodes and events; logs `writes.jsonl` |
+| `plc-sim` | `protocol: s7\|ads\|pccc\|slmp\|modbus`, `profile`, `config: sim.toml` | omni-plc-sim: a simulated PLC with static tags of every type and fast-changing signals; every request goes to `events.jsonl`, readable with a `jsonl` sink. Maps: `omni-plc-sim --print-map <protocol>` |
 | `modbus`, `snmpd` | `spec: file.json`, `conf: file` | A pymodbus server with a fixed register map; a net-snmp agent on UDP |
 | `postgres` | `sql: file.sql` | One cluster per run and one database per case run (`SFC_E2E_<NAME>_DB`, user and password `sfc_e2e`) |
 | `aws-wire-stub` | `spec: file.json` | The SQS and Firehose wire protocols, with scripted throttling, 5xx, partial failure and delay |

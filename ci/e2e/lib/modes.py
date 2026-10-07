@@ -48,6 +48,9 @@ COMPONENTS: dict[str, tuple[str, str]] = {
     "com.amazonaws.sfc.snmp.SnmpAdapter": ("snmp", "com.amazonaws.sfc.snmp.SnmpProtocolService"),
     "com.amazonaws.sfc.sql.SqlAdapter": ("sql", "com.amazonaws.sfc.sql.SqlProtocolService"),
     "com.amazonaws.sfc.s7.S7Adapter": ("s7", "com.amazonaws.sfc.s7.S7ProtocolService"),
+    "com.amazonaws.sfc.ads.AdsAdapter": ("ads", "com.amazonaws.sfc.ads.AdsProtocolService"),
+    "com.amazonaws.sfc.pccc.PcccAdapter": ("pccc", "com.amazonaws.sfc.pccc.PcccProtocolService"),
+    "com.amazonaws.sfc.slmp.SlmpAdapter": ("slmp", "com.amazonaws.sfc.slmp.SlmpProtocolService"),
     # local targets
     "com.amazonaws.sfc.debugtarget.DebugTargetWriter": ("debug-target", "com.amazonaws.sfc.debugtarget.DebugTargetService"),
     "com.amazonaws.sfc.filetarget.FileTargetWriter": ("file-target", "com.amazonaws.sfc.filetarget.FileTargetService"),

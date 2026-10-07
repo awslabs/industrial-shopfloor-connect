@@ -16,11 +16,16 @@
 # The test build runs on the suite's image (ci/cdk/image/Dockerfile), tagged in ECR with the hash of the
 # Dockerfile and the two files it copies. When ECR has no image with the current tag, the image is built
 # first, in AWS, by the image project - on the first run and after any change to those files.
+#
+# The PLC simulator (ci/omni-plc-sim) works the same way: its binary is stored in S3 under the hash of the
+# crate, and built in AWS by the simulator project when that hash has no binary yet. Both builds run in
+# parallel; the test build downloads exactly the binary of the tree under test.
 set -euo pipefail
 
 PROJECT="${SFC_IT_PROJECT:-sfc-integration-test}"
 IMAGE_PROJECT="${SFC_IT_IMAGE_PROJECT:-sfc-integration-test-image}"
 IMAGE_REPO="${SFC_IT_IMAGE_REPO:-sfc-it-ci-image}"
+SIM_PROJECT="${SFC_IT_SIM_PROJECT:-sfc-integration-test-plc-sim}"
 BUCKET="${SFC_IT_BUCKET:-}"
 PROFILE="${SFC_IT_PROFILE:-push}"
 TIERS="${SFC_IT_TIERS:-}"
@@ -73,7 +78,8 @@ echo "packaging the working tree ..."
 ( cd "$HERE" && zip -qr "$TMP/src.zip" . \
     -x '*/build/*' -x 'build/*' -x '*/.gradle/*' -x '.gradle/*' -x '*/.kotlin/*' -x '.kotlin/*' \
     -x '*/node_modules/*' -x 'node_modules/*' -x '*/cdk.out/*' -x 'cdk.out/*' -x '*/.idea/*' -x '.idea/*' \
-    -x 'ci/e2e/out/*' -x 'e2e-out/*' -x '*/__pycache__/*' -x '*.pyc' -x '*.DS_Store' )
+    -x 'ci/e2e/out/*' -x 'e2e-out/*' -x '*/__pycache__/*' -x '*.pyc' -x '*.DS_Store' \
+    -x 'ci/omni-plc-sim/target/*' )
 
 SIZE=$(wc -c < "$TMP/src.zip" | tr -d ' ')
 printf 'source archive: %s MB\n' "$((SIZE / 1024 / 1024))"
@@ -97,6 +103,7 @@ print(h.hexdigest()[:16])
 PY
 )
 REPO_URI=$(aws ecr describe-repositories --repository-names "$IMAGE_REPO" --query 'repositories[0].repositoryUri' --output text)
+IMAGE_BUILD_ID=""
 if aws ecr describe-images --repository-name "$IMAGE_REPO" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
   echo "build image: $REPO_URI:$IMAGE_TAG"
 else
@@ -106,16 +113,51 @@ else
     --environment-variables-override "[{\"name\": \"IMAGE_TAG\", \"value\": \"$IMAGE_TAG\", \"type\": \"PLAINTEXT\"}]" \
     --query 'build.id' --output text)
   echo "image build: $IMAGE_BUILD_ID"
+fi
+
+# ------------------------------------------------------------------------------------ PLC simulator
+# The hash of every file of the crate (build output excluded): the same tree always maps to the same binary.
+SIM_TAG=$(python3 - "$HERE" <<'PY'
+import hashlib, sys
+from pathlib import Path
+root = Path(sys.argv[1]) / "ci" / "omni-plc-sim"
+h = hashlib.sha256()
+for p in sorted(root.rglob("*")):
+    rel = p.relative_to(root)
+    if p.is_file() and rel.parts[0] != "target" and p.name != ".DS_Store":
+        h.update(str(rel).encode() + b"\0" + p.read_bytes())
+print(h.hexdigest()[:16])
+PY
+)
+SIM_KEY="plc-sim/$SIM_TAG/omni-plc-sim"
+SIM_BUILD_ID=""
+if aws s3api head-object --bucket "$BUCKET" --key "$SIM_KEY" >/dev/null 2>&1; then
+  echo "plc simulator: s3://$BUCKET/$SIM_KEY"
+else
+  echo "plc simulator $SIM_TAG is not built yet - building it in AWS first (about 5-10 minutes) ..."
+  SIM_BUILD_ID=$(aws codebuild start-build --project-name "$SIM_PROJECT" \
+    --source-type-override S3 --source-location-override "$BUCKET/$KEY" \
+    --environment-variables-override "[{\"name\": \"SIM_TAG\", \"value\": \"$SIM_TAG\", \"type\": \"PLAINTEXT\"}]" \
+    --query 'build.id' --output text)
+  echo "plc simulator build: $SIM_BUILD_ID"
+fi
+
+# Both builds run at once in AWS; wait for each that was started.
+if [ -n "$IMAGE_BUILD_ID" ]; then
   "$HERE/ci/wait-build.sh" "$IMAGE_BUILD_ID"
+fi
+if [ -n "$SIM_BUILD_ID" ]; then
+  "$HERE/ci/wait-build.sh" "$SIM_BUILD_ID"
 fi
 
 # -------------------------------------------------------------------------------------------- start
 # Environment overrides as JSON. The CLI's shorthand syntax splits a value at commas, so
 # "value=inprocess,ipc,uberjar" became a list and the call was rejected.
-OVERRIDES=$(python3 - "$PROFILE" "$TIERS" "$MODES" "${SFC_E2E_COMMIT:-local}" "${SFC_E2E_REF:-local}" "${SFC_E2E_DIRTY:-1}" <<'PY'
+OVERRIDES=$(python3 - "$PROFILE" "$TIERS" "$MODES" "${SFC_E2E_COMMIT:-local}" "${SFC_E2E_REF:-local}" "${SFC_E2E_DIRTY:-1}" "$SIM_KEY" <<'PY'
 import json, sys
-profile, tiers, modes, commit, ref, dirty = sys.argv[1:7]
-pairs = {"SFC_E2E_PROFILE": profile, "SFC_E2E_COMMIT": commit, "SFC_E2E_REF": ref, "SFC_E2E_DIRTY": dirty}
+profile, tiers, modes, commit, ref, dirty, sim_key = sys.argv[1:8]
+pairs = {"SFC_E2E_PROFILE": profile, "SFC_E2E_COMMIT": commit, "SFC_E2E_REF": ref, "SFC_E2E_DIRTY": dirty,
+         "SFC_E2E_PLC_SIM_KEY": sim_key}
 if tiers:
     pairs["SFC_E2E_TIERS"] = tiers
 if modes:

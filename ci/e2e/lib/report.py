@@ -217,29 +217,7 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
                 )
         w("")
 
-    # ------------------------------------------------------------------ 6. known defects
-    defects: dict[str, list[dict]] = {}
-    for c in cases:
-        if c.get("knownDefect"):
-            defects.setdefault(c.get("id"), []).append(c)
-    if defects:
-        w("## Known defects")
-        w("")
-        w("Each case pins the **current** behaviour of a bug that has not been fixed, so the suite stays "
-          "green while documenting it. A pinned case that fails means the defect has probably been fixed: "
-          "move its `assertCorrect` expectation into `assert`.")
-        w("")
-        w("| Case | Defect | Where | Modes |")
-        w("|---|---|---|---|")
-        for case_id, runs in defects.items():
-            d = runs[0]["knownDefect"]
-            status = ", ".join(f"{_link(r.get('mode'), _case_url(run, r))} "
-                               f"{'pinned' if r.get('verdict') == PASS else '**' + r.get('verdict', '?') + ' - review**'}"
-                               for r in runs)
-            w(f"| `{case_id}` | {d.get('summary', '')} | `{d.get('ref', '')}` | {status} |")
-        w("")
-
-    # ------------------------------------------------------------------ 7. skips
+    # ------------------------------------------------------------------ 6. skips
     skips = [c for c in cases if c.get("verdict") == SKIP]
     if skips:
         w("## Skipped")
@@ -251,7 +229,7 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
             w(f"| {case_cell} | {c.get('mode')} | {c.get('skipReason', 'no reason given')} |")
         w("")
 
-    # ------------------------------------------------------------------ 8. AWS resources
+    # ------------------------------------------------------------------ 7. AWS resources
     aws = results.get("aws")
     if aws:
         w("## AWS resources")
@@ -269,7 +247,7 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
               + ", ".join(f"`{x}`" for x in aws["leaked"]))
             w("")
 
-    # ------------------------------------------------------------------ 9. not testable here
+    # ------------------------------------------------------------------ 8. not testable here
     untestable = results.get("untestable") or []
     if untestable:
         w("## Not testable here")
@@ -280,12 +258,12 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
             w(f"| {u.get('what')} | {u.get('why')} |")
         w("")
 
-    # ------------------------------------------------------------------ 10. all cases
+    # ------------------------------------------------------------------ 9. all cases
     by_id: dict[str, dict] = {}
     for c in cases:
         row = by_id.setdefault(c.get("id"), {"case": c, "modes": {}})
         row["modes"][c.get("mode")] = c
-    w("<details><summary>All cases</summary>")
+    w("## All cases")
     w("")
     w("| Case | Area | Priority | " + " | ".join(modes) + " | Title |")
     w("|---|---|---|" + "---|" * len(modes) + "---|")
@@ -298,18 +276,14 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
                                                      _case_url(run, r)))
         w(f"| `{case_id}` | `{c.get('area')}` | {c.get('priority', '-')} | " + " | ".join(cells) + f" | {c.get('title', '')} |")
     w("")
-    w("</details>")
-    w("")
 
     # ------------------------------------------------------------------ provenance
     env = run.get("environment") or {}
     if env:
-        w("<details><summary>Environment</summary>")
+        w("## Environment")
         w("")
         for k in sorted(env):
             w(f"- **{k}**: `{env[k]}`")
-        w("")
-        w("</details>")
         w("")
 
     text = "\n".join(out)

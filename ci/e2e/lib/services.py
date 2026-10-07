@@ -274,6 +274,51 @@ class OpcuaServerService(Service):
                                          "--writes", str(self.workdir / "writes.jsonl")]
 
 
+class PlcSimService(Service):
+    """omni-plc-sim (``ci/omni-plc-sim``): a simulated PLC for the adapters that have no software
+    counterpart - S7, ADS, PCCC, SLMP and Modbus TCP.
+
+    One protocol per service, on the port the runner allocated::
+
+        {"name": "plc", "kind": "plc-sim", "args": {"protocol": "s7", "profile": "s7-1500"}}
+
+    ``args.config`` names a sim.toml in the case directory, which overrides the scan cycle, the clock
+    base and the signal parameters. Every request is logged to ``events.jsonl`` in the service's
+    directory, so a case can assert the exact requests the adapter sent through a ``jsonl`` sink.
+
+    The binary is built in AWS by the CodeBuild project ``sfc-integration-test-plc-sim`` and downloaded
+    by the test build; a laptop without it skips the case, and CodeBuild makes it an error.
+    """
+
+    kind = "plc-sim"
+    binaries = ("omni-plc-sim",)
+
+    def command(self, env):
+        protocol = self.args.get("protocol")
+        if not protocol:
+            raise ServiceError(f"service {self.name!r}: plc-sim needs args.protocol")
+        argv = ["omni-plc-sim", "--serve", f"{protocol}=127.0.0.1:{self.port}", "--events", "events.jsonl"]
+        if self.args.get("profile"):
+            argv += ["--profile", f"{protocol}={self.args['profile']}"]
+        if self.args.get("config"):
+            argv += ["--config", str(Path(env["SFC_E2E_CASE_DIR"]) / self.args["config"])]
+        if self.args.get("cycleMs"):
+            argv += ["--cycle-ms", str(self.args["cycleMs"])]
+        return argv
+
+    def ready(self, timeout):
+        # The ready line comes after every listener is bound and the first scan has been applied, so a
+        # port probe alone could still race the data. Wait for the line, then the port.
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if "omni-plc-sim ready" in self.tail(self._log_out, 100):
+                return super().ready(max(1.0, deadline - time.monotonic()))
+            if self.proc.poll() is not None:
+                raise ServiceError(f"exited with {self.proc.returncode}")
+            time.sleep(0.05)
+        raise ServiceError("'omni-plc-sim ready' not seen")
+
+
 class ModbusService(Service):
     kind = "modbus"
     python_modules = ("pymodbus",)
@@ -413,7 +458,8 @@ class AwsWireStubService(Service):
 
 KINDS: dict[str, type[Service]] = {cls.kind: cls for cls in (
     CommandService, TcpGateService, SilentService, MosquittoService, NatsService, HttpFakeService,
-    OpcuaServerService, ModbusService, SnmpdService, SfcProcessService, PostgresService, AwsWireStubService,
+    OpcuaServerService, ModbusService, PlcSimService, SnmpdService, SfcProcessService, PostgresService,
+    AwsWireStubService,
 )}
 
 

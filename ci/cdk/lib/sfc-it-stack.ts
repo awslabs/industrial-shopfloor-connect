@@ -48,6 +48,8 @@ const NAMES = {
   project: 'sfc-integration-test',
   imageProject: 'sfc-integration-test-image',
   imageRepo: 'sfc-it-ci-image',
+  plcSimProject: 'sfc-integration-test-plc-sim',
+  plcSimPrefix: 'plc-sim',
   msk: 'sfc-it-msk',
   tableBucketPrefix: 'sfc-it-fixture',
   namespace: 'sfc_it',
@@ -82,6 +84,8 @@ export class SfcItStack extends Stack {
         { id: 'src', prefix: 'src/', expiration: Duration.days(3) },
         { id: 'evidence', prefix: 'evidence/', expiration: Duration.days(14) },
         { id: 'cache', prefix: 'cache/', expiration: Duration.days(30) },
+        // Built PLC simulator binaries, one per crate hash; an expired one is simply rebuilt.
+        { id: 'plc-sim', prefix: `${NAMES.plcSimPrefix}/`, expiration: Duration.days(90) },
         { id: 's3-target', prefix: 's3-target/', expiration: Duration.days(2) },
         { id: 'firehose', prefix: 'firehose/', expiration: Duration.days(2) },
         { id: 'lambda-evidence', prefix: 'lambda-evidence/', expiration: Duration.days(2) },
@@ -384,6 +388,39 @@ export class SfcItStack extends Stack {
     artifacts.grantRead(imageProject, 'src/*');
     imageRepo.grantPullPush(imageProject);
 
+    // The PLC simulator (ci/omni-plc-sim), the counterpart of the S7, ADS, PCCC, SLMP and Modbus cases. It
+    // is built here in AWS from the uploaded working tree - compiled and tested in the crate's Dockerfile -
+    // and stored as a static binary under plc-sim/<hash>/. ci/start-build.sh builds it only when S3 has no
+    // binary for the crate's current hash, and the test build downloads exactly that one.
+    const plcSimProject = new codebuild.Project(this, 'PlcSimBuild', {
+      projectName: NAMES.plcSimProject,
+      source: codebuild.Source.s3({ bucket: artifacts, path: 'src/seed.zip' }),
+      environment: {
+        buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
+        computeType: codebuild.ComputeType.MEDIUM,
+        privileged: true, // docker build
+        environmentVariables: { BUCKET: { value: artifacts.bucketName }, SIM_TAG: { value: 'unset' } },
+      },
+      buildSpec: codebuild.BuildSpec.fromObject({
+        version: '0.2',
+        env: { shell: 'bash' },
+        phases: {
+          build: {
+            commands: [
+              'set -euo pipefail',
+              'DOCKER_BUILDKIT=1 docker build -f ci/omni-plc-sim/Dockerfile --target export --output type=local,dest=out ci/omni-plc-sim',
+              'out/omni-plc-sim --version',
+              `aws s3 cp out/omni-plc-sim "s3://$BUCKET/${NAMES.plcSimPrefix}/$SIM_TAG/omni-plc-sim" --only-show-errors`,
+            ],
+          },
+        },
+      }),
+      timeout: Duration.minutes(30),
+      logging: { cloudWatch: { logGroup: projectLogs } },
+    });
+    artifacts.grantRead(plcSimProject, 'src/*');
+    artifacts.grantPut(plcSimProject, `${NAMES.plcSimPrefix}/*`);
+
     const project = new codebuild.Project(this, 'SfcIt', {
       projectName: NAMES.project,
       // Overridden per build with the zip of the working tree; this is only the default. See the explicit
@@ -413,6 +450,7 @@ export class SfcItStack extends Stack {
     // MANDATORY: Source.s3() scopes GetObject to the literal 'src/seed.zip'; every real build overrides
     // the location to a per-run key.
     artifacts.grantRead(project, 'src/*');
+    artifacts.grantRead(project, `${NAMES.plcSimPrefix}/*`); // the simulator binary, fetched in the install phase
     artifacts.grantReadWrite(project, 'evidence/*');
     artifacts.grantReadWrite(project, 'cache/*');
     artifacts.grantReadWrite(project, 's3-target/*');
@@ -548,10 +586,12 @@ export class SfcItStack extends Stack {
     });
     artifacts.grantPut(ciRole, 'src/*');
     artifacts.grantRead(ciRole, 'evidence/*');
+    // start-build.sh asks whether the simulator for the current crate hash exists (head-object needs GetObject).
+    artifacts.grantRead(ciRole, `${NAMES.plcSimPrefix}/*`);
     ciRole.addToPolicy(new iam.PolicyStatement({
       // StopBuild matters: without it a cancelled job orphans a running build.
       actions: ['codebuild:StartBuild', 'codebuild:BatchGetBuilds', 'codebuild:StopBuild'],
-      resources: [project.projectArn, imageProject.projectArn],
+      resources: [project.projectArn, imageProject.projectArn, plcSimProject.projectArn],
     }));
     ciRole.addToPolicy(new iam.PolicyStatement({
       // start-build.sh asks whether the image for the current Dockerfile exists, and where the repository is.
@@ -569,6 +609,7 @@ export class SfcItStack extends Stack {
     new CfnOutput(this, 'ProjectName', { value: project.projectName });
     new CfnOutput(this, 'ImageProjectName', { value: imageProject.projectName });
     new CfnOutput(this, 'ImageRepositoryUri', { value: imageRepo.repositoryUri });
+    new CfnOutput(this, 'PlcSimProjectName', { value: plcSimProject.projectName });
     new CfnOutput(this, 'MskBootstrapPublic', { value: mskPublic.getAttString('BootstrapPublicSaslIam') });
     new CfnOutput(this, 'CiRoleArn', { value: ciRole.roleArn });
     new CfnOutput(this, 'LogGroupName', { value: projectLogs.logGroupName });

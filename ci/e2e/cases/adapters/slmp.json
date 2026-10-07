@@ -1,0 +1,626 @@
+{
+  "cases": [
+    {
+      "id": "ADP-SLMP-PILOT",
+      "title": "pilot: omni-plc-sim SLMP (MELSEC iQ-R R04CPU, 3E binary) -> slmp adapter (0401 batch + 0403 random) -> file",
+      "intent": "The first case on a real SLMP server: a simulated MELSEC iQ-R R04CPU (built-in Ethernet port, 3E binary frames) read the way SFC always reads, in all three deployment modes: per 200 ms cycle, four 0401 batch reads (a STRING, an INT array, 16 M relays in bit units, a struct) and one 0403 random read with 13 word items (word devices, and bit devices as 16-bit words) and 2 double-word items. Static values must be exact in every record; the SD420 scan counter, a scaled sine and the SM412 clock relay must move over 8 records (the first read waits out the TCP client's 1 s first-send delay, so the second follows it back to back); the simulator's request log proves the wire plan and that every reply carried end code 0000. It fails when 3E framing, device codes, bit packing, word, string or struct decoding break, or when the adapter has to reconnect. It stays clear of every client defect pinned for the knownDefect cases: KD-1 and KD-2 (both double words have equal halves and are below 2^31, so this case detects neither a double-word word-order regression nor its fix; KD-1's case does), KD-2 (no float or unsigned channel), KD-3 (no WORD at or above 32768 that is meant unsigned), KD-4 (only X0), KD-5 (device numbers below 65536), KD-6 (no long devices), KD-7 and KD-8 (bit devices are read as words only by the random read, word devices never as bits), KD-9 and KD-10 (one struct without BIT fields), KD-11 (nothing near a device end), KD-12, KD-13 and KD-20 (ASCII strings only, no string arrays), KD-14 (no error reply), KD-17 (no nested struct arrays), KD-18 and KD-19 (one adapter, one controller, one schedule). KD-15 and KD-16 do not arise: the simulator never closes a connection and no metric is asserted.",
+      "pins": [
+        "adapters/slmp/src/main/kotlin/com/amazonaws/sfc/slmp/SlmpSource.kt:102-124",
+        "adapters/slmp/src/main/kotlin/com/amazonaws/sfc/slmp/protocol/SlmpHeader.kt:22-29",
+        "adapters/slmp/src/main/kotlin/com/amazonaws/sfc/slmp/protocol/SlmpDeviceRead.kt:18-22",
+        "adapters/slmp/src/main/kotlin/com/amazonaws/sfc/slmp/protocol/SlmpDeviceReadRandom.kt:19-69",
+        "adapters/slmp/src/main/kotlin/com/amazonaws/sfc/slmp/protocol/SlmpResponse.kt:67-117",
+        "adapters/slmp/src/main/kotlin/com/amazonaws/sfc/slmp/protocol/SlmpDecoder.kt:26-97",
+        "adapters/slmp/src/main/kotlin/com/amazonaws/sfc/slmp/protocol/SlmpStructureType.kt:14-37",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourcesValuesAsFlow.kt:133-146",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/tcp/TcpClient.kt:256-260"
+      ],
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "plc",
+          "kind": "plc-sim",
+          "args": {
+            "protocol": "slmp",
+            "profile": "iq-r"
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "plc": {
+          "kind": "jsonl",
+          "service": "plc",
+          "file": "events.jsonl"
+        }
+      },
+      "records": 8,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.plc.values",
+          "keys": [
+            "int",
+            "byte",
+            "sint",
+            "usint",
+            "dint_sym",
+            "udint_sym",
+            "bool_true",
+            "bool_false",
+            "bits_word",
+            "x0",
+            "sm400",
+            "sm401",
+            "string",
+            "int_array",
+            "bits",
+            "recipe",
+            "scan16",
+            "sine_int",
+            "blink_1hz"
+          ],
+          "comment": "every channel in every record: a failed request drops all its channels from the record (SlmpSource.kt:148-167), and an IPC conversion error drops one (GrpcSourceValueFromNativeExt.kt:758-763)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "int",
+          "values": [
+            -12345
+          ],
+          "strictTypes": true,
+          "comment": "0403 word item D100. SLMP decodes into Short, Int, Boolean, String, List and Map only (SlmpDecoder.kt:26-97, SlmpDeviceReadRandom.kt:56-62), never a Kotlin unsigned type, so every value is a JSON number in all three modes (JsonHelper.kt:74-149 does not apply) and strict sets need no string forms"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "byte",
+          "values": [
+            165
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "sint",
+          "values": [
+            -100
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "usint",
+          "values": [
+            200
+          ],
+          "strictTypes": true,
+          "comment": "WORD is decoded signed (KD-3, SlmpDecoder.kt:32), so the pilot reads only values below 32768 or meant signed"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "dint_sym",
+          "values": [
+            -1698915652
+          ],
+          "strictTypes": true,
+          "comment": "0403 double-word item D126/D127 = 0x9ABC9ABC: both words are equal, so the client's swapped word order (KD-1, SlmpDecoder.kt:63-67) cannot change it, and this item cannot detect a word-order change either"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "udint_sym",
+          "values": [
+            305402420
+          ],
+          "strictTypes": true,
+          "comment": "D128/D129 = 0x12341234, word-swap invariant like dint_sym and below 2^31, so the signed DOUBLEWORD (KD-2, SlmpDecoder.kt:59) is harmless"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "bool_true",
+          "values": [
+            true
+          ],
+          "strictTypes": true,
+          "comment": "M0 as a 0403 word item; SFC takes bit 0 (SlmpDeviceReadRandom.kt:60)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "bool_false",
+          "values": [
+            false
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "bits_word",
+          "values": [
+            15525
+          ],
+          "strictTypes": true,
+          "comment": "M0 as a 16-bit word item of the 0403 request: M0..M15 = 0x3CA5, M0 is bit 0"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "x0",
+          "values": [
+            true
+          ],
+          "strictTypes": true,
+          "comment": "X0 only: SFC parses X numbers as decimal while MELSEC X is hex (iQ-F octal), so only 0-7 mean the same everywhere (KD-4, SlmpAccessPoint.kt:23,29)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "sm400",
+          "values": [
+            true
+          ],
+          "strictTypes": true,
+          "comment": "SM400 is always ON"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "sm401",
+          "values": [
+            false
+          ],
+          "strictTypes": true,
+          "comment": "SM401 is always OFF"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.string.value",
+          "equals": "SFC-SIM",
+          "strictTypes": true,
+          "comment": "0401/0000, 16 words from D200: the client reads L words for STRING(L) (KD-11, SlmpDeviceItem.kt:25), far from the end of D"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.int_array.value",
+          "equals": [
+            1,
+            -2,
+            3,
+            -4,
+            500,
+            -600,
+            7000,
+            -8000,
+            32767,
+            -32768
+          ],
+          "strictTypes": true,
+          "comment": "0401/0000, 10 words from D240"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.bits.value",
+          "equals": [
+            true,
+            false,
+            true,
+            false,
+            false,
+            true,
+            false,
+            true,
+            false,
+            false,
+            true,
+            true,
+            true,
+            true,
+            false,
+            false
+          ],
+          "strictTypes": true,
+          "comment": "0401/0001 bit units, one nibble per point, the even point high: 10 10 01 01 00 11 11 00"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.recipe.value",
+          "equals": {
+            "id": 7,
+            "qty": 250,
+            "name": "PUMP-01"
+          },
+          "strictTypes": true,
+          "comment": "0401/0000, 12 words from D280 for the 12-byte struct (twice what it needs, KD-11). One element (KD-10), no BIT field (KD-9), the STRING last with fewer than 8 characters"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.scan16.value",
+          "type": "int"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "scan16",
+          "min": 0,
+          "max": 32767,
+          "comment": "SD420 = scan count mod 65536 at the default cycle_ms = 10: the simulator starts with the case run, so the signed WORD passes 32767 only after 327 s, and the case ends within 75 s"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.scan16.value",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.sine_int.value",
+          "type": "int"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "sine_int",
+          "min": -10000,
+          "max": 10000,
+          "comment": "D1100 = round(100 x sine), the 1 Hz sine of amplitude 100: SFC has no float type (KD-2), so the pilot reads the INT x100 block rather than the REAL at D1000"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.sine_int.value",
+          "min": 3,
+          "comment": "8 records: the first two reads are back to back (SourcesValuesAsFlow.kt:133-146 with TcpClient.kt:256-260), the other six are 200 ms apart and cover all five phases of the 1 Hz sine, so it shows at least 3 values; with 5 records a symmetric signal can alias to 2"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.blink_1hz.value",
+          "type": "bool"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "blink_1hz",
+          "values": [
+            true,
+            false
+          ]
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.blink_1hz.value",
+          "min": 2,
+          "comment": "SM412, the 1 s clock: 0.5 s ON, 0.5 s OFF. Six reads 200 ms apart span a full second, so both values appear. SM411 (0.2 s) would alias at this read period"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "plc",
+          "path": "status",
+          "equals": "ok",
+          "comment": "the simulator answered every request with end code 0000 and closed nothing; the harness readiness probe's connect and disconnect are ok too"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "path": "op",
+          "values": [
+            "connect",
+            "disconnect",
+            "read_batch",
+            "read_random"
+          ],
+          "comment": "SFC sends nothing but 0401 and 0403: no write, no unsupported command, no bad frame"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read_batch"
+          },
+          "path": "detail.dev",
+          "values": [
+            "D200",
+            "D240",
+            "M0",
+            "D280"
+          ],
+          "comment": "one 0401 per channel that cannot go into the random read (SlmpSource.kt:102-124, SlmpDeviceItem.kt:40-46)"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read_batch"
+          },
+          "path": "detail.sub",
+          "values": [
+            "0000",
+            "0001"
+          ],
+          "comment": "the subcommand follows the device type: word units for D, bit units for M (SlmpDevice.kt:254-260)"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "plc",
+          "where": {
+            "op": "read_random"
+          },
+          "path": "detail.words",
+          "equals": [
+            "D100",
+            "D102",
+            "D103",
+            "D104",
+            "M0",
+            "M1",
+            "M0",
+            "X0",
+            "SM400",
+            "SM401",
+            "SD420",
+            "D1100",
+            "SM412"
+          ],
+          "comment": "the 0403 word items in channel order, WORD and BIT alike (SlmpDeviceReadRandom.kt:76-80)"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "plc",
+          "where": {
+            "op": "read_random"
+          },
+          "path": "detail.dwords",
+          "equals": [
+            "D126",
+            "D128"
+          ]
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error reading channel",
+            "Error executing Slmp",
+            "Timeout reading response",
+            "Error creating SLMP source",
+            "Error creating TCP client",
+            "Fatal error converting"
+          ],
+          "comment": "the adapter's error texts (SlmpSource.kt:79,149,164; SlmpDeviceRead.kt:30; SlmpDeviceReadRandom.kt:67; SlmpResponse.kt:57,68; SlmpAdapter.kt:71) and the IPC conversion error: no request failed, so the client never reconnected (KD-14)"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-SLMP-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "plc": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "plc": {
+            "Name": "plc",
+            "ProtocolAdapter": "Plc",
+            "AdapterController": "PLC",
+            "Channels": {
+              "int": {
+                "Name": "int",
+                "AccessPoint": "D100",
+                "DataType": "WORD"
+              },
+              "byte": {
+                "Name": "byte",
+                "AccessPoint": "D102",
+                "DataType": "WORD"
+              },
+              "sint": {
+                "Name": "sint",
+                "AccessPoint": "D103",
+                "DataType": "WORD"
+              },
+              "usint": {
+                "Name": "usint",
+                "AccessPoint": "D104",
+                "DataType": "WORD"
+              },
+              "dint_sym": {
+                "Name": "dint_sym",
+                "AccessPoint": "D126",
+                "DataType": "DOUBLEWORD"
+              },
+              "udint_sym": {
+                "Name": "udint_sym",
+                "AccessPoint": "D128",
+                "DataType": "DOUBLEWORD"
+              },
+              "bool_true": {
+                "Name": "bool_true",
+                "AccessPoint": "M0",
+                "DataType": "BIT"
+              },
+              "bool_false": {
+                "Name": "bool_false",
+                "AccessPoint": "M1",
+                "DataType": "BIT"
+              },
+              "bits_word": {
+                "Name": "bits_word",
+                "AccessPoint": "M0",
+                "DataType": "WORD"
+              },
+              "x0": {
+                "Name": "x0",
+                "AccessPoint": "X0",
+                "DataType": "BIT"
+              },
+              "sm400": {
+                "Name": "sm400",
+                "AccessPoint": "SM400",
+                "DataType": "BIT"
+              },
+              "sm401": {
+                "Name": "sm401",
+                "AccessPoint": "SM401",
+                "DataType": "BIT"
+              },
+              "string": {
+                "Name": "string",
+                "AccessPoint": "D200",
+                "DataType": "STRING(16)"
+              },
+              "int_array": {
+                "Name": "int_array",
+                "AccessPoint": "D240",
+                "DataType": "WORD[10]"
+              },
+              "bits": {
+                "Name": "bits",
+                "AccessPoint": "M0",
+                "DataType": "BIT[16]"
+              },
+              "recipe": {
+                "Name": "recipe",
+                "AccessPoint": "D280",
+                "DataType": "Recipe"
+              },
+              "scan16": {
+                "Name": "scan16",
+                "AccessPoint": "SD420",
+                "DataType": "WORD"
+              },
+              "sine_int": {
+                "Name": "sine_int",
+                "AccessPoint": "D1100",
+                "DataType": "WORD"
+              },
+              "blink_1hz": {
+                "Name": "blink_1hz",
+                "AccessPoint": "SM412",
+                "DataType": "BIT"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Plc": {
+            "AdapterType": "SLMP",
+            "Controllers": {
+              "PLC": {
+                "Address": "127.0.0.1",
+                "Port": "${SFC_E2E_PLC_PORT}",
+                "ConnectTimeout": 5000,
+                "ReadTimeout": 3000,
+                "WaitAfterReadError": 1000,
+                "WaitAfterConnectError": 1000
+              }
+            },
+            "Structures": {
+              "Recipe": {
+                "id": "WORD",
+                "qty": "WORD",
+                "name": "STRING(8)"
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SLMP": {
+            "FactoryClassName": "com.amazonaws.sfc.slmp.SlmpAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SLMP": {
+            "FactoryClassName": "com.amazonaws.sfc.slmp.SlmpAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/slmp/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SlmpServer": {
+          "module": "slmp"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Plc": {
+            "AdapterServer": "SlmpServer"
+          }
+        },
+        "AdapterServers": {
+          "SlmpServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

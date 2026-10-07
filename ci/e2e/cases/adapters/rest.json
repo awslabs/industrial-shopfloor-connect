@@ -1,0 +1,347 @@
+{
+  "cases": [
+    {
+      "id": "ADP-REST-PILOT",
+      "title": "pilot: scripted HTTP server -> rest adapter (GET, JMESPath selectors, retry on 500) -> file",
+      "intent": "The first case on the REST adapter: three sources on one server, one GET each per read. A counter proves every read reaches the server once and in order; JMESPath selectors pick scalars, a filtered list element and a sub-list out of a nested document; a path that answers 500 once proves the adapter retries until it gets a 200 (RestSource.kt:76-102). JSON numbers arrive as Doubles (Gson). It fails when requests, selectors or the retry break. It avoids configured headers, which the client likely never sends; timeouts, which it does not retry; and a channel without a selector: its value is the whole parsed document, a Gson LinkedTreeMap, which the IPC adapter service cannot convert to gRPC (ClassCastException to LinkedHashMap, value dropped), a defect for its own case.",
+      "pins": [
+        "adapters/rest/src/main/kotlin/com/amazonaws/sfc/rest/RestSource.kt:76-102",
+        "adapters/rest/src/main/kotlin/com/amazonaws/sfc/rest/RestSource.kt:119-155"
+      ],
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "rest",
+          "kind": "http",
+          "args": {
+            "scenario": "scenario.json"
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "requests": {
+          "kind": "jsonl",
+          "service": "rest",
+          "file": "requests.jsonl"
+        }
+      },
+      "records": 8,
+      "files": {
+        "scenario.json": {
+          "/counter": {
+            "kind": "counter",
+            "start": 0
+          },
+          "/plant": {
+            "kind": "json",
+            "body": {
+              "line": {
+                "id": "L1",
+                "speed": 12.5,
+                "running": true,
+                "sensors": [
+                  {
+                    "name": "t1",
+                    "temp": 21.5
+                  },
+                  {
+                    "name": "t2",
+                    "temp": 22.25
+                  }
+                ]
+              },
+              "tags": [
+                "a",
+                "b"
+              ]
+            }
+          },
+          "/flaky": {
+            "kind": "status",
+            "codes": [
+              500,
+              200
+            ],
+            "body": {
+              "ok": true
+            }
+          }
+        }
+      },
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.ctr.values",
+          "keys": [
+            "value"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.plant.values",
+          "keys": [
+            "running",
+            "speed",
+            "t2",
+            "tags"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.flaky.values",
+          "keys": [
+            "ok"
+          ]
+        },
+        {
+          "kind": "channelSequence",
+          "source": "ctr",
+          "channel": "value",
+          "step": 1,
+          "comment": "one GET per read, in order"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plant",
+          "channel": "speed",
+          "values": [
+            12.5
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plant",
+          "channel": "running",
+          "values": [
+            true
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plant",
+          "channel": "t2",
+          "values": [
+            22.25
+          ],
+          "comment": "line.sensors[?name=='t2'].temp | [0]"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plant.values.tags.value",
+          "equals": [
+            "a",
+            "b"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "flaky",
+          "channel": "ok",
+          "values": [
+            true
+          ],
+          "comment": "the first 500 is retried, so even the first record has the value"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "requests",
+          "path": "method",
+          "equals": "GET"
+        },
+        {
+          "kind": "recordCount",
+          "sink": "requests",
+          "where": {
+            "path": "/flaky"
+          },
+          "min": 9,
+          "comment": "8 reads plus the retry of the first one"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "after 3 retries",
+            "Error parsing JSON data",
+            "Error selecting data for channel",
+            "No data selected for channel"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-REST-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "ctr": [
+                "*"
+              ],
+              "plant": [
+                "*"
+              ],
+              "flaky": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "ctr": {
+            "Name": "ctr",
+            "ProtocolAdapter": "Rest",
+            "RestServer": "fake",
+            "Request": "counter",
+            "Channels": {
+              "value": {
+                "Name": "value",
+                "Selector": "value"
+              }
+            }
+          },
+          "plant": {
+            "Name": "plant",
+            "ProtocolAdapter": "Rest",
+            "RestServer": "fake",
+            "Request": "plant",
+            "Channels": {
+              "speed": {
+                "Name": "speed",
+                "Selector": "line.speed"
+              },
+              "running": {
+                "Name": "running",
+                "Selector": "line.running"
+              },
+              "t2": {
+                "Name": "t2",
+                "Selector": "line.sensors[?name=='t2'].temp | [0]"
+              },
+              "tags": {
+                "Name": "tags",
+                "Selector": "tags"
+              }
+            }
+          },
+          "flaky": {
+            "Name": "flaky",
+            "ProtocolAdapter": "Rest",
+            "RestServer": "fake",
+            "Request": "flaky",
+            "Channels": {
+              "ok": {
+                "Name": "ok",
+                "Selector": "ok"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Rest": {
+            "AdapterType": "REST",
+            "RestServers": {
+              "fake": {
+                "Server": "http://127.0.0.1",
+                "Port": "${SFC_E2E_REST_PORT}",
+                "RequestTimeout": 2000,
+                "MaxRetries": 3,
+                "WaitBeforeRetry": 100,
+                "WaitAfterReadError": 1000
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "REST": {
+            "FactoryClassName": "com.amazonaws.sfc.rest.RestAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "REST": {
+            "FactoryClassName": "com.amazonaws.sfc.rest.RestAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/rest/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "RestServer": {
+          "module": "rest"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Rest": {
+            "AdapterServer": "RestServer"
+          }
+        },
+        "AdapterServers": {
+          "RestServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

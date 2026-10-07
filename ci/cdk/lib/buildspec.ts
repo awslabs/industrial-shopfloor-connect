@@ -48,6 +48,10 @@ export function buildSpec(props: BuildspecProps): codebuild.BuildSpec {
           'set -euo pipefail',
           'java -version && python3 --version && mosquitto -h | head -1 && nats-server --version',
           'pip3 install --quiet -r ci/e2e/requirements.txt',
+          // The PLC simulator, built in AWS by sfc-integration-test-plc-sim for the crate's current hash;
+          // ci/start-build.sh passes its key. Without it the plc-sim cases end as errors, by the harness's
+          // rule that CodeBuild must provide every counterpart.
+          'if [ -n "${SFC_E2E_PLC_SIM_KEY:-}" ]; then aws s3 cp "s3://$SFC_E2E_BUCKET/$SFC_E2E_PLC_SIM_KEY" /usr/local/bin/omni-plc-sim --only-show-errors && chmod +x /usr/local/bin/omni-plc-sim && omni-plc-sim --version; else echo "no SFC_E2E_PLC_SIM_KEY: plc-sim cases will error"; fi',
         ],
       },
       pre_build: {

@@ -1,0 +1,1098 @@
+{
+  "cases": [
+    {
+      "id": "ADP-ADS-PILOT",
+      "title": "pilot: omni-plc-sim ADS (TwinCAT 3 IPC, AMS port 851) -> ads adapter (symbol upload + sum read) -> file",
+      "intent": "The first case on a real ADS/AMS server. If it fails, SFC's ads adapter can no longer read a TwinCAT 3 PLC: it frames AMS/TCP by the declared length, uploads the symbol table (Read 0xF00F for nSymSize, then Read 0xF00B for 113 TwinCAT 3 entries with type GUIDs, which it must walk by entryLength) and reads its 54 channels with one sum read (ReadWrite 0xF080) per cycle, in all three deployment modes. Static values of every type it decodes, the arrays and the TwinCAT system structs arrive exact; the dynamic signals stay in range and change over 8 records (the first read waits out the TCP client's 1 s first send, so the second follows it back to back; reads 2-8 are seven samples 200 ms apart); the simulator's request log proves the wire plan and that no item failed. The channel set avoids the client defects known today: TIME_OF_DAY decoded as seconds (Decoder.kt:106-109), DT/TOD type names and LWORD (unmapped, DataType.kt:39-69), DATE/DT after 2038 and TIME from 2^31 ms (signed, Decoder.kt:90-128), dcTaskTime (1970 epoch), non-ASCII STRING/WSTRING (Decoder.kt:64-74), negative array bounds (GetSymbolsResponse.kt:100-101), member paths (AdsSource.kt:64), structs, enums and function blocks (raw bytes), POINTER TO (DataType.kt:39), ULINT from 2^53 (JsonHelper.kt:78), NaN, PLC restarts (TcpClient.kt:277-301 misses the FIN), a second device or source on the same host (AdsSource.kt:170), NetIds with leading zeros (RequestResponse.kt:43) and more than 500 channels (sum reads are never split).",
+      "pins": [
+        "adapters/ads/src/main/kotlin/com/amazonaws/sfc/ads/protocol/Client.kt:32-48",
+        "adapters/ads/src/main/kotlin/com/amazonaws/sfc/ads/protocol/Client.kt:133-162",
+        "adapters/ads/src/main/kotlin/com/amazonaws/sfc/ads/protocol/RequestResponse.kt:84-102",
+        "adapters/ads/src/main/kotlin/com/amazonaws/sfc/ads/protocol/GetSymbolsLengthResponse.kt:18-22",
+        "adapters/ads/src/main/kotlin/com/amazonaws/sfc/ads/protocol/GetSymbolsResponse.kt:19-65",
+        "adapters/ads/src/main/kotlin/com/amazonaws/sfc/ads/protocol/MultiReadRequest.kt:27-59",
+        "adapters/ads/src/main/kotlin/com/amazonaws/sfc/ads/protocol/MultiReadResponse.kt:34-111",
+        "adapters/ads/src/main/kotlin/com/amazonaws/sfc/ads/protocol/DataType.kt:39-69",
+        "adapters/ads/src/main/kotlin/com/amazonaws/sfc/ads/protocol/Decoder.kt:84-128",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/JsonHelper.kt:74-149",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourcesValuesAsFlow.kt:133-146",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/tcp/TcpClient.kt:256-260"
+      ],
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "plc",
+          "kind": "plc-sim",
+          "args": {
+            "protocol": "ads",
+            "profile": "tc3-ipc"
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "plc": {
+          "kind": "jsonl",
+          "service": "plc",
+          "file": "events.jsonl"
+        }
+      },
+      "records": 8,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8,
+          "comment": "read 1 waits out the TCP client's 1 s first send and read 2 follows it at once (SourcesValuesAsFlow.kt:133-146, TcpClient.kt:256-260); reads 2-8 are 200 ms apart"
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.ads.values",
+          "keys": [
+            "bool_true",
+            "bool_false",
+            "byte",
+            "sint",
+            "usint",
+            "int",
+            "uint",
+            "word",
+            "dint",
+            "udint",
+            "dword",
+            "lint",
+            "ulint",
+            "real",
+            "lreal",
+            "string",
+            "time",
+            "ltime",
+            "date",
+            "date_and_time",
+            "wstring",
+            "array_int",
+            "array_real",
+            "array_byte_2d",
+            "array_string",
+            "array_bool",
+            "runtime_version",
+            "lib_version",
+            "app_info",
+            "task_info",
+            "task_oid",
+            "little_endian",
+            "pack_mode",
+            "io_setpoint",
+            "io_status",
+            "io_sensor",
+            "scan",
+            "t",
+            "sine",
+            "cosine",
+            "tangent",
+            "cotangent",
+            "exp",
+            "quadratic",
+            "sawtooth",
+            "triangle",
+            "square",
+            "damped",
+            "noise",
+            "randomwalk",
+            "sine64",
+            "sine_int",
+            "blink_1hz",
+            "blink_5hz"
+          ],
+          "comment": "every channel in every record: the sum read returned no item error and every value decoded"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "bool_true",
+          "values": [
+            true
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "bool_false",
+          "values": [
+            false
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "byte",
+          "values": [
+            "165",
+            165
+          ],
+          "comment": "UByte/UShort/UInt: a JSON string in-process and uberjar (JsonHelper.kt:91-149), a number in IPC (GrpcSourceValueFromNativeExt.kt:109-112,194-197,279-282)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "sint",
+          "values": [
+            -100
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "usint",
+          "values": [
+            "200",
+            200
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "int",
+          "values": [
+            -12345
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "uint",
+          "values": [
+            "54321",
+            54321
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "word",
+          "values": [
+            "54321",
+            54321
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "dint",
+          "values": [
+            -1234567890
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "udint",
+          "values": [
+            "3000000000",
+            3000000000
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "dword",
+          "values": [
+            "3000000000",
+            3000000000
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "lint",
+          "values": [
+            -1234567890123
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "ulint",
+          "values": [
+            12345678901234
+          ],
+          "comment": "ULong: a double in-process and uberjar (JsonHelper.kt:74-80), a Long in IPC (GrpcSourceValueFromNativeExt.kt:364-366); below 2^53, so both compare equal"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "real",
+          "values": [
+            12345.5
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "lreal",
+          "values": [
+            -98765.4375
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "string",
+          "values": [
+            "SFC-SIM"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "time",
+          "values": [
+            "PT1.234S"
+          ],
+          "comment": "Kotlin Duration.toIsoString (Decoder.kt:90-94)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "ltime",
+          "values": [
+            "PT1.234567890S"
+          ],
+          "comment": "the fraction is padded to a multiple of 3 digits (Decoder.kt:84-88)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "date",
+          "values": [
+            "2024-03-15"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "date_and_time",
+          "values": [
+            "2024-03-15T12:34:56Z"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "wstring",
+          "values": [
+            "SFC-SIM-W"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.array_int.value",
+          "equals": [
+            -200,
+            -100,
+            0,
+            100,
+            200
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.array_real.value",
+          "equals": [
+            1.5,
+            -2.25,
+            3.125
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.array_byte_2d.value",
+          "equals": [
+            [
+              "1",
+              "2",
+              "3"
+            ],
+            [
+              "4",
+              "5",
+              "6"
+            ]
+          ],
+          "comment": "BYTE elements are UByte, written as strings in every mode; ARRAY [0..1,0..2] splits by its last dimension (MultiReadResponse.kt:58-84)"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.array_string.value",
+          "equals": [
+            "RED",
+            "GREEN",
+            "BLUE"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.array_bool.value",
+          "equals": [
+            true,
+            false,
+            true,
+            true
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.runtime_version.value",
+          "equals": {
+            "major": 3,
+            "minor": 1,
+            "servicePack": 4024,
+            "patch": 56
+          },
+          "comment": "the struct objects are written by Gson reflection, so their unsigned fields are numbers; IPC brings them back as maps of doubles, which == compares equal (no strictTypes)"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.lib_version.value",
+          "equals": {
+            "major": 3,
+            "minor": 3,
+            "build": 3,
+            "revision": 0,
+            "flags": 0,
+            "version": "3.3.3.0"
+          }
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.app_info.value",
+          "equals": {
+            "objID": 139468800,
+            "taskCount": 1,
+            "onlineChangeCount": 0,
+            "flags": 0,
+            "adsPort": 851,
+            "bootDataLoaded": true,
+            "oldBootData": false,
+            "appTimestamp": "2024-03-15T08:00:00Z",
+            "keepOutputsOnBP": false,
+            "shutdownInProgress": false,
+            "licencesPending": false,
+            "bsodOccurred": false,
+            "loggedIn": true,
+            "appName": "Port_851",
+            "projectName": "OmniPlcSim"
+          }
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.task_info.value[0].taskName",
+          "equals": "PlcTask"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.task_info.value[0].cycleTime",
+          "equals": 100000,
+          "comment": "100 ns units of the 10 ms scan cycle"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.task_info.value[0].priority",
+          "equals": 20
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.ads.values.task_info.value[0].adsPort",
+          "equals": 350
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.task_info.value[0].cycleCount",
+          "min": 3,
+          "comment": "the live task cycle counter; dcTaskTime is not asserted (PlcTaskSystemInfo.kt:118 reads it from 1970, TwinCAT counts from 2000)"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "task_oid",
+          "values": [
+            "33619984",
+            33619984
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "little_endian",
+          "values": [
+            true
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "pack_mode",
+          "values": [
+            "8",
+            8
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "ads",
+          "channel": "io_setpoint",
+          "values": [
+            1500
+          ],
+          "comment": "%QW2 in index group 0xF030"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "io_status",
+          "values": [
+            "195",
+            195
+          ],
+          "comment": "%MW0 in index group 0x4020"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "io_sensor",
+          "values": [
+            true,
+            false
+          ],
+          "comment": "%IX0.0, one bit of index group 0xF021"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "scan",
+          "min": 0,
+          "max": 9007199254740992
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.scan.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "t",
+          "min": 0,
+          "max": 1000000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.t.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "sine",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.sine.value",
+          "min": 3,
+          "comment": "reads 2-8, 200 ms apart, cover all five 200 ms phases of a 1 Hz or 2 Hz signal, so a symmetric waveform shows at least 3 values"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "cosine",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.cosine.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "tangent",
+          "min": -1000,
+          "max": 1000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.tangent.value",
+          "min": 3,
+          "comment": "clamped to 10 amplitudes (core/signal.rs)"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "cotangent",
+          "min": -1000,
+          "max": 1000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.cotangent.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "exp",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.exp.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "quadratic",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.quadratic.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "sawtooth",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.sawtooth.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "triangle",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.triangle.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "damped",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.damped.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "noise",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.noise.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "randomwalk",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.randomwalk.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "sine64",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.sine64.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "ads",
+          "channel": "sine_int",
+          "min": -10000,
+          "max": 10000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.sine_int.value",
+          "min": 3
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "square",
+          "values": [
+            100,
+            -100
+          ]
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.square.value",
+          "min": 2,
+          "comment": "two-valued signal"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "blink_1hz",
+          "values": [
+            true,
+            false
+          ]
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.ads.values.blink_1hz.value",
+          "min": 2,
+          "comment": "reads 2-8 span 1.2 s, more than twice the 0.5 s half period"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "ads",
+          "channel": "blink_5hz",
+          "values": [
+            true,
+            false
+          ],
+          "comment": "no distinct: a 5 Hz blink sampled every 200 ms can alias to one value"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "plc",
+          "path": "status",
+          "equals": "ok",
+          "comment": "no router error, no ADS error and no unframeable input; the harness readiness probe's connect/disconnect is ok too"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "Read"
+          },
+          "path": "detail.ig",
+          "values": [
+            "0xF00F",
+            "0xF00B"
+          ],
+          "comment": "the upload: upload info, then the table (Client.kt:32-48)"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "Read"
+          },
+          "path": "detail.len",
+          "values": [
+            48,
+            8932
+          ],
+          "comment": "48 bytes of upload info, then exactly nSymSize from its offset 4 (GetSymbolsLengthResponse.kt:18-22)"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "SumRead"
+          },
+          "path": "detail.io",
+          "values": [
+            54
+          ],
+          "comment": "one sum read of all 54 channels per cycle (MultiReadRequest.kt:27-59)"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "SumRead"
+          },
+          "path": "detail.rlen",
+          "values": [
+            1047
+          ],
+          "comment": "the sum of 4 + size over the 54 channels"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "SumRead"
+          },
+          "path": "detail.wlen",
+          "values": [
+            648
+          ],
+          "comment": "12 bytes per item"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "SumRead"
+          },
+          "path": "detail.src",
+          "values": [
+            "192.168.100.1.1.1:32905"
+          ]
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "SumRead"
+          },
+          "path": "detail.dst",
+          "values": [
+            "192.168.100.10.1.1:851"
+          ],
+          "comment": "NetId octets above 127 survive the client's signed-byte conversions (RequestResponse.kt:37-52, 121-129)"
+        },
+        {
+          "kind": "keysAbsent",
+          "sink": "plc",
+          "paths": [
+            "detail.item_errors"
+          ],
+          "comment": "no sum read item failed"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "does not exists",
+            "Error reading symbol",
+            "Error getting symbols",
+            "Error creating ADS client",
+            "Error reading from source",
+            "error reading from source",
+            "Timeout executing command",
+            "Timeout reading response",
+            "is not a valid ADS command ID"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-ADS-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "ads": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "ads": {
+            "Name": "ads",
+            "ProtocolAdapter": "Ads",
+            "AdapterDevice": "plc",
+            "SourceAmsNetId": "192.168.100.1.1.1",
+            "SourceAmsPort": 32905,
+            "TargetAmsNetId": "192.168.100.10.1.1",
+            "TargetAmsPort": 851,
+            "Channels": {
+              "bool_true": {
+                "SymbolName": "GVL_Static.bBoolTrue"
+              },
+              "bool_false": {
+                "SymbolName": "GVL_Static.bBoolFalse"
+              },
+              "byte": {
+                "SymbolName": "GVL_Static.nByte"
+              },
+              "sint": {
+                "SymbolName": "GVL_Static.nSint"
+              },
+              "usint": {
+                "SymbolName": "GVL_Static.nUsint"
+              },
+              "int": {
+                "SymbolName": "GVL_Static.nInt"
+              },
+              "uint": {
+                "SymbolName": "GVL_Static.nUint"
+              },
+              "word": {
+                "SymbolName": "GVL_Static.nWord"
+              },
+              "dint": {
+                "SymbolName": "GVL_Static.nDint"
+              },
+              "udint": {
+                "SymbolName": "GVL_Static.nUdint"
+              },
+              "dword": {
+                "SymbolName": "GVL_Static.nDword"
+              },
+              "lint": {
+                "SymbolName": "GVL_Static.nLint"
+              },
+              "ulint": {
+                "SymbolName": "GVL_Static.nUlint"
+              },
+              "real": {
+                "SymbolName": "GVL_Static.fReal"
+              },
+              "lreal": {
+                "SymbolName": "GVL_Static.fLreal"
+              },
+              "string": {
+                "SymbolName": "GVL_Static.sString"
+              },
+              "time": {
+                "SymbolName": "GVL_Static.tTime"
+              },
+              "ltime": {
+                "SymbolName": "GVL_Static.tLtime"
+              },
+              "date": {
+                "SymbolName": "GVL_Static.dDate"
+              },
+              "date_and_time": {
+                "SymbolName": "GVL_Static.dtDateAndTime"
+              },
+              "wstring": {
+                "SymbolName": "GVL_Static.wsWString"
+              },
+              "array_int": {
+                "SymbolName": "GVL_Static.aInt"
+              },
+              "array_real": {
+                "SymbolName": "GVL_Static.aReal"
+              },
+              "array_byte_2d": {
+                "SymbolName": "GVL_Static.aByte2D"
+              },
+              "array_string": {
+                "SymbolName": "GVL_Static.aString"
+              },
+              "array_bool": {
+                "SymbolName": "GVL_Static.aBool"
+              },
+              "runtime_version": {
+                "SymbolName": "Constants.RuntimeVersion"
+              },
+              "lib_version": {
+                "SymbolName": "Global_Version.stLibVersion_Tc2_Standard"
+              },
+              "app_info": {
+                "SymbolName": "TwinCAT_SystemInfoVarList._AppInfo"
+              },
+              "task_info": {
+                "SymbolName": "TwinCAT_SystemInfoVarList._TaskInfo"
+              },
+              "task_oid": {
+                "SymbolName": "TwinCAT_SystemInfoVarList._TaskOid_PlcTask"
+              },
+              "little_endian": {
+                "SymbolName": "Constants.bLittleEndian"
+              },
+              "pack_mode": {
+                "SymbolName": "Constants.nPackMode"
+              },
+              "io_setpoint": {
+                "SymbolName": "GVL_IO.nSetpoint"
+              },
+              "io_status": {
+                "SymbolName": "GVL_IO.nStatusWord"
+              },
+              "io_sensor": {
+                "SymbolName": "GVL_IO.bSensor"
+              },
+              "scan": {
+                "SymbolName": "GVL_Dynamic.nScan"
+              },
+              "t": {
+                "SymbolName": "GVL_Dynamic.fT"
+              },
+              "sine": {
+                "SymbolName": "GVL_Dynamic.fSine"
+              },
+              "cosine": {
+                "SymbolName": "GVL_Dynamic.fCosine"
+              },
+              "tangent": {
+                "SymbolName": "GVL_Dynamic.fTangent"
+              },
+              "cotangent": {
+                "SymbolName": "GVL_Dynamic.fCotangent"
+              },
+              "exp": {
+                "SymbolName": "GVL_Dynamic.fExp"
+              },
+              "quadratic": {
+                "SymbolName": "GVL_Dynamic.fQuadratic"
+              },
+              "sawtooth": {
+                "SymbolName": "GVL_Dynamic.fSawtooth"
+              },
+              "triangle": {
+                "SymbolName": "GVL_Dynamic.fTriangle"
+              },
+              "square": {
+                "SymbolName": "GVL_Dynamic.fSquare"
+              },
+              "damped": {
+                "SymbolName": "GVL_Dynamic.fDamped"
+              },
+              "noise": {
+                "SymbolName": "GVL_Dynamic.fNoise"
+              },
+              "randomwalk": {
+                "SymbolName": "GVL_Dynamic.fRandomWalk"
+              },
+              "sine64": {
+                "SymbolName": "GVL_Dynamic.fSine64"
+              },
+              "sine_int": {
+                "SymbolName": "GVL_Dynamic.nSineInt"
+              },
+              "blink_1hz": {
+                "SymbolName": "GVL_Dynamic.bBlink1Hz"
+              },
+              "blink_5hz": {
+                "SymbolName": "GVL_Dynamic.bBlink5Hz"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Ads": {
+            "AdapterType": "ADS",
+            "Devices": {
+              "plc": {
+                "Address": "127.0.0.1",
+                "Port": "${SFC_E2E_PLC_PORT}",
+                "ConnectTimeout": 2000,
+                "CommandTimeout": 3000,
+                "ReadTimeout": 1000,
+                "WaitAfterConnectError": 1000,
+                "WaitAfterReadError": 1000,
+                "WaitAfterWriteError": 1000
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "ADS": {
+            "FactoryClassName": "com.amazonaws.sfc.ads.AdsAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "ADS": {
+            "FactoryClassName": "com.amazonaws.sfc.ads.AdsAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/ads/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "AdsServer": {
+          "module": "ads"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Ads": {
+            "AdapterServer": "AdsServer"
+          }
+        },
+        "AdapterServers": {
+          "AdsServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}
