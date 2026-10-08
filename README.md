@@ -9,6 +9,32 @@ Shop Floor Connectivity (SFC) is a data ingestion technology that can deliver da
 
 SFC extends and unifies data collection capabilities additionally to our existing IIoT data collection services, allowing customers to provide data in a consistent way to a wide range of AWS Services. It allows customers to collect data from their industrial equipment and deliver it to the AWS services that work best for their requirements. Customers get the cost and functional benefits of specific AWS services and save costs on licenses for additional connectivity products.
 
+
+```mermaid
+%%{init: {'theme':'base','themeVariables':{
+  'background':'#0a0e14','primaryColor':'#0d1117','primaryTextColor':'#e6faff',
+  'primaryBorderColor':'#1f6feb','lineColor':'#7d8590','fontFamily':'monospace',
+  'clusterBkg':'#0a0e14','clusterBorder':'#1f6feb'}}}%%
+flowchart LR
+    PLANT[/"Shop floor<br/><i>PLCs · sensors · historians</i>"/]:::data
+    ADAPTER(["<b>Protocol adapters</b><br/>OPC-UA · S7 · Modbus · …"]):::tool
+    CORE(["<b>SFC Core</b><br/>schedules · transforms · filters"]):::core
+    TARGET(["<b>Target adapters</b><br/>S3 · IoT Core · SiteWise · S3Tables · etc."]):::tool
+    CLOUD{{"<b>AWS Target Services</b><br/> - e.g. MSK, S3Tables, IoT Core"}}:::aws
+
+    PLANT --> ADAPTER
+    ADAPTER ==> CORE
+    CORE ==> TARGET
+    TARGET ==> CLOUD
+
+    classDef core fill:#0d1117,stroke:#ff6b35,stroke-width:2px,color:#ffd4c2,font-weight:bold;
+    classDef tool fill:#0d1117,stroke:#1f6feb,stroke-width:2px,color:#e6faff,font-weight:bold;
+    classDef data fill:#0d1117,stroke:#ff2bd6,stroke-width:1px,color:#ffb3f0;
+    classDef aws fill:#0d1117,stroke:#b6ff00,stroke-width:2px,color:#d9ffb3;
+    classDef ext fill:#0d1117,stroke:#7d8590,stroke-width:1px,color:#9aa4b2,stroke-dasharray:5 3;
+```
+
+
 [**Supported protocols:**](./docs/adapters/README.md)
 
 - [Allen-Bradley Rockwell PCCC](./docs/adapters/pccc.md)
@@ -48,49 +74,7 @@ SFC extends and unifies data collection capabilities additionally to our existin
 - [MQTT](./docs/targets/mqtt.md)
 - [NATS](./docs/targets/nats.md)
 
-&nbsp;
 
-**SFC Docs:** [`docs/README.md`](./docs/README.md)
-
-**SFC Examples:** [`docs/examples/README.md`](./docs/examples/README.md)
-
-&nbsp;
-
-### SFC Components
-
-A SFC pipeline has three parts, all set up in the same configuration:
-
-- **Protocol adapters** read from the shop floor. Each adapter speaks one industrial protocol and turns
-  device values into SFC's common data format.
-- **SFC Core** runs your schedules: it reads the sources, applies transformations, filters and aggregations,
-  adds metadata, and hands the result to the targets.
-- **Target adapters** deliver the data to AWS services, to systems on your network, or to an intermediate
-  target that buffers or reroutes it.
-
-
-```mermaid
-%%{init: {'theme':'base','themeVariables':{
-  'background':'#0a0e14','primaryColor':'#0d1117','primaryTextColor':'#e6faff',
-  'primaryBorderColor':'#1f6feb','lineColor':'#7d8590','fontFamily':'monospace',
-  'clusterBkg':'#0a0e14','clusterBorder':'#1f6feb'}}}%%
-flowchart LR
-    PLANT[/"Shop floor<br/><i>PLCs · sensors · historians</i>"/]:::data
-    ADAPTER(["<b>Protocol adapters</b><br/>OPC-UA · S7 · Modbus · …"]):::tool
-    CORE(["<b>SFC Core</b><br/>schedules · transforms · filters"]):::core
-    TARGET(["<b>Target adapters</b><br/>S3 · IoT Core · SiteWise · S3Tables · etc."]):::tool
-    CLOUD{{"<b>AWS Target Services</b><br/> - e.g. MSK, S3Tables, IoT Core"}}:::aws
-
-    PLANT --> ADAPTER
-    ADAPTER ==> CORE
-    CORE ==> TARGET
-    TARGET ==> CLOUD
-
-    classDef core fill:#0d1117,stroke:#ff6b35,stroke-width:2px,color:#ffd4c2,font-weight:bold;
-    classDef tool fill:#0d1117,stroke:#1f6feb,stroke-width:2px,color:#e6faff,font-weight:bold;
-    classDef data fill:#0d1117,stroke:#ff2bd6,stroke-width:1px,color:#ffb3f0;
-    classDef aws fill:#0d1117,stroke:#b6ff00,stroke-width:2px,color:#d9ffb3;
-    classDef ext fill:#0d1117,stroke:#7d8590,stroke-width:1px,color:#9aa4b2,stroke-dasharray:5 3;
-```
 
 
 ## Quickstart
