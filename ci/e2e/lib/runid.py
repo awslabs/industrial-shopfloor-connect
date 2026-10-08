@@ -55,3 +55,13 @@ def marker(run_id: str, case_id: str, mode_code: str, max_len: int = 64) -> str:
     digest = hashlib.sha1(case_id.encode()).hexdigest()[:6]
     room = max_len - len(run_id) - len(mode_code) - len(digest) - 3
     return f"{run_id}_{slug[:max(room, 1)]}{digest}_{mode_code}"
+
+
+def retry_run_id(run_id: str, attempt: int) -> str:
+    """The run id for retry ``attempt`` (1, 2, ...) of a unit: the last two hex digits shifted by ``attempt``.
+
+    A retry needs a marker of its own - every destination is named by the marker, and a retry that shared
+    the failed attempt's would read that attempt's leftovers. Only the hex part changes, so the result still
+    matches ``b_[0-9a-f]{12}`` like every marker the cases' regexes expect.
+    """
+    return f"{run_id[:-2]}{(int(run_id[-2:], 16) + attempt) % 256:02x}"

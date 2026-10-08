@@ -155,7 +155,8 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
         w("## Failures")
         w("")
         for c in broken:
-            w(f"### {_MARK[c['verdict']]} `{c.get('id')}` ({c.get('mode')}) — {c.get('title', '')}")
+            tries = f" — after {c['attempts']} attempts" if c.get("attempts", 1) > 1 else ""
+            w(f"### {_MARK[c['verdict']]} `{c.get('id')}` ({c.get('mode')}) — {c.get('title', '')}{tries}")
             w("")
             if c.get("intent"):
                 w(f"*{c['intent']}*")
@@ -193,6 +194,25 @@ def render_markdown(results: dict, budget_bytes: int | None = None) -> str:
             elif c.get("artifacts"):
                 w(f"Artifacts: `{c['artifacts']}`")
                 w("")
+
+    # ------------------------------------------------------------------ 4b. retries
+    retried = [c for c in cases if c.get("attempts", 1) > 1]
+    if retried:
+        w("## Retried")
+        w("")
+        w("Case runs that needed more than one attempt. Each retry ran with a fresh marker after the failed "
+          "attempt's teardown; a case listed here as passed failed at least once before.")
+        w("")
+        w("| Case | Mode | Final | Attempts | Earlier attempts |")
+        w("|---|---|---|---:|---|")
+        for c in retried:
+            earlier = "<br>".join(
+                f"{e.get('attempt')}: {_MARK.get(e.get('verdict'), '?')} "
+                + _truncate(str(e.get('reason') or ''), 200).replace("|", "\\|").replace("\n", " ")
+                for e in c.get("earlier", []))
+            case_cell = _link(f"`{c.get('id')}`", _case_url(run, c))
+            w(f"| {case_cell} | {c.get('mode')} | {_MARK.get(c.get('verdict'), '?')} | {c['attempts']} | {earlier} |")
+        w("")
 
     # ------------------------------------------------------------------ 5. SFC's own counters
     counters = [c for c in cases if c.get("metrics")]

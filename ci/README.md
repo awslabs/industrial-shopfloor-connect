@@ -265,6 +265,10 @@ sequenceDiagram
   - JUnit results in the CodeBuild report group.
 - **Verdicts:** ✅ pass · ❌ fail (a check did not hold) · 💥 error (the case could not run, for example
   a timeout) · — skipped (with the reason).
+- **Retries:** a case run that fails or errors runs again, up to 3 times, each 10 s after the previous
+  attempt's teardown. Every retry gets a fresh marker, so it never reads the failed attempt's data. The
+  Retried section lists every case run that needed more than one attempt, with the earlier reasons, and
+  each failed attempt's evidence is kept as `cases/<ID>.<mode>.attempt<n>/`.
 - **Links:** every case run named in the report links to its evidence folder in the S3 console. Opening
   the links needs a login to the stack's account.
 - **A failure** shows each failed check with its expected and actual values.

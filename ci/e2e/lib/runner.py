@@ -54,6 +54,8 @@ CASES_DIR = E2E_DIR / "cases"
 TIERS = ("core", "local-infra", "aws")
 PROFILES = {"push": ("P0", "P1"), "full": ("P0", "P1", "P2")}
 IN_CI = bool(os.environ.get("CODEBUILD_BUILD_ID"))
+#: Seconds between a failed attempt's teardown and its retry (--retries).
+RETRY_COOLDOWN = 10.0
 #: Stand-in stack values for --offline-aws: syntactically right, unresolvable (.invalid), never real.
 OFFLINE_STACK = {
     "SFC_E2E_BUCKET": "sfc-it-offline", "SFC_E2E_REGION": "us-east-1", "SFC_E2E_ACCOUNT": "000000000000",
@@ -580,6 +582,16 @@ class UnitResult:
     skip_reason: str | None = None
     repro: str = ""
     exit_code: int | None = None
+    attempts: int = 1
+    earlier: list = field(default_factory=list)        # one {attempt, verdict, reason} per failed attempt
+    attempt_dirs: list = field(default_factory=list)   # the failed attempts' kept workdirs, uploaded too
+
+    def reason(self) -> str:
+        """The first failed assertion, else the first error line: why this attempt did not pass."""
+        bad = next((a for a in self.assertions if not a.ok), None)
+        if bad is not None:
+            return f"{bad.kind}: {bad.detail}"
+        return (self.error or "").splitlines()[0] if self.error else ""
 
     def as_dict(self) -> dict:
         c = self.case
@@ -601,6 +613,9 @@ class UnitResult:
             d["skipReason"] = self.skip_reason
         if c.spec.get("knownDefect"):
             d["knownDefect"] = c.spec["knownDefect"]
+        if self.attempts > 1:
+            d["attempts"] = self.attempts
+            d["earlier"] = self.earlier
         return d
 
 
@@ -695,6 +710,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--case", action="append", help="run only this case id (repeatable)")
     ap.add_argument("--area", help="comma-separated areas")
     ap.add_argument("--jobs", type=int, default=1, help="case runs in parallel")
+    ap.add_argument("--retries", type=int, default=3,
+                    help="re-run a failed or errored case run up to N times, each with a fresh marker (0: never)")
     ap.add_argument("--out", type=Path, default=E2E_DIR / "out", help="output root")
     ap.add_argument("--evidence", help="s3://bucket/prefix/ - upload each case run as it finishes")
     ap.add_argument("--parity", action="store_true", help="compare output across modes")
@@ -783,6 +800,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {mark} {r.case.id:40} {r.mode:9} {r.duration:5.1f}s{tail}", flush=True)
             paths = _write(results, out_root, run_id, arts, requested_modes, tiers, args, started, stack)
         uploader.case_dir(r.workdir, f"{r.case.id}.{r.mode}")
+        for d in r.attempt_dirs:
+            uploader.case_dir(d, d.name)
         uploader.files(list(paths.values()))
 
     # IPC units use the fixed ports of their configuration (from 50000, as in the examples), so only one
@@ -802,10 +821,28 @@ def main(argv: list[str] | None = None) -> int:
     iot_lane = threading.Lock()
 
     def run_one(case: Case, mode: str) -> UnitResult:
-        unit = Unit(case, mode, run_id, arts, out_root, stack, args.known_defects, args.offline_aws)
         iot = any(s.get("kind") == "iot" and not s.get("retainedTopic") for s in case.sink_specs().values())
         with iot_lane if iot else contextlib.nullcontext(), ipc_lane if mode == "ipc" else contextlib.nullcontext():
-            return unit.run()
+            earlier, kept, retries = [], [], max(0, args.retries)
+            for attempt in range(1 + retries):
+                # A retry gets a run id - and so a marker and destinations - of its own: it must never read
+                # the failed attempt's leftovers.
+                rid = run_id if attempt == 0 else runid.retry_run_id(run_id, attempt)
+                r = Unit(case, mode, rid, arts, out_root, stack, args.known_defects, args.offline_aws).run()
+                if r.verdict not in (FAIL, ERROR) or attempt == retries:
+                    break
+                earlier.append({"attempt": attempt + 1, "verdict": r.verdict, "reason": r.reason()})
+                # Keep the failed attempt's evidence; Unit.run() starts by wiping its workdir.
+                kept_dir = r.workdir.with_name(f"{r.workdir.name}.attempt{attempt + 1}")
+                if r.workdir.is_dir():
+                    shutil.rmtree(kept_dir, ignore_errors=True)
+                    r.workdir.rename(kept_dir)
+                    kept.append(kept_dir)
+                print(f"  ↻ {case.id:40} {mode:9} attempt {attempt + 1} {r.verdict}: {earlier[-1]['reason'][:120]}"
+                      f" - retrying in {RETRY_COOLDOWN:g}s", flush=True)
+                time.sleep(RETRY_COOLDOWN)  # teardown has run; let ports, brokers and services settle
+            r.attempts, r.earlier, r.attempt_dirs = attempt + 1, earlier, kept
+            return r
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, args.jobs)) as pool:
         futures = [pool.submit(run_one, c, m) for c, m in units]
