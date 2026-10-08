@@ -13,10 +13,12 @@ rem Windows 10 and later ship curl and tar, which is all the download path needs
 rem there is no wget or jq dependency, because the release tag is parsed with plain cmd string ops.
 rem
 rem SFC is started with a direct `java -cp` rather than through bin\sfc-main.bat. The generated
-rem launchers build the whole classpath into one `set CLASSPATH=` line, and cmd.exe caps a line at
-rem 8191 characters -- sfc-main.bat is already 6060, and aws-s3-tables-target.bat is 11798 and so
-rem cannot run at all. Passing lib\* lets the JVM expand the classpath instead, which has no such
-rem limit.
+rem launchers build the whole classpath into one `set CLASSPATH=` line, and cmd.exe checks its
+rem 8191-character line limit after APP_HOME is expanded once per jar, so sfc-main.bat fails from
+rem folder paths longer than about 23 characters and aws-s3-tables-target.bat always fails. Passing
+rem lib\* lets the JVM expand the classpath instead, which has no such limit.
+rem
+rem java is the first one on PATH; JAVA_HOME is not consulted.
 
 setlocal enabledelayedexpansion
 

@@ -5,7 +5,7 @@ data to an AWS MSK topic.
 
 The AWS MSK target is a target adapter optimized to write data to AWS Managed Kafka, using
 AWS_MSK_IAM for authorization and authentication, for which it can use the SFC functionality to
-use X505 certificated to obtain the credentials to access the service.
+use X.509 certificates to obtain the credentials to access the service.
 
 This configuration uses a deployment where each module runs as a service in an individual process and communicate using a stream over a TCP/IP connection. These processes can run on the same system or on different systems. Use cases for this type of deployment are:
 
@@ -15,31 +15,68 @@ This configuration uses a deployment where each module runs as a service in an i
 
 -   Distribute components in different networks, e.g., adapters in the OT network, sfc-core in network and targets which need internet connectivity in the IT network or DMZ.
 
-In order to use the configuration, make the changes describer below, and use it as the value of the –config parameter when starting sfc-main.
+In order to use the configuration, make the changes described below, and use it as the value of the -config parameter when starting sfc-main.
 
 A debug target is included in the example to optionally write the output to the console.
 
+## Prerequisites
+
+-   Java 17 or newer on every host that runs a module (Windows: `winget install EclipseAdoptium.Temurin.17.JDK`).
+-   A Prosys OPC UA Simulation Server at `opc.tcp://localhost:53530/OPCUA/SimulationServer`, whose node IDs the
+    channels read.
+-   An Amazon MSK cluster with IAM access control and public access (brokers on port 9198), a topic, and AWS
+    credentials that may write to it: the default AWS credentials chain, or the
+    [AwsIotCredentialProviderClients](#awsiotcredentialproviderclients) section.
+
 ## Deployment and starting the service modules
 
-Deploy the sfc-main, OPCUA adapter, MSK target and optionally the debug target to individual directories.
+Deploy the sfc-main, OPCUA adapter, MSK target and optionally the debug target: unpack the module bundles `sfc-main`,
+`opcua`, `aws-msk-target` and `debug-target`, for example into `~/sfc` (Windows: `C:\sfc`), with the commands under
+[In-process](../../docs/sfc-deployment.md#in-process) and this list of modules. When the services run on other
+systems, unpack there the bundles of the services each system runs.
 
-Each module has a subdirectory called bin in which there are two files, one for Linux and one for Windows systems, to start the module as a service.
+Each module has a subdirectory called bin with a start script named after the module, `bin/<module>` for Linux and
+macOS and `bin\<module>.bat` for Windows. On Windows start the modules with `java -cp` instead, as shown below; the
+`.bat` launchers fail from longer folder paths, see [Platform support](../../docs/README.md#platform-support).
 
 It’s recommended to first start the OPCUA protocol adapter and the MSK target and optionally the Debug target and specify the port number used by the module using the -port parameter.
 
 Then start the sfc-main module and use the -config parameter to specify the name of the used config file. The port numbers in this configuration file for the adapter and target services should match with the port numbers used to start these services.
 
-When the adapter and target services are started the services will listen on the specified port for the configuration for that service. Atter the sfc-main process is started, it will send the specific configuration data for each service to the configured address and port for that service. When this configuration data is received by the protocol or target service it will initialize adapters will start reading data and streaming it to the sfc-main process, and targets will receive the data from sfc-main and sending it to their destinations. When updates are made to the configuration file used by sfc-main, it will automatically load the new configuration and distribute the new configuration to the adapter.
+When the adapter and target services are started the services will listen on the specified port for the configuration for that service. After the sfc-main process is started, it will send the specific configuration data for each service to the configured address and port for that service. When this configuration data is received by the protocol or target service it will initialize adapters will start reading data and streaming it to the sfc-main process, and targets will receive the data from sfc-main and sending it to their destinations. When updates are made to the configuration file used by sfc-main, it will automatically load the new configuration and distribute the new configuration to the adapter. A running adapter service may keep its previous configuration though; restart it to apply a change (see the known limitations under [Adapters as IPC services](../../docs/sfc-running-adapters.md#running-the-jvm-protocol-adapters-as-an-ipc-service)).
 
-Startup commands for Linux deployments. When running from the console use terminal session for every service or run the servers as Docker containers.
+Startup commands. When running from the console use a terminal session for every service, or run the services as
+Docker containers. Start sfc-main in the folder of this example:
 
--   <path to OPCUA adapter deployment>/bin/opcua -port 50000
+**Linux / macOS**
 
--   <path to debug target deployment>/bin/aws-debug-target -port 50001
+```shell
+~/sfc/opcua/bin/opcua -port 50000
+~/sfc/debug-target/bin/debug-target -port 50001
+~/sfc/aws-msk-target/bin/aws-msk-target -port 50002
+~/sfc/sfc-main/bin/sfc-main -config ipc-opcua-msk.json
+```
 
--   <path to msk target deployment>/bin/aws-msk-target -port 50002
+**Windows (PowerShell)**
 
--   <path to sfc-main deployment>/bin/sfc-main -config <path to config file>
+```powershell
+java -cp "C:\sfc\opcua\lib\*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000
+java -cp "C:\sfc\debug-target\lib\*" com.amazonaws.sfc.debugtarget.DebugTargetService -port 50001
+java -cp "C:\sfc\aws-msk-target\lib\*" com.amazonaws.sfc.awsmsk.AwsMskTargetService -port 50002
+java -cp "C:\sfc\sfc-main\lib\*" com.amazonaws.sfc.MainController -config ipc-opcua-msk.json
+```
+
+From an sfcup install, start the same services from the uberjar, which contains all of them, e.g.
+`java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000` (Windows:
+`java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000`)
+with the service classes above, and the core with `sfcx -config ipc-opcua-msk.json`.
+
+> **Windows:** a service that sfc-main reaches from another system needs an inbound Windows Defender Firewall rule for
+> its port, see [Platform support](../../docs/README.md#platform-support).
+
+By default the traffic between sfc-main and the services is plain text. To encrypt the adapter traffic with TLS see
+[Securing Network Traffic between SFC components](../../docs/sfc-securing-component-traffic.md); target services
+currently listen in plain text only.
 
 &nbsp;  
 
@@ -81,7 +118,7 @@ sfc-main/bin/sfc-main -config "ipc-opcua-msk.json"
 
 2024-02-15 17:41:54.51  INFO  - Creating configuration provider of type ConfigProvider
 2024-02-15 17:41:54.62  INFO  - Waiting for configuration
-2024-02-15 17:41:54.65  INFO  - Sending initial configuration from file "msk 3.json"
+2024-02-15 17:41:54.65  INFO  - Sending initial configuration from file "ipc-opcua-msk.json"
 2024-02-15 17:41:54.577 INFO  - Received configuration data from config provider
 2024-02-15 17:41:54.578 INFO  - Waiting for configuration
 2024-02-15 17:41:54.579 INFO  - Creating and starting new service instance
@@ -108,8 +145,11 @@ sfc-main/bin/sfc-main -config "ipc-opcua-msk.json"
 To communicate with the protocol adapter as a service add the “AdapterServer” item to the configuration for the adapter. The value must be set to a server in the “AdapterServers” section of the configuration.
 ```json
 "ProtocolAdapters": {  
-    "OPCUA": {  
-        "AdapterServer": "OpcuaAdapterServer",
+    "OPC-UA": {  
+        "AdapterType": "OPCUA",
+        "AdapterServer": "OpcuaAdapterServer"
+    }
+}
 ```
 
 In the AdapterServers section the address (localhost or address of other system) and port number of the server are specified. The sfc-core will use these to communicate with the adapter service.
@@ -119,10 +159,10 @@ In the AdapterServers section the address (localhost or address of other system)
 ```json
  "AdapterServers": {  
      "OpcuaAdapterServer": {  
-         "Address": < IP ADDRESS OF SERVICE >  
-         "Port": < PORT FOR SERVICE >  
+         "Address": "localhost",  
+         "Port": 50000  
      }  
- },
+ }
 ```
 
 ## Configuring the targets as a service
@@ -132,6 +172,8 @@ To communicate with the targets as a service add the “TargetServer” item to 
 ```json
 "MskTarget": {
     "TargetServer": "MskTargetServer",
+    "TargetType": "AWS-MSK"
+}
 ```
 
 In the TargetServers section the address (localhost or address of other system) and port number of the server are specified. The sfc-core will use these to communicate with the target service.
@@ -141,14 +183,14 @@ IMPORTANT: The port numbers specified in the configuration must match with the p
 ```json
 "TargetServers": {  
     "DebugTargetServer": {  
-        "Address": " < IP ADDRESS OF DEBUG TARGET SERVICE >  
-        "Port": <PORT FOR DEBUG TARGET SERVCE>  
+        "Address": "localhost",  
+        "Port": 50001  
     },  
     "MskTargetServer": {  
-        "Address": <IP ADDRESS OF THE MSK TARGET SERVICE>  
-        "Port": <PORT FOR MSK TARGET SERVICE>  
+        "Address": "localhost",  
+        "Port": 50002  
     }  
-},
+}
 ```
 
 
@@ -160,15 +202,16 @@ IMPORTANT: The port numbers specified in the configuration must match with the p
 ]
 ```
 
-In order to write the data to both the MSK topic and the console
-uncomment the DebugTarget by deleting the '#'.  
+These are the targets of the schedule. In order to write the data to both the MSK topic and the console
+uncomment the DebugTarget by deleting the '#', and start the debug target service.  
 
 ## MSK target section
 
 ```json
 
 "MskTarget": {
-    "CredentialProviderClient": "AwsIotClient",
+    "Active": true,
+    "TargetServer": "MskTargetServer",
     "TargetType": "AWS-MSK",
     "BootstrapBrokers": [
         "< HOSTNAME-1 >:9198",
@@ -177,6 +220,7 @@ uncomment the DebugTarget by deleting the '#'.
     ],
     "TopicName": "< TOPIC >",
     "Key": "< KEY >",
+    "Interval": 1000,
     "Compression": "gzip",
     "Serialization": "json",
     "Acknowledgements": "all"
@@ -185,23 +229,25 @@ uncomment the DebugTarget by deleting the '#'.
 
 ```
 
--   < HOSTNAME-1.,HOST-NAME-3 >, host names for the MSK brokers
+-   < HOSTNAME-1 > to < HOSTNAME-3 >, host names for the MSK brokers
 
--   < TOPIC NAME >, name of the MSK topic. Note that the role that is used by the referred CredentialProviderClient, or the credentials provided by the default credentials chain, must allow the required permission to write data to this topic
+-   < TOPIC >, name of the MSK topic. Note that the role that is used by the referred CredentialProviderClient, or the credentials provided by the default credentials chain, must allow the required permission to write data to this topic
 
 -   < KEY >, optional key for the written records
 
     &nbsp;
+-   `Interval` makes the target flush the producer every 1000 ms. Keep it set: without it every written record logs
+    an error, although the data is delivered (see [Interval](../../docs/targets/aws-msk.md#interval)).
 -   `Compression` is set to gzip
 -   `Serialization` is set to JSON (other option is protobuf)
--   `Acks` is set to "all" (other options are "leader" and "none")
--  `CredentialProviderClient` specifies the credentials provider which is
-   used to give access to the used AWS service. For more information see
-   section AwsIotCredentialProviderClients below. If this element is not set then
-   the default credentials chain is used. (https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html)
+-   `Acknowledgements` is set to "all" (other options are "leader" and "none")
+-  `CredentialProviderClient` is not set, so the default credentials chain is used
+   (https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html). To obtain the
+   credentials with X.509 certificates instead, add the section AwsIotCredentialProviderClients below and set
+   `"CredentialProviderClient": "AwsIotClient"` in the target.
    Note that the used role/credentials must allow writing to the configured topic.
 
-See the SFC documentation for all available settings and values of the AWS MSK adapter.
+See the [AWS MSK target](../../docs/targets/aws-msk.md) documentation for all available settings and values.
 &nbsp;
 ## Sources section
 
@@ -226,26 +272,31 @@ See the SFC documentation for all available settings and values of the AWS MSK a
         "SimulationCounter": {
           "Name": "Counter",
           "NodeId": "ns=3;i=1001"
-        },
+        }
+      }
+    }
+}
 ```
 
-The sources section configures an OPCUA source. It is set up to use the OPCUA adapter (`"OPCUA"`) to read in
+The sources section configures an OPCUA source (the configuration file has more channels). It is set up to use the OPC-UA adapter (`"OPC-UA"`) to read in
 subscription mode from the server `"OPCUA-SERVER"` defined in that adapter. The nodes/events from which to read
 data from are defined in the channels for this source. These channels contain the NodeId and an optional name to explicitly set the name of the value in the output data.
 ## ProtocolAdapters section
 
 ```json
 "ProtocolAdapters": {
-    "OPC-UA": {
+  "OPC-UA": {
     "AdapterType": "OPCUA",
+    "AdapterServer": "OpcuaAdapterServer",
     "OpcuaServers": {
-        "OPCUA-SERVER": {
+      "OPCUA-SERVER": {
         "Address": "opc.tcp://localhost",
         "Path": "OPCUA/SimulationServer",
         "Port": 53530
+      }
     }
   }
-},
+}
 
 ```
 
@@ -269,14 +320,17 @@ give access to the services used by the target which uses the client.
 "AwsIotCredentialProviderClients" : {
   "AwsIotClient": {
     "IotCredentialEndpoint": "<ID>.credentials.iot.<YOUR REGION>.amazonaws.com",
-    "RoleAlias": "< ROLE EXCHANGE ALIAS >”,
+    "RoleAlias": "< ROLE EXCHANGE ALIAS >",
     "ThingName": "< THING NAME > ",
-    "Certificate": "< PATH TO DEVICE CERTIFICATE .crt FILE >",
-    "PrivateKey": "< PATH TO PRIVATE KEY .key FILE >",
-    "RootCa": "< PATH TO ROOT CERTIFICATE .pem FILE >",
+    "CertificateFile": "< PATH TO DEVICE CERTIFICATE .crt FILE >",
+    "PrivateKeyFile": "< PATH TO PRIVATE KEY .key FILE >",
+    "RootCa": "< PATH TO ROOT CERTIFICATE .pem FILE >"
   }
 }
 ```
+
+On Windows write these paths with forward slashes, e.g. `"CertificateFile": "C:/sfc/certs/device.crt"`; a single
+backslash starts a JSON escape sequence.
 
 
 If there is a GreenGrass V2 deployment on the same machine, instead of
@@ -299,6 +353,8 @@ container and still use a GreenGrass configuration.
 }
 ```
 
+The Greengrass V2 deployment directory is `/greengrass/v2` on Linux by default (Windows: `"C:/greengrass/v2"`).
+
 When the AWS service credentials are provided using one of the options
 in the AWS SDK credentials provider chain
 (<https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html>)
@@ -307,4 +363,4 @@ deleted. Using the temporary credentials provided through a configured
 AwsIotCredentialProviderClient for production environment is strongly
 recommended.
 
-[Examples](../../docs/examples/README.md)
+Docs used: [OPC UA adapter](../../docs/adapters/opcua.md#opcua-alarm-and-event-types) · [AWS MSK target](../../docs/targets/aws-msk.md) · [Debug target](../../docs/targets/debug.md) · [IPC mode](../../docs/sfc-deployment.md#ipc) · [Adapters as IPC services](../../docs/sfc-running-adapters.md#running-the-jvm-protocol-adapters-as-an-ipc-service) · [Targets as IPC services](../../docs/sfc-running-targets.md#running-targets-as-an-ipc-service) · [Server configuration](../../docs/core/server-configuration.md) · [All examples](../../docs/examples/README.md)

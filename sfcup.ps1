@@ -7,13 +7,15 @@
         irm https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.ps1 | iex
 
     Installs the SFC uberjar - the core plus every protocol adapter and target in one jar - into
-    %USERPROFILE%\.sfc, and puts `sfc` on your user PATH. Re-run it (or the installed `sfcup`) to
-    upgrade.
+    %USERPROFILE%\.sfc, and puts `sfcx` on your user PATH. Re-run it (or the installed `sfcup`)
+    to upgrade.
 
-    Windows counterpart of sfcup.sh. Same layout, same flags, three deliberate differences:
+    Windows counterpart of sfcup.sh. The command is `sfcx` on every OS (plain `sfc` would be shadowed
+    by Windows' own System File Checker, C:\Windows\System32\sfc.exe). Same layout, same flags, three
+    deliberate differences:
 
-      * No symlinks. Creating them needs administrator rights or Developer Mode, so the commands
-        are generated .cmd shims with the resolved jar path written into them instead.
+      * No symlinks. Creating them needs administrator rights or Developer Mode, so the command is
+        a generated .cmd shim that points at the jar relative to its own folder.
       * Java is invoked directly with -cp rather than through the bundle's bin\sfc-uberjar.bat.
         Those generated launchers put the whole classpath on one `set CLASSPATH=` line, and
         cmd.exe caps a line at 8191 characters.
@@ -71,7 +73,10 @@ $MinJava = 17
 function Write-Step { param([string] $Message) Write-Host "  - " -ForegroundColor DarkGray -NoNewline; Write-Host $Message }
 function Write-Ok   { param([string] $Message) Write-Host "OK   " -ForegroundColor Green   -NoNewline; Write-Host $Message }
 function Write-Warn { param([string] $Message) Write-Host "WARN " -ForegroundColor Yellow  -NoNewline; Write-Host $Message }
-function Fail       { param([string] $Message) Write-Host "ERROR " -ForegroundColor Red    -NoNewline; Write-Host $Message; exit 1 }
+# Never `exit`: under `irm ... | iex` the script runs inside the user's own PowerShell session, and
+# `exit` would close their window. A terminating error stops the script and keeps the window open;
+# run as a file it still ends with a non-zero exit code.
+function Fail       { param([string] $Message) Write-Host "ERROR " -ForegroundColor Red    -NoNewline; Write-Host $Message; throw "sfcup stopped: see the error above" }
 
 function Show-Usage {
     @"
@@ -88,13 +93,13 @@ Usage: .\sfcup.ps1 [options]
   -Uninstall         remove the installation and the PATH entry
   -Help              show this message
 
-After installing, both `sfc` and `sfc-uberjar` are on PATH and take the usual SFC options:
+After installing, `sfcx` is on PATH and takes the usual SFC options:
 
-  sfc -config example.json -info
+  sfcx -config example.json -info
 "@
 }
 
-if ($Help) { Show-Usage; exit 0 }
+if ($Help) { Show-Usage; return }
 
 # ---------------------------------------------------------------------------------------- paths
 
@@ -137,7 +142,7 @@ if ($Uninstall) {
     Write-Ok "removed $SfcHome"
     Write-Host ""
     Write-Host "Open a new terminal for the PATH change to take effect."
-    exit 0
+    return
 }
 
 # -------------------------------------------------------------------------------- prerequisites
@@ -175,7 +180,7 @@ function Resolve-LatestVersion {
     # out of the Location header. No JSON parsing, and it avoids the API's rate limit.
     $url = "$Repo/releases/latest/download/$Bundle"
     try {
-        $resp = Invoke-WebRequest -Uri $url -Method Head -MaximumRedirection 0 -ErrorAction SilentlyContinue
+        $resp = Invoke-WebRequest -UseBasicParsing -Uri $url -Method Head -MaximumRedirection 0 -ErrorAction SilentlyContinue
     } catch {
         # Older PowerShell raises on a 3xx when redirection is capped; the response still carries the header.
         $resp = $_.Exception.Response
@@ -198,7 +203,7 @@ function Resolve-LatestVersion {
 
 Write-Host ""
 Write-Host "sfcup " -NoNewline -ForegroundColor White
-Write-Host "$SfcupVersion — installing Shop Floor Connectivity"
+Write-Host "$SfcupVersion - installing Shop Floor Connectivity"
 Write-Host ""
 
 Test-Java
@@ -227,9 +232,9 @@ if ($Local) {
 $target = Join-Path $VersionsDir $Version
 
 if (-not $Force -and $Version -ne 'local' -and (Test-Path -LiteralPath $target) -and (Get-CurrentVersion) -eq $Version) {
-    Write-Ok "already at $Version in $SfcHome — nothing to do"
+    Write-Ok "already at $Version in $SfcHome - nothing to do"
     Write-Host "  Reinstall anyway with -Force."
-    exit 0
+    return
 }
 
 New-Item -ItemType Directory -Force -Path $VersionsDir, $BinDir | Out-Null
@@ -252,12 +257,12 @@ try {
         }
 
         Write-Host ""
-        Write-Step "downloading $Bundle (a few hundred MB — it carries every adapter and target)"
+        Write-Step "downloading $Bundle (a few hundred MB - it carries every adapter and target)"
         try {
             # Progress rendering makes a large download dramatically slower in Windows PowerShell.
             $prevProgress = $ProgressPreference
             $ProgressPreference = 'SilentlyContinue'
-            Invoke-WebRequest -Uri "$base/$Bundle" -OutFile $tarball
+            Invoke-WebRequest -UseBasicParsing -Uri "$base/$Bundle" -OutFile $tarball
         } catch {
             Fail "could not download $Bundle for $Version.`n  Check that the release exists: $Repo/releases"
         } finally {
@@ -269,7 +274,7 @@ try {
         $sumFile = "$tarball.sha512sum"
         $haveSum = $false
         try {
-            Invoke-WebRequest -Uri "$base/$Bundle.sha512sum" -OutFile $sumFile
+            Invoke-WebRequest -UseBasicParsing -Uri "$base/$Bundle.sha512sum" -OutFile $sumFile
             $haveSum = (Test-Path -LiteralPath $sumFile) -and ((Get-Item -LiteralPath $sumFile).Length -gt 0)
         } catch { $haveSum = $false }
 
@@ -277,11 +282,11 @@ try {
             $expected = ((Get-Content -LiteralPath $sumFile -Raw).Trim() -split '\s+')[0]
             $actual   = (Get-FileHash -LiteralPath $tarball -Algorithm SHA512).Hash
             if ($actual -ine $expected) {
-                Fail "checksum mismatch for $Bundle — refusing to install.`n  expected $expected`n  actual   $actual"
+                Fail "checksum mismatch for $Bundle - refusing to install.`n  expected $expected`n  actual   $actual"
             }
             Write-Step "sha512 verified"
         } else {
-            Write-Warn "no published checksum for $Version — skipping verification"
+            Write-Warn "no published checksum for $Version - skipping verification"
         }
     }
 
@@ -312,29 +317,51 @@ try {
            Select-Object -First 1
     if (-not $jar) { Fail "no sfc-uberjar-<version>.jar found in $target\lib" }
 
-    # Generated shims instead of symlinks: no elevation needed, and `java -cp` keeps the classpath
-    # out of cmd.exe's 8191-character line limit. Both names are provided, so new documentation can
-    # use `sfc` while every existing reference to `sfc-uberjar` keeps working.
+    # A generated shim instead of a symlink: no elevation needed, and `java -cp` keeps the classpath
+    # out of cmd.exe's 8191-character line limit. The jar is addressed relative to the shim (%~dp0),
+    # so the ASCII-only file never has to spell out a profile path with non-ASCII letters. Only
+    # `sfcx` is generated, the same name as on Linux and macOS.
     $shim = @"
 @echo off
 rem Generated by sfcup $SfcupVersion. Regenerated on every install - do not edit.
-java -cp "$($jar.FullName)" $MainClass %*
+java -cp "%~dp0..\versions\$Version\lib\$($jar.Name)" $MainClass %*
 "@
-    foreach ($name in @('sfc.cmd', 'sfc-uberjar.cmd')) {
-        Set-Content -LiteralPath (Join-Path $BinDir $name) -Value $shim -Encoding ASCII
+    Set-Content -LiteralPath (Join-Path $BinDir 'sfcx.cmd') -Value $shim -Encoding ASCII
+    # Earlier installs wrote sfc.cmd and sfc-uberjar.cmd; they would keep pointing at a pruned version.
+    foreach ($stale in @('sfc.cmd', 'sfc-uberjar.cmd')) {
+        $staleShim = Join-Path $BinDir $stale
+        if (Test-Path -LiteralPath $staleShim) { Remove-Item -LiteralPath $staleShim -Force }
     }
 
     Set-Content -LiteralPath $CurrentFile -Value $Version -Encoding ASCII -NoNewline
 
-    # Keep a copy so `sfcup` can upgrade the install later.
+    # Keep a copy so `sfcup` can upgrade the install later. Under `irm ... | iex` there is no script
+    # file ($PSCommandPath is empty), so fetch the published copy instead. The copy lives outside bin\:
+    # PowerShell would run bin\sfcup.ps1 ahead of bin\sfcup.cmd, and the default Restricted execution
+    # policy of Windows 10/11 blocks .ps1 files; sfcup.cmd passes -ExecutionPolicy Bypass instead.
+    $selfCopy = Join-Path $SfcHome 'sfcup.ps1'
+    $staleCopy = Join-Path $BinDir 'sfcup.ps1'
     if ($PSCommandPath -and (Test-Path -LiteralPath $PSCommandPath)) {
-        Copy-Item -LiteralPath $PSCommandPath -Destination (Join-Path $BinDir 'sfcup.ps1') -Force
+        # An upgrade run from the installed copy must not copy the file onto itself.
+        if ((Resolve-Path -LiteralPath $PSCommandPath).Path -ne $selfCopy) {
+            Copy-Item -LiteralPath $PSCommandPath -Destination $selfCopy -Force
+        }
+    } else {
+        try {
+            Invoke-WebRequest -UseBasicParsing -Uri "https://raw.githubusercontent.com/$RepoSlug/main/sfcup.ps1" -OutFile $selfCopy
+        } catch {
+            Write-Warn "could not save sfcup for later updates; re-run the install command to update"
+        }
+    }
+    if (Test-Path -LiteralPath $selfCopy) {
         Set-Content -LiteralPath (Join-Path $BinDir 'sfcup.cmd') -Encoding ASCII -Value @"
 @echo off
 rem Generated by sfcup $SfcupVersion.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sfcup.ps1" %*
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0..\sfcup.ps1" %*
 "@
     }
+    # Earlier installs kept the copy in bin\, where it would shadow sfcup.cmd.
+    if ((Test-Path -LiteralPath $staleCopy) -and ($PSCommandPath -ne $staleCopy)) { Remove-Item -LiteralPath $staleCopy -Force }
 
     # ------------------------------------------------------------------------------------- PATH
 
@@ -342,7 +369,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sfcup.ps1" %*
     if (-not $NoModifyPath) {
         $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
         if ([string]::IsNullOrEmpty($userPath)) { $userPath = '' }
-        $already = ($userPath -split ';' | Where-Object { $_.TrimEnd('\') -eq $BinDir.TrimEnd('\') }).Count -gt 0
+        $already = @($userPath -split ';' | Where-Object { $_.TrimEnd('\') -eq $BinDir.TrimEnd('\') }).Count -gt 0
         if ($already) {
             Write-Step "already on your user PATH"
         } else {
@@ -371,9 +398,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sfcup.ps1" %*
     Write-Host ""
     Write-Ok "SFC $Version installed in $SfcHome"
     Write-Host ""
-    Write-Host "  commands  " -ForegroundColor DarkGray -NoNewline
-    Write-Host "sfc, sfc-uberjar          " -NoNewline
-    Write-Host "(same jar, either name)" -ForegroundColor DarkGray
+    Write-Host "  command   " -ForegroundColor DarkGray -NoNewline
+    Write-Host "sfcx"
     Write-Host "  jar       " -ForegroundColor DarkGray -NoNewline
     Write-Host $jar.FullName
     Write-Host "  update    " -ForegroundColor DarkGray -NoNewline
@@ -387,11 +413,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0sfcup.ps1" %*
         Write-Host "  $BinDir" -ForegroundColor White
     }
     Write-Host ""
-    Write-Host "Then try it — this needs no hardware and no cloud account:"
+    Write-Host "Then try it - this needs no hardware and no cloud account:"
     Write-Host ""
-    Write-Host "  sfc -config <your-config>.json -info" -ForegroundColor White
+    Write-Host "  sfcx -config <your-config>.json -info" -ForegroundColor White
     Write-Host ""
-    Write-Host "  Ready-made configurations: $Repo/tree/main/examples" -ForegroundColor DarkGray
+    Write-Host "  Ready-made configurations: $Repo/blob/main/docs/examples/README.md" -ForegroundColor DarkGray
     Write-Host ""
 }
 finally {

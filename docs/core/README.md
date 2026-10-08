@@ -12,7 +12,7 @@
 
   - [AggregationConfiguration](./aggregation-configuration.md)
 
-    Configuration for aggregating data from multiple sources into a single value before sending it to targets.
+    Buffers Size reads of a schedule and outputs per-channel aggregates (avg, min, max, ...) instead of every value.
 
     
 
@@ -38,11 +38,11 @@
 
   - [CertificateConfiguration](./certificate-configuration.md)
 
-    Configuration for managing SSL/TLS certificates including paths to certificate files, private keys, and trusted CA certificates.
+    Configuration for certificates of OPC UA adapters and targets: certificate file, private key, format and optional self-signed generation.
 
   - [ClientProxyConfiguration](./client-proxy-configuration.md)
 
-    Configuration for setting up HTTP/HTTPS proxy settings including host, port, username, and password for network connections.
+    Configuration for HTTP/HTTPS proxy settings for network connections: ProxyUrl, ProxyUsername, ProxyPassword and NoProxyAddresses.
 
   - [CloudSecretConfiguration](./cloud-secret-configuration.md)
 
@@ -58,7 +58,7 @@
 
   - [InProcessConfiguration](./in-process-configuration.md)
 
-    Configuration for loading and managing JAR files and factory classes for in-process target type implementations.
+    FactoryClassName (plus JarFiles outside the uberjar) for in-process adapters, targets, formatters, metrics writers, log writers and config providers. ConfigProvider and LogWriter always need a JarFiles list, `[]` with the uberjar.
 
   - [MetricsConfiguration](./metrics-configuration.md)
 
@@ -86,7 +86,7 @@
 
   - [SelfSignedCertificateConfiguration](./self-signed-certificate-configuration.md)
 
-    Configuration settings for generating self-signed certificates used in secure IPC communication between SFC components.
+    Configuration settings for self-signed certificates generated for OPC UA adapters and targets.
 
   - [ServerConfiguration](server-configuration.md)
 

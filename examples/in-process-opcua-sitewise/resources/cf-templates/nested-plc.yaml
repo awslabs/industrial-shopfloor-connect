@@ -22,11 +22,11 @@ Resources:
   PlcInstance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: ami-03614aa887519d781 # Amazon Linux 2 AMI (HVM), SSD Volume Type
+      ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}' # latest Amazon Linux 2023 AMI of the stack's region
       InstanceType: t2.micro
       SubnetId: !Ref PrivateSubnet1Param
       IamInstanceProfile:
-        !Ref SFCSSMManagedInstanceCoreRole
+        !Ref Ec2InstanceProfile
       SecurityGroupIds:
         - !GetAtt PlcSecurityGroup.GroupId
       UserData:
@@ -44,7 +44,6 @@ Resources:
   SFCSSMManagedInstanceCoreRole:
     Type: 'AWS::IAM::Role'
     Properties:
-      RoleName: Ec2RoleForSSM
       Description: EC2 IAM role for SSM access
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
@@ -61,7 +60,6 @@ Resources:
   Ec2InstanceProfile:
     Type: 'AWS::IAM::InstanceProfile'
     Properties:
-      InstanceProfileName: Ec2RoleForSSM
       Roles:
         - Ref: SFCSSMManagedInstanceCoreRole
 

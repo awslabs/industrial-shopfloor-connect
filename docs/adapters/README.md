@@ -2,14 +2,16 @@
 
 Protocol adapters in SFC (Shop Floor Connectivity) are interfaces that abstract and translate data from various industrial protocols and devices into a common format, allowing seamless data collection from different sources like PLCs, databases, and industrial equipment to AWS services. They act as standardized connectors that handle the protocol-specific communication details.
 
+New here? Start with the [Quickstart](../../README.md#quickstart) and the [examples catalog](../examples/README.md#start-here). Each adapter page except OPC DA has a *Deploy this adapter* section for the [uberjar, in-process and IPC modes](../sfc-deployment.md#configure-a-component-in-each-mode); the fixed `AdapterType` value (required in every mode), `FactoryClassName` and IPC service class of every adapter in this repository are listed in [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+
 - [**ADS (Beckhoff)**](./ads.md)
 
   ADS (Automation Device Specification) protocol adapter enables reading data from Beckhoff PLCs and controllers using their native TwinCAT communication protocol.
 
-- [**J1939**](./j1939.md)
+- [**J1939**](./j1939.md) (Linux only)
 
 
-  J1939 protocol adapter enables reading data from heavy-duty vehicle networks and equipment using the SAE J1939 standard over CAN bus
+  J1939 protocol adapter enables reading data from heavy-duty vehicle networks and equipment using the SAE J1939 standard over CAN bus (Linux SocketCAN)
 
 - [**MQTT**](./mqtt.md)
 
@@ -23,17 +25,17 @@ Protocol adapters in SFC (Shop Floor Connectivity) are interfaces that abstract 
 
   NATS protocol adapter enables reading data from NATS messaging systems using a publish/subscribe architecture for cloud-native and distributed systems communication.
 
-- **[OPCUA ](./opcua.md)**
+- **[OPC UA](./opcua.md)**
 
-  OPC UA protocol adapter enables reading data from industrial devices and systems using the platform-independent OPC Unified Architecture protocol for secure, reliable industrial communications
+  OPC UA protocol adapter enables reading data from industrial devices and systems using the platform-independent OPC Unified Architecture protocol for secure, reliable industrial communications. To write to an OPC UA server or expose data as one, see the [OPC UA Writer](../targets/opcua-writer.md) and [OPC UA](../targets/opcua.md) targets.
 
-- **[OPCDA](./opcda.md)**
+- **[OPC DA](./opcda.md)** (not shipped in this repository; Windows only)
 
-  OPC DA protocol adapter enables reading data from legacy industrial automation systems using the traditional OPC Data Access specification for Windows-based systems
+  OPC DA protocol adapter enables reading data from legacy industrial automation systems using the traditional OPC Data Access specification for Windows-based systems. It runs as a separate .NET IPC service, see [.NET Core based protocol adapters](../sfc-dotnet.md).
 
 - **[PCCC (Allen Bradley/Rockwell)](./pccc.md)**
 
-  PCCC (Programmable Controller Communication Commands) protocol adapter enables reading data from Allen-Bradley/Rockwell PLCs
+  PCCC (Programmable Controller Communication Commands) protocol adapter enables reading data from Allen-Bradley/Rockwell SLC 500 and MicroLogix PLCs (not PLC-5)
 
 - **[REST](./rest.md)**
 
@@ -58,4 +60,6 @@ Protocol adapters in SFC (Shop Floor Connectivity) are interfaces that abstract 
 - **[SQL](./sql.md)**
 
   SQL protocol adapter enables reading data from relational databases (like MySQL, PostgreSQL, Oracle, SQL Server) through JDBC connections using SQL queries.
+
+`adapters/canbus` and `adapters/modbus` in the source tree are shared libraries used by the J1939 and Modbus TCP adapters; they are not adapters themselves and have no bundle.
 

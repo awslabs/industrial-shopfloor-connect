@@ -8,9 +8,10 @@ every few hundred milliseconds, almost all of it numeric float values — and la
 [Amazon S3 Tables](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables.html) as
 [Apache Iceberg](https://iceberg.apache.org/) tables, ready for SQL.
 
-The pipeline runs in process: one `sfc-main` process hosts both the
+The pipeline runs [in process](../../docs/sfc-deployment.md#in-process): one `sfc-main` process hosts both the
 [Simulator adapter](../../docs/adapters/simulator.md), which stands in for a machine, and the
-[AWS S3 Tables target](../../docs/targets/aws-s3-tables.md), which writes Iceberg.
+[AWS S3 Tables target](../../docs/targets/aws-s3-tables.md), which writes Iceberg. The same pipeline
+also runs [from the uberjar](#run-it-from-the-uberjar).
 
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{
@@ -18,9 +19,9 @@ The pipeline runs in process: one `sfc-main` process hosts both the
   'primaryBorderColor':'#1f6feb','lineColor':'#7d8590','fontFamily':'monospace',
   'clusterBkg':'#0a0e14','clusterBorder':'#1f6feb'}}}%%
 flowchart TD
-    TAGS[/"counter · sinus · triangle<br/><i>3 float tags, 0..100</i>"/]:::data
+    TAGS[/"counter · sinus · triangle<br/><i>3 numeric tags, 0..100</i>"/]:::data
     ADAPTER(["<b>Simulator adapter</b><br/>SimulatorAdapter"]):::tool
-    CORE(["<b>SFC core</b><br/>SimSchedule, 250 ms"]):::tool
+    CORE(["<b>SFC core</b><br/>SimSchedule, 50 ms"]):::tool
     TARGET(["<b>AWS-S3-TABLES target</b><br/>schema · mappings · partition"]):::tool
     DEBUG["DEBUG target<br/><i>commented out by default</i>"]:::ext
     ICEBERG[/"Apache Iceberg table<br/><i>sfc.sim</i>"/]:::data
@@ -42,7 +43,8 @@ The Simulator is used instead of a real protocol adapter so you can exercise the
 definitions, schema mapping, Iceberg partitioning, write batching — without a PLC on the bench.
 Replace `SimulatorAdapter` with [OPC-UA](../../docs/adapters/opcua.md),
 [Siemens S7](../../docs/adapters/s7.md), [Modbus-TCP](../../docs/adapters/modbus.md) or any other
-[supported adapter](../../docs/adapters/README.md) and nothing in the target configuration changes.
+[supported adapter](../../docs/adapters/README.md), and in the target configuration only the
+`ValueQuery` paths change, to follow your source and channel names.
 
 Two directories:
 
@@ -55,6 +57,7 @@ Two directories:
 
 - [Prerequisites](#prerequisites)
 - [Run the pipeline](#run-the-pipeline)
+  - [Run it from the uberjar](#run-it-from-the-uberjar)
 - [How the configuration is built](#how-the-configuration-is-built)
   - [1. Wiring: which code implements which type](#1-wiring-which-code-implements-which-type)
   - [2. The source: what to read](#2-the-source-what-to-read)
@@ -66,19 +69,25 @@ Two directories:
 
 ## Prerequisites
 
-- A Java runtime. Plus `curl`, `jq`, `wget` and `tar` if you let `run-inprocess.sh` download the
-  release bundles; not needed when you build from source.
+- Java 17 or newer (Windows: `winget install EclipseAdoptium.Temurin.17.JDK`). On Windows the `.bat`
+  scripts run the first `java` on `PATH` and ignore `JAVA_HOME`; check it with `java -version`.
+- A clone of this repository.
+- For the run scripts to download the release bundles: `curl`, `jq`, `wget` and `tar` on Linux and
+  macOS; on Windows only the `curl.exe` and `tar` that ship with Windows 10 and later. A build from
+  source needs only `tar`.
+- The AWS CLI v2, recent enough to have `aws s3tables`, for the checks and the clean-up below
+  (Windows: `winget install Amazon.AWSCLI`).
 - AWS credentials resolvable by the
   [default provider chain](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html).
-  Because the target uses `AutoCreate: true`, its first write creates the table bucket, the namespace
-  and the table, so it needs all of these
+  Because the target uses `AutoCreate: true`, it creates the table bucket, the namespace and the table
+  when it starts, if they are missing, so it needs all of these
   ([target documentation](../../docs/targets/aws-s3-tables.md#awss3tablestargetconfiguration)):
 
   ```
-  "ListNamespaces", "ListTables", "ListTableBuckets", "CreateTableBucket",
-  "CreateNamespace", "CreateTable",
-  "GetTableBucket", "GetTableData", "GetTable", "GetTableMetadataLocation",
-  "PutTableData", "UpdateTableMetadataLocation"
+  "s3tables:ListNamespaces", "s3tables:ListTables", "s3tables:ListTableBuckets", "s3tables:CreateTableBucket",
+  "s3tables:CreateNamespace", "s3tables:CreateTable",
+  "s3tables:GetTableBucket", "s3tables:GetTableData", "s3tables:GetTable", "s3tables:GetTableMetadataLocation",
+  "s3tables:PutTableData", "s3tables:UpdateTableMetadataLocation"
   ```
 
   For production, prefer temporary credentials through the
@@ -91,39 +100,96 @@ Two directories:
 
 ## Run the pipeline
 
+**Linux / macOS**
+
 ```shell
 cd examples/in-process-sim-s3tables/sfc-to-s3tables
 ./run-inprocess.sh
 ```
 
-That is the whole setup. `run-inprocess.sh` finds the four modules this example needs — `sfc-main`, the
-`simulator` adapter, the `aws-s3-tables-target` and the `debug-target` — from whichever source is
-available, in this order:
+**Windows (PowerShell)**
+
+```powershell
+cd examples\in-process-sim-s3tables\sfc-to-s3tables
+.\run-inprocess.bat
+```
+
+That is the whole setup. `run-inprocess.sh`, and its Windows counterpart `run-inprocess.bat`, find the
+four modules this example needs — `sfc-main`, the `simulator` adapter, the `aws-s3-tables-target` and
+the `debug-target` — from whichever source is available, in this order:
 
 | Source | When it is used |
 |---|---|
 | `SFC_MODULES_DIR` | Whenever you set it, unchecked — the escape hatch for a deployment laid out some other way. |
-| `build/distribution` | Whenever this working copy has been built with `./gradlew build` from the repository root. **A local build wins**, so a change you just made to an adapter or target is what actually runs. |
+| `build/distribution` | Whenever this working copy has been built with `./gradlew build` (Windows: `.\gradlew.bat build`) from the repository root. **A local build wins** over the downloads. |
 | `./modules` | Otherwise. The precompiled bundles for the latest release are downloaded here on first use and reused afterwards; the directory is gitignored. |
 
-A module counts as present either extracted or as a `.tar.gz`, because `gradlew build` leaves both
-kinds side by side — anything still archived is unpacked in place, and reruns skip what is already
-there. Set `VERSION=vX.Y.Z` to pin the download to a specific release.
+A module counts as present either extracted or as a `.tar.gz`: anything still archived is unpacked in
+place, and reruns skip what is already unpacked. `gradlew build` only refreshes the `.tar.gz`, so after
+you rebuild an adapter or target, delete its directory under `build/distribution` (or run
+`./gradlew clean build`) for the change to run. Set `VERSION=vX.Y.Z` to pin the download to a specific
+release; delete `./modules` first, because bundles already there are reused.
 
-`AWS_REGION` defaults to `us-west-2`; export it beforehand to write elsewhere. The download path
-needs `curl`, `jq`, `wget` and `tar`; building from source needs none of them.
+`AWS_REGION` defaults to `us-west-2`; export it beforehand to write elsewhere. On Windows set these
+variables with `$env:` before you run the `.bat`, for example `$env:AWS_REGION = "eu-west-1"`,
+`$env:VERSION = "vX.Y.Z"` or `$env:SFC_MODULES_DIR = "C:/sfc/modules"`.
 
 Nothing is printed per sample by default. To watch the data flow, delete the `#` from
-`"#DEBUGTarget"` in the schedule — the debug target prints each `TargetData` set to the console, and
-it is the fastest way to confirm a `ValueQuery` actually resolves before you chase it through Iceberg.
+`"#DEBUGTarget"` in the schedule — the [Debug target](../../docs/targets/debug.md) prints each
+`TargetData` set to the console, and it is the fastest way to confirm a `ValueQuery` actually resolves
+before you chase it through Iceberg.
 
-After the first flush — up to ten seconds with the shipped settings — the table exists:
+The target creates the table when it starts and logs
+`Created table "sfc.sim" for bucket "sfc-industrial-data-bucket"` (on later runs
+`Table "sfc.sim" does exist`). Rows follow with the first flush, a few seconds later with the shipped
+settings, logged as `Written 100 buffered records for table "sim" in …`. Check the table from a second
+terminal:
+
+**Linux / macOS**
 
 ```shell
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 BUCKET_ARN="arn:aws:s3tables:${AWS_REGION:-us-west-2}:${ACCOUNT}:bucket/sfc-industrial-data-bucket"
 aws s3tables list-tables --table-bucket-arn "$BUCKET_ARN" --namespace sfc
 ```
+
+**Windows (PowerShell)**
+
+```powershell
+$region = if ($env:AWS_REGION) { $env:AWS_REGION } else { "us-west-2" }
+$ACCOUNT = aws sts get-caller-identity --query Account --output text
+$BUCKET_ARN = "arn:aws:s3tables:${region}:${ACCOUNT}:bucket/sfc-industrial-data-bucket"
+aws s3tables list-tables --table-bucket-arn $BUCKET_ARN --namespace sfc
+```
+
+### Run it from the uberjar
+
+The uberjar is one artifact that holds the core and every adapter and target, so
+[`simulator-to-s3tables-uberjar.json`](./sfc-to-s3tables/simulator-to-s3tables-uberjar.json) is this
+configuration without the three `JarFiles` entries
+([uberjar mode](../../docs/sfc-deployment.md#uberjar)). With SFC installed by
+[sfcup](../../README.md#1-install), run it directly:
+
+**Linux / macOS**
+
+```shell
+cd examples/in-process-sim-s3tables/sfc-to-s3tables
+export AWS_REGION=us-west-2
+sfcx -config simulator-to-s3tables-uberjar.json
+```
+
+**Windows (PowerShell)**
+
+```powershell
+cd examples\in-process-sim-s3tables\sfc-to-s3tables
+$env:AWS_REGION = "us-west-2"
+sfcx -config simulator-to-s3tables-uberjar.json
+```
+
+Without sfcup, `./run-uberjar.sh` (Windows: `.\run-uberjar.bat`) runs the same configuration. It takes
+the uberjar bundle from `SFC_UBERJAR_DIR` (the directory that contains `sfc-uberjar/`), else from
+`build/distribution`, else from a one-time download into `./uberjar`. `VERSION` and `AWS_REGION` work
+as above; to pin another `VERSION`, delete `./uberjar` first.
 
 ## How the configuration is built
 
@@ -156,6 +222,13 @@ and which class to instantiate. That is all [`AdapterTypes`](../../docs/core/sfc
 }
 ```
 
+`SFC_MODULES_DIR` plays the part that `SFC_DEPLOYMENT_DIR` has in the rest of the documentation: the
+directory that holds the unpacked module bundles. `run-inprocess.sh` and `run-inprocess.bat` set it.
+The uberjar configuration,
+[`simulator-to-s3tables-uberjar.json`](./sfc-to-s3tables/simulator-to-s3tables-uberjar.json), has the
+same entries with `FactoryClassName` only, because the uberjar already has every component on its
+classpath.
+
 [`ProtocolAdapters`](../../docs/core/sfc-configuration.md#protocoladapters) then declares an *instance* of an adapter type. The Simulator needs no connection
 settings, so this is as small as it gets — a real adapter would carry device addresses, ports and
 security settings here:
@@ -166,8 +239,13 @@ security settings here:
 }
 ```
 
-The names on the left of each of these maps (`SIMULATOR`, `AWS-S3-TABLES`, `SimulatorAdapter`) are
-yours to choose; everything above refers to them by those names.
+`SIMULATOR`, `AWS-S3-TABLES` and `DEBUG-TARGET` are the components' fixed type names: the
+`AdapterType`/`TargetType` values must be exactly these in every deployment mode, and the
+`AdapterTypes`/`TargetTypes` keys repeat them
+([Protocol adapter types and classes](../../docs/sfc-running-adapters.md#protocol-adapter-types-and-classes),
+[Target types and classes](../../docs/sfc-running-targets.md#target-types-and-classes)). Instance
+names such as `SimulatorAdapter`, `Simulator` or `S3TablesTarget` are yours to choose; everything
+above refers to them by those names.
 
 ### 2. The source: what to read
 
@@ -194,7 +272,9 @@ offset, a Modbus register. Here the [`Simulation`](../../docs/adapters/simulator
 The full set of generators is listed under [Simulations](../../docs/adapters/simulator.md#simulations) — this example uses
 [`Counter`](../../docs/adapters/simulator.md#counter), [`Sinus`](../../docs/adapters/simulator.md#sinus) and [`Triangle`](../../docs/adapters/simulator.md#triangle), and
 [`Random`](../../docs/adapters/simulator.md#random), [`Sawtooth`](../../docs/adapters/simulator.md#sawtooth), [`Square`](../../docs/adapters/simulator.md#square),
-[`Range`](../../docs/adapters/simulator.md#range), [`List`](../../docs/adapters/simulator.md#list) and [`Structure`](../../docs/adapters/simulator.md#structure) are also available.
+[`Range`](../../docs/adapters/simulator.md#range), [`List`](../../docs/adapters/simulator.md#list), [`Structure`](../../docs/adapters/simulator.md#structure),
+[`Constant`](../../docs/adapters/simulator.md#constant), [`Buffered`](../../docs/adapters/simulator.md#buffered) and
+[`Interval`](../../docs/adapters/simulator.md#interval-1) are also available.
 
 Worth knowing about this particular data: [`Counter`](../../docs/adapters/simulator.md#counter) with
 [`Min`](../../docs/adapters/simulator.md#min)`: 0`, [`Max`](../../docs/adapters/simulator.md#max)`: 100` **wraps**. It is a 0..100
@@ -213,8 +293,8 @@ schedule [`Sources`](../../docs/core/schedule-configuration.md#sources) and [`Ta
 "Schedules": [
   {
     "Name": "SimSchedule",
-    "Interval": 250,
-    "Active": "true",
+    "Interval": 50,
+    "Active": true,
     "TimestampLevel": "Both",
     "Sources": { "Simulator": ["*"] },
     "Targets": ["S3TablesTarget", "#DEBUGTarget"]
@@ -222,7 +302,7 @@ schedule [`Sources`](../../docs/core/schedule-configuration.md#sources) and [`Ta
 ]
 ```
 
-- [`Interval`](../../docs/core/schedule-configuration.md#interval)`: 250` polls every listed source four times a second. This is what makes the example
+- [`Interval`](../../docs/core/schedule-configuration.md#interval)`: 50` polls every listed source twenty times a second. This is what makes the example
   high-frequency, and it is the number every tuning decision below follows from.
 - [`Sources`](../../docs/core/schedule-configuration.md#sources) maps a source name to the channels to read; `["*"]` means all of them.
 - [`Targets`](../../docs/core/schedule-configuration.md#targets) lists where each read goes. `#DEBUGTarget` is commented out, so data goes only to
@@ -236,7 +316,7 @@ schedule [`Sources`](../../docs/core/schedule-configuration.md#sources) and [`Ta
 
 ```json
 "S3TablesTarget": {
-  "Active": "True",
+  "Active": true,
   "TargetType": "AWS-S3-TABLES",
   "Region": "${AWS_REGION}",
   "TableBucket": "sfc-industrial-data-bucket",
@@ -248,7 +328,7 @@ schedule [`Sources`](../../docs/core/schedule-configuration.md#sources) and [`Ta
 
 [`TableBucket`](../../docs/targets/aws-s3-tables.md#tablebucket), [`Namespace`](../../docs/targets/aws-s3-tables.md#namespace) and [`TableName`](../../docs/targets/aws-s3-tables.md#tablename) are
 the three levels of an S3 Tables address. With [`AutoCreate`](../../docs/targets/aws-s3-tables.md#autocreate)`: true`, all three are
-created on the first write if they do not already exist — which is
+created when the target starts, if they do not already exist — which is
 why the pipeline must run before the query app is deployed.
 
 Each entry in [`Tables`](../../docs/targets/aws-s3-tables.md#tables) is a [TableConfiguration](../../docs/targets/aws-s3-tables.md#tableconfiguration) with three
@@ -269,7 +349,7 @@ parts. **[`Schema`](../../docs/targets/aws-s3-tables.md#schema)** declares the I
 
 [`Optional`](../../docs/targets/aws-s3-tables.md#optional) is more consequential than it looks. If a non-`Optional` column's mapping yields no value,
 **no row is written at all** — which is the mechanism behind multiple mappings per table, and also the
-usual cause of a silently empty table. The nested array [`Type`](../../docs/targets/aws-s3-tables.md#type) on `build_info` declares an Iceberg
+usual cause of an empty table; look for `Missing required value` warnings in the log. The nested array [`Type`](../../docs/targets/aws-s3-tables.md#type) on `build_info` declares an Iceberg
 `struct` — the accepted type strings are listed under [`Type`](../../docs/targets/aws-s3-tables.md#type).
 
 Note that the `Byte` channels map into `float` columns and the `Int` counter into `float` as well.
@@ -296,7 +376,7 @@ described in [the SFC output data format](../../docs/sfc-data-format.md#output-d
 
 A mapping entry is a [ColumnMappingConfiguration](../../docs/targets/aws-s3-tables.md#columnmappingconfiguration): either a
 [`ValueQuery`](../../docs/targets/aws-s3-tables.md#valuequery) or a nested [`Mappings`](../../docs/targets/aws-s3-tables.md#mappings-1) block for a struct column,
-never both. Each can also carry a [`Transformation`](../../docs/targets/aws-s3-tables.md#transformation) and a
+never both. A `ValueQuery` entry can also carry a [`Transformation`](../../docs/targets/aws-s3-tables.md#transformation) and a
 [`ValueFilter`](../../docs/targets/aws-s3-tables.md#valuefilter), applied in that order after the query.
 
 **`Mappings` is a list, and each entry produces one row.** One entry gives one wide row per read,
@@ -333,8 +413,15 @@ somewhere in that data. Attach it as channel
 ]
 ```
 
+Give this table its own [`TableName`](../../docs/targets/aws-s3-tables.md#tablename), for example
+`sim_narrow`. An existing table keeps its schema: if the configured schema does not match it, the
+target logs `Configured schema for table … does not match the table` at start-up and writes nothing.
+
 Because `value` and `tag` are non-`Optional`, a mapping whose channel produced no reading writes no
-row at all — which is exactly what you want when a deadband suppressed that tag.
+row at all — which is exactly what you want when a deadband suppressed that tag. Each skipped row also
+logs a `Missing required value` warning; set the target's
+[`WarnIfValueMissing`](../../docs/targets/aws-s3-tables.md#warnifvaluemissing) to `false` to keep the
+log quiet.
 
 For machines with hundreds of tags that come and go, the narrow shape is usually the better one:
 adding a tag becomes a configuration change rather than an Iceberg schema change, a single `value`
@@ -348,12 +435,12 @@ read the `BufferCount` warning in [Tuning](#how-writes-are-batched) first.
 "Partition": { "day": "event_time" }
 ```
 
-See [Partitioning](#partitioning) below — `day` is the wrong default for a 250 ms writer.
+See [Partitioning](#partitioning) below — `day` is the wrong default for a 50 ms writer.
 
 ## Tuning for high-frequency machine data
 
 **The configuration as shipped is a demonstration, not a production setting.** It is left at the
-target's defaults to keep it readable, and at a 250 ms schedule those defaults are wasteful. Read this
+target's defaults to keep it readable, and at a 50 ms schedule those defaults are wasteful. Read this
 before pointing SFC at a real machine, and before leaving it running unattended.
 
 ### How writes are batched
@@ -364,10 +451,10 @@ first:
 | Setting | Default | What it really controls |
 |---|---|---|
 | [`BufferCount`](../../docs/targets/aws-s3-tables.md#buffercount) | 100 records | **File size.** Counted across every table in the target, not per table. |
-| [`Interval`](../../docs/targets/aws-s3-tables.md#interval) | 10000 ms | **Maximum latency, and your loss window.** Buffered records live in JVM memory and are only flushed on a graceful shutdown. |
+| [`Interval`](../../docs/targets/aws-s3-tables.md#interval) | 10000 ms | **Maximum latency, and your loss window.** Buffered records live in JVM memory until the next flush and are lost when the process stops. |
 
-At 250 ms that is four records a second, so `BufferCount: 100` would take 25 seconds to fill and
-`Interval` always wins: roughly 360 flushes an hour. Each flush issues one Iceberg append commit **per
+At 50 ms that is twenty records a second, so `BufferCount: 100` fills in five seconds and triggers
+the flush long before `Interval` does: roughly 720 flushes an hour. Each flush issues one Iceberg append commit **per
 partition group**, and every commit writes a new `metadata.json`, manifest list and manifest on top of
 the data file — so the object count is not the file count:
 
@@ -376,7 +463,7 @@ files/hour   = flushes/hour × partition-groups/flush
 objects/hour ≈ files/hour × 4        (data file + metadata.json + manifest list + manifest)
 ```
 
-Roughly 1,440 objects an hour, about 35,000 a day, for one table with three tags. S3 Tables bills
+Roughly 2,880 objects an hour, about 69,000 a day, for one table with three tags. S3 Tables bills
 per-object monitoring and automatic compaction, so an unattended simulator is by far the largest cost
 in this example — much more than querying it.
 
@@ -385,12 +472,13 @@ For a genuinely high-frequency source, raise both:
 ```json
 "S3TablesTarget": {
   "Interval": 900000,
-  "BufferCount": 10000
+  "BufferCount": 20000
 }
 ```
 
-That flushes every 15 minutes at about 3,600 rows per file: four or five files an hour instead of 360.
-Do not push `Interval` much further, because it is also how much data a hard crash loses.
+That flushes every 15 minutes at about 18,000 rows per file: four or five files an hour instead of 720.
+`BufferCount` stays above the 18,000 records a 15-minute window collects, so `Interval` decides. Do not
+push `Interval` much further, because it is also how much data is lost when SFC stops or crashes.
 
 **If you switch to a narrow schema, re-derive `BufferCount`.** It counts *records*, and N mappings
 produce N records per read, so it fills N times faster. Reusing a wide-schema `BufferCount` with 100
@@ -415,21 +503,24 @@ already give you. All available transforms are listed under
 [`Partition`](../../docs/targets/aws-s3-tables.md#partition).
 
 One setting to leave alone:
-[`PartitioningOptimization`](../../docs/targets/aws-s3-tables.md#partitioningoptimization). Setting it
+[`PartitionOptimization`](../../docs/targets/aws-s3-tables.md#partitionoptimization). Setting it
 to `false` writes every buffered record in one action using **the first record's** partition values.
 With a time-based transform, the flush that crosses an hour boundary is then filed under the wrong
 hour, and those rows quietly disappear from any query that prunes on time.
 
 ### Send less in the first place
 
-The cheapest record is the one never written. All of these run at the adapter, before any buffering:
+The cheapest record is the one never written. All of these run in the SFC core, before the target
+buffers anything. Change filters are set on a source or a channel, transformations on a channel and
+aggregation on the schedule.
 
 - **[Change filters](../../docs/sfc-data-processing-filtering.md#data-change-filters)** — report only on meaningful change. A deadband on a
-  noisy analogue tag routinely removes most of its traffic; keep a minimum-interval heartbeat so
-  "unchanged" stays distinguishable from "dead". Declared under [`ChangeFilters`](../../docs/core/sfc-configuration.md#changefilters)
+  noisy analogue tag routinely removes most of its traffic. Declared under [`ChangeFilters`](../../docs/core/sfc-configuration.md#changefilters)
   and referenced from a [source](../../docs/core/source-configuration.md#changefilter) or a [channel](../../docs/core/channel-configuration.md#changefilter); the
   [`Type`](../../docs/core/change-filter-configuration.md#type), [`Value`](../../docs/core/change-filter-configuration.md#value) and [`AtLeast`](../../docs/core/change-filter-configuration.md#atleast) properties decide what
-  counts as a change and how often to report regardless.
+  counts as a change and how often an unchanged value is reported again. `AtLeast` re-sends a value
+  only while it stays exactly unchanged; a noisy tag moving inside the deadband is not re-sent, so
+  quantise it first (see the next point) if you need a heartbeat that tells "unchanged" from "dead".
 - **[Transformations](../../docs/sfc-data-processing-filtering.md#transformations)** — quantise before filtering, so the deadband behaves
   predictably. [`TruncAt`](../../docs/core/transformation-operator-configuration.md#truncat) or [`Round`](../../docs/core/transformation-operator-configuration.md#round) on a
   [channel](../../docs/core/channel-configuration.md#transformation) is usually enough.
@@ -454,7 +545,8 @@ rewritten on every commit.
 
 The tables are ordinary Iceberg. They are readable from
 [Amazon Athena](https://aws.amazon.com/athena/), Amazon Redshift, Amazon EMR and Apache Spark, and
-from DuckDB on your laptop:
+from DuckDB on your laptop. Replace the region and `111122223333` in the ARN with your own; the
+`BUCKET_ARN` from the check above has the right value:
 
 ```sql
 INSTALL aws; INSTALL httpfs; INSTALL avro; INSTALL iceberg;
@@ -483,7 +575,7 @@ Why it is worth deploying rather than just reading:
   work too.
 - **It closes the loop on the tuning decisions.** Drill-down is server-side: zooming re-queries the
   visible window at a finer bucket width, so you can go from a day of history down to individual
-  250 ms samples against the same table. That is where a bad partition choice becomes obvious.
+  50 ms samples against the same table. That is where a bad partition choice becomes obvious.
 - **It is honest about downsampled data.** Every line carries a min/max band per bucket, so an
   averaged view still shows the excursions — which for machine data is usually the part you care
   about.
@@ -499,26 +591,54 @@ Why it is worth deploying rather than just reading:
   and the API are served from one distribution, so they are same-origin.
 - **No data is copied and there is no per-GB scan charge** — the function reads Iceberg in place.
 
-The table bucket name is chosen in the UI, so one deployment can explore several pipelines.
+The table bucket is chosen in the UI, from the buckets the deployment may read (`tableBucketNames`, see
+its [configuration](./cdk/README.md#configuration)), so one deployment can explore several pipelines. The
+[PLC simulator example](../uberjar-plc-sim-s3tables/README.md) writes `sfc.plc_signals` to the same
+bucket; pick that table in the same app.
 
 Deployment, configuration and teardown: [`cdk/README.md`](./cdk/README.md).
 
 ## Clean up
 
-Stop `run-inprocess.sh` with Ctrl-C. That is a graceful shutdown, which flushes whatever is still buffered — a
-hard kill loses it. Then, if you deployed the query app, `npx cdk destroy` in `cdk/`.
+Stop the pipeline with Ctrl-C (on Windows, also answer `Y` to `Terminate batch job (Y/N)?`). SFC does
+not flush the target when it stops, so the records buffered since the last flush, at most about five
+seconds of data with the shipped settings, are not written. Then, if you deployed the query app,
+`npx cdk destroy` in `cdk/`.
 
-The table bucket belongs to neither half, and it refuses deletion while it still holds tables:
+The table bucket belongs to neither half, and it refuses deletion while it still holds tables. Delete
+every table in the `sfc` namespace — `sim`, and `plc_signals` if you also ran the
+[PLC simulator example](../uberjar-plc-sim-s3tables/README.md) — then the namespace and the bucket:
+
+**Linux / macOS**
 
 ```shell
 ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
 BUCKET_ARN="arn:aws:s3tables:${AWS_REGION:-us-west-2}:${ACCOUNT}:bucket/sfc-industrial-data-bucket"
-aws s3tables delete-table --table-bucket-arn "$BUCKET_ARN" --namespace sfc --name sim
+for t in $(aws s3tables list-tables --table-bucket-arn "$BUCKET_ARN" --namespace sfc --query "tables[].name" --output text); do
+  aws s3tables delete-table --table-bucket-arn "$BUCKET_ARN" --namespace sfc --name "$t"
+done
 aws s3tables delete-namespace --table-bucket-arn "$BUCKET_ARN" --namespace sfc
 aws s3tables delete-table-bucket --table-bucket-arn "$BUCKET_ARN"
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$region = if ($env:AWS_REGION) { $env:AWS_REGION } else { "us-west-2" }
+$ACCOUNT = aws sts get-caller-identity --query Account --output text
+$BUCKET_ARN = "arn:aws:s3tables:${region}:${ACCOUNT}:bucket/sfc-industrial-data-bucket"
+$tables = aws s3tables list-tables --table-bucket-arn $BUCKET_ARN --namespace sfc --query "tables[].name" --output text
+foreach ($t in ("$tables" -split "\s+" | Where-Object { $_ })) {
+    aws s3tables delete-table --table-bucket-arn $BUCKET_ARN --namespace sfc --name $t
+}
+aws s3tables delete-namespace --table-bucket-arn $BUCKET_ARN --namespace sfc
+aws s3tables delete-table-bucket --table-bucket-arn $BUCKET_ARN
 ```
 
 Leaving the bucket in place keeps costing money: per-object monitoring and maintenance are billed
 whether or not anything reads the table.
 
-[Examples](../../docs/examples/README.md)
+The run scripts keep the bundles they downloaded in `sfc-to-s3tables/modules` and
+`sfc-to-s3tables/uberjar`; delete those two directories to free the disk space.
+
+Docs used: [Simulator adapter](../../docs/adapters/simulator.md) · [AWS S3 Tables target](../../docs/targets/aws-s3-tables.md) · [Debug target](../../docs/targets/debug.md) · [In-process mode](../../docs/sfc-deployment.md#in-process) · [Uberjar mode](../../docs/sfc-deployment.md#uberjar) · [All examples](../../docs/examples/README.md)

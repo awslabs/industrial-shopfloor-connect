@@ -2,9 +2,11 @@
 
 [SFC Configuration](./sfc-configuration.md) > [AwsIotCredentialProviderClientConfiguration](./sfc-configuration.md#awsiotcredentialproviderclients)
 
-An AWS IoT Credentials Provider Client configuration is used  to obtain temporary credentials used when AWS service API calls using X.509 certificates. When used by AWS service targets, the name of the configuration is specified as the value for the CredentialProviderClient in the configuration for that target. If  AWS IoT  Greengrass  is deployed on the system,  alternatively this [configuration](https://docs.aws.amazon.com/greengrass/v2/developerguide/device-auth.html) can be referenced even when SFC is not deployed as a Greengrass component.
+An AWS IoT Credentials Provider Client configuration is used  to obtain temporary credentials used when AWS service API calls using X.509 certificates. AWS service targets, the [SecretsManager](./secrets-manager-configuration.md) section and the `CloudWatch` section of the [AWS CloudWatch metrics writer](../metrics/aws-cloudwatch.md) refer to a client by its name in their CredentialProviderClient property, e.g. `"CredentialProviderClient": "AwsIotClient"`. If  AWS IoT  Greengrass  is deployed on the system,  alternatively this [configuration](https://docs.aws.amazon.com/greengrass/v2/developerguide/device-auth.html) can be referenced even when SFC is not deployed as a Greengrass component.
 
 For more info see [Session credentials for targets accessing AWS Service](../sfc-aws-service-credentials.md)
+
+**Examples:** [in-process-slmp-s3](../../examples/in-process-slmp-s3/README.md) defines its client in [credential-providers.json](../../examples/in-process-slmp-s3/credential-providers.json) · [greengrass-in-process](../../examples/greengrass-in-process/README.md) and [greengrass-ipc](../../examples/greengrass-ipc/README.md) use [GreenGrassDeploymentPath](#greengrassdeploymentpath) · all: [examples catalog](../examples/README.md)
 
 - [Schema](#schema)
 - [Examples](#examples)
@@ -12,14 +14,14 @@ For more info see [Session credentials for targets accessing AWS Service](../sfc
 
 **Properties:**
 - [CertificateFile](#certificatefile)
-- [CertificatesByFileReference](#certificatesbyfilereference)
+- [CertificatesAndKeysByFileReference](#certificatesandkeysbyfilereference)
 - [ExpiryClockSkewSeconds](#expiryclockskewseconds)
 - [GreenGrassDeploymentPath](#greengrassdeploymentpath)
 - [IotCredentialEndpoint](#iotcredentialendpoint)
 - [PrivateKeyFile](#privatekeyfile)
 - [Proxy](#proxy)
 - [RoleAlias](#rolealias)
-- [RootCA](#rootca)
+- [RootCa](#rootca)
 - [SkipCredentialsExpiryCheck](#skipcredentialsexpirycheck)
 - [ThingName](#thingname)
 
@@ -29,9 +31,11 @@ The CertificateFile property specifies the file system path to the X.509 device 
 
 **Type**: String
 
+Required unless [GreenGrassDeploymentPath](#greengrassdeploymentpath) is set.
+
 ---
-### CertificatesByFileReference
-The CertificatesByFileReference property controls how certificates and keys are passed to SFC components running as IPC (Inter-Process Communication) services. When true, files are referenced by their filenames, allowing certificates to exist on a different system than where the service runs. When false, the actual certificate and key contents are passed directly. This enables flexible credential management across distributed systems.
+### CertificatesAndKeysByFileReference
+The CertificatesAndKeysByFileReference property controls how certificates and keys are passed to SFC components running as IPC (Inter-Process Communication) services. When true, only the file paths are sent to IPC services, which read the files themselves, so the files must exist at those paths on the host running the service (the SFC core also checks that the paths exist). The paths are sent in the format of the core's OS, so a core on Windows sends backslash paths that a Linux or macOS service cannot open. When false (default), the core reads the files and sends their content.
 
 **Type**: Boolean
 
@@ -47,9 +51,9 @@ Default = 300 seconds
 
 ---
 ### GreenGrassDeploymentPath
-The GreengrassDeploymentPath property specifies the root directory path of an AWS IoT Greengrass V2 deployment. When set, the credential provider will read configuration settings ( [IotCredentialEndpoint](#iotcredentialendpoint), [RoleAlias](#rolealias), [ThingName](#thingname), [CertificateFile](#certificatefile), [PrivateKeyFile](#privatekeyfile), [RootCA](#rootca), and [Proxy](#proxy))from the Greengrass configuration file. Individual settings specified elsewhere will override those from the Greengrass configuration.
+The GreenGrassDeploymentPath property specifies the root directory path of an AWS IoT Greengrass V2 deployment. When set, the credential provider will read configuration settings ( [IotCredentialEndpoint](#iotcredentialendpoint), [RoleAlias](#rolealias), [ThingName](#thingname), [CertificateFile](#certificatefile), [PrivateKeyFile](#privatekeyfile), [RootCa](#rootca), and [Proxy](#proxy)) from the Greengrass configuration file. Individual settings specified elsewhere will override those from the Greengrass configuration.
 
-The typical root directory for Greengrass 2 deployment is /greengrass/v2. The process running the core or target must have access to the file effectiveConfig.yaml in subdirectory config. Note that these directories and files have restricted access.
+The typical root directory for Greengrass 2 deployment is /greengrass/v2 (Windows: `C:\greengrass\v2`, written as `"C:/greengrass/v2"` in JSON). The process running the core or target must have access to the file effectiveConfig.yaml in subdirectory config. Note that these directories and files have restricted access.
 
 Note: This configuration can be used even when SFC is not deployed as a Greengrass component.
 
@@ -61,18 +65,22 @@ Endpoint for credential provider service
 
 **Type**: String
 
-Can be obtained by CLI command
+Required unless [GreenGrassDeploymentPath](#greengrassdeploymentpath) is set.
 
-```console
-aws iot describe-endpoint --endpoint-type iot:CredentialProvider
+Can be obtained with this AWS CLI command (the same in PowerShell):
+
+```shell
+aws iot describe-endpoint --endpoint-type iot:CredentialProvider --query endpointAddress --output text
 ```
-Format is `your_aws_account_specific_prefix`.credentials.`region`.amazonaws.com
+Format is `<prefix>.credentials.iot.<region>.amazonaws.com`
 
 ---
 ### PrivateKeyFile
 The PrivateKeyFile property specifies the file system path to the private key file associated with the device certificate. This private key is used in conjunction with the device certificate for authentication with AWS IoT Core services and must be kept secure. The private key file must correspond to the public key in the device certificate.
 
 **Type**: String
+
+Required unless [GreenGrassDeploymentPath](#greengrassdeploymentpath) is set.
 
 ---
 ### Proxy
@@ -82,17 +90,23 @@ Proxy configuration if the client is using a proxy server to access the internet
 
 Optional
 
+Note: the proxy is currently not applied to the credentials-provider request.
+
 ---
 ### RoleAlias
 The RoleAlias property specifies an alias that points to an IAM role. When requesting temporary credentials, this alias must be included to indicate which IAM role should be assumed. The AWS IoT credentials provider uses this role alias to obtain temporary security tokens from AWS Security Token Service (STS) that grant the permissions defined in the referenced IAM role.
 
 **Type**: String
 
+Required unless [GreenGrassDeploymentPath](#greengrassdeploymentpath) is set.
+
 ---
-### RootCA
-The RootCA property specifies the file system path to the root Certificate Authority (CA) certificate file. This certificate is used to verify the authenticity of the AWS IoT Core endpoint during TLS handshake. The root CA certificate establishes the chain of trust for secure communications with AWS IoT services
+### RootCa
+The RootCa property specifies the file system path to the root Certificate Authority (CA) certificate file. This certificate is used to verify the authenticity of the AWS IoT Core endpoint during TLS handshake. The root CA certificate establishes the chain of trust for secure communications with AWS IoT services
 
 **Type**: String
+
+Required unless [GreenGrassDeploymentPath](#greengrassdeploymentpath) is set.
 
 ---
 ### SkipCredentialsExpiryCheck
@@ -107,6 +121,8 @@ Default = false
 The ThingName property specifies the AWS IoT thing name associated with the device certificate. This is the unique identifier for the device in AWS IoT Core that corresponds to the device certificate being used for authentication. The thing name is used to identify the device when requesting credentials from the AWS IoT credentials provider service.
 
 **Type**: String
+
+Required unless [GreenGrassDeploymentPath](#greengrassdeploymentpath) is set.
 
 [^top](#awsiotcredentialproviderclientconfiguration)
 
@@ -139,19 +155,16 @@ The ThingName property specifies the AWS IoT thing name associated with the devi
       "pattern": "^([A-Za-z]:)?[\\/\\\\](?:[^\\/\\\\\\n\\r\\t\\f\\v]+[\\/\\\\])*[^\\/\\\\\\n\\r\\t\\f\\v]*$",
       "description": "Path to private key file. Can be either Windows style (C:\\path\\to\\key.pem) or Unix style (/path/to/key.pem)"
     },
-    "RootCaFile": {
+    "RootCa": {
       "type": "string",
       "pattern": "^([A-Za-z]:)?[\\/\\\\](?:[^\\/\\\\\\n\\r\\t\\f\\v]+[\\/\\\\])*[^\\/\\\\\\n\\r\\t\\f\\v]*$",
-      "description": "Optional path to root CA file. If specified, must be either Windows style (C:\\path\\to\\root-ca.pem) or Unix style (/path/to/root-ca.pem)"
+      "description": "Path to root CA file. Can be either Windows style (C:\\path\\to\\root-ca.pem) or Unix style (/path/to/root-ca.pem)"
     },
     "IotCredentialEndpoint": {
       "type": "string",
       "minLength": 1,
       "pattern": "^[a-z0-9]+\\.credentials\\.iot\\.[a-z]{2}-[a-z]+-\\d{1}\\.amazonaws\\.com$",
       "description": "AWS IoT endpoint"
-    },
-    "Region": {
-      "$ref": "#/definitions/AwsRegion"
     },
     "SkipCredentialsExpiryCheck": {
       "type": "boolean",
@@ -164,8 +177,7 @@ The ThingName property specifies the AWS IoT thing name associated with the devi
     },
     "GreenGrassDeploymentPath": {
       "type": "string",
-      "pattern": "^(/[^/]+)+$|^/$",
-      "description": "Optional GreenGrass deployment path, must be a valid Unix-style path"
+      "description": "Optional GreenGrass deployment path"
     },
     "Proxy": {
       "$ref": "#/definitions/ClientProxy",
@@ -189,8 +201,8 @@ The ThingName property specifies the AWS IoT thing name associated with the devi
           "RoleAlias",
           "CertificateFile",
           "PrivateKeyFile",
-          "RootCaFile",
-          "Endpoint"
+          "RootCa",
+          "IotCredentialEndpoint"
         ]
       }
     }
@@ -209,45 +221,48 @@ Configuration specifying all required properties:
 ```json
 {
   "ThingName": "MyIoTThing",
-  "RoleAlias": "GreengrassV2TokenExchangeRole",
+  "RoleAlias": "GreengrassV2TokenExchangeRoleAlias",
   "CertificateFile": "/greengrass/v2/device.pem.crt",
   "PrivateKeyFile": "/greengrass/v2/private.pem.key",
-  "RootCaFile": "/greengrass/v2/AmazonRootCA1.pem",
-  "IotCredentialEndpoint": "c1alcfbzvfkjpi.credentials.iot.eu-west-1.amazonaws.com",
-  "Region": "eu-west-1"
+  "RootCa": "/greengrass/v2/AmazonRootCA1.pem",
+  "IotCredentialEndpoint": "c1alcfbzvfkjpi.credentials.iot.eu-west-1.amazonaws.com"
 }
 ```
+
+On Windows write these paths with forward slashes, e.g. `"C:/greengrass/v2/device.pem.crt"` (see the proxy example below); a single backslash is a JSON escape.
 
 Configuration referring to a GreenGrass deployment configuration:
 
 ```json
-"AwsIotCredentialProviderClient": {
-  "GreenGrassDeploymentPath": "/greengrass/v2",
-  "Region": "eu-west-1"
+{
+  "AwsIotCredentialProviderClients": {
+    "AwsIotClient": {
+      "GreenGrassDeploymentPath": "/greengrass/v2"
+    }
+  }
 }
 ```
 
+On Windows: `"GreenGrassDeploymentPath": "C:/greengrass/v2"`.
 
 
-Configuration using a proxy for internet access:
+
+Configuration using a proxy for internet access (see the note under [Proxy](#proxy)):
 
 ```json
 {
   "ThingName": "MyIoTThing",
-  "RoleAlias": "GreengrassV2TokenExchangeRole",
-  "CertificateFile": "C:\\greengrass\\v2\\device.pem.crt",
-  "PrivateKeyFile": "C:\\greengrass\\v2\\private.pem.key",
-  "RootCaFile": "C:\\greengrass\\v2\\AmazonRootCA1.pem",
+  "RoleAlias": "GreengrassV2TokenExchangeRoleAlias",
+  "CertificateFile": "C:/greengrass/v2/device.pem.crt",
+  "PrivateKeyFile": "C:/greengrass/v2/private.pem.key",
+  "RootCa": "C:/greengrass/v2/AmazonRootCA1.pem",
   "IotCredentialEndpoint": "c1alcfbzvfkjpi.credentials.iot.eu-west-1.amazonaws.com",
-  "Region": "eu-west-1",
   "Proxy": {
-    "ProxyHost": "proxy.example.com",
-    "ProxyPort": 8080,
-    "Username": "proxyuser",
-    "Password": "proxypass",
-    "NonProxyAddresses": "localhost,127.0.0.1,internal.example.com"
+    "ProxyUrl": "http://proxy.example.com:8080",
+    "ProxyUsername": "proxyuser",
+    "ProxyPassword": "${PROXY_PASSWORD}",
+    "NoProxyAddresses": "localhost,127.0.0.1,internal.example.com"
   }
-
 }
 ```
 

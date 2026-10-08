@@ -6,7 +6,7 @@ SFC `IPC` setup in Greengrass V2
   - [Introduction](#introduction)
   - [Setup](#setup)
     - [Step 1: Preparing the Working Directories](#step-1-preparing-the-working-directories)
-    - [Step 2: Downloading the SFC modules](#2step-downloading-the-sfc-modules)
+    - [Step 2: Downloading the SFC modules](#step-2-downloading-the-sfc-modules)
     - [Step 3: Creating Greengrass recipes](#step-3-creating-greengrass-recipes)
     - [Step 4: Local Deployment](#step-4-local-deployment)
     - [Step 5: Testing the deployment](#step-5-testing-the-deployment)
@@ -22,16 +22,28 @@ SFC `IPC` setup in Greengrass V2
 >**Important!** <br> If the SFC Greengrass components are already installed on your device, then 
 you should start with [Step 3](#step-3-creating-greengrass-recipes) and *only* create a custom recipe and custom 
 sfc-config for `sfc-main`. You can query the AWS IoT Greengrass API and fetch the current recipe for `sfc-main` using:
-```sh
+
+**Linux / macOS**
+
+```shell
 aws greengrassv2 get-component \
---arn arn:aws:greengrass:<your-region>:<your-aws-account-id>:components:com.amazon.sfc.sfc-main:versions:<your-Version> /--output text \
+--arn arn:aws:greengrass:<your-region>:<your-aws-account-id>:components:com.amazon.sfc.sfc-main:versions:<your-Version> --output text \
 --recipe-output-format JSON  \
 --query recipe | base64 --decode #| jq
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$recipe = aws greengrassv2 get-component `
+  --arn "arn:aws:greengrass:<your-region>:<your-aws-account-id>:components:com.amazon.sfc.sfc-main:versions:<your-Version>" `
+  --recipe-output-format JSON --query recipe --output text
+[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($recipe))
 ```
 > use the JSON returned from above command for `sfc-main` (keep only the URI entry in the Artifacts section). 
 
 
-1. We assume that your Greengrass environment is Linux based as we use bash scripts and the components recipes will target Linux as operating system. 
+1. We assume that your Greengrass environment is Linux based as we use bash scripts and the components recipes will target Linux as operating system. On a Windows core device use the [Greengrass uberjar](../greengrass-uberjar/README.md) example instead.
 
 2. We assume that you have an embedded device or AWS Cloud9 environment already setup with the Greengrass-CLI similar to the chapter <a href="https://catalog.us-east-1.prod.workshops.aws/workshops/5ecc2416-f956-4273-b729-d0d30556013f/en-US/chapter3-greengrasssetup">3.Greengrass environment </a> of the AWS IoT Greengrass V2 workshop.
 3. You have a Greengrass environment and a token exchange role assigned to it.
@@ -77,11 +89,11 @@ aws greengrassv2 get-component \
 ```
 >Note! <br> This permission set is too open for production and should be reduced. It is used here only for simplicity!
 
-5. Furthermore, we assume you have the ability to run the following docker container for testing the setup in your Greengrass environment:
+5. Furthermore, we assume you have Docker in your Greengrass environment to run the OPC UA test server, which is started in [Step 5](#step-5-testing-the-deployment). It can also run on another host that the core device reaches; then set `Address` of `OPCUA-SERVER-1` to `opc.tcp://<that-host>`.
 
-```sh
-docker run -d -p 4840:4840 ghcr.io/umati/sample-server:main
-```
+6. Java 17 or newer as the `java` that the components run with; in IPC mode every component starts its own JVM. SFC is built for Java 17, so an older `java` fails with `UnsupportedClassVersionError`. The recipes set `RequiresPrivilege`, so check it with `sudo java -version`.
+
+7. The AWS CLI on the device, with credentials that may upload to S3 and create Greengrass components ([Step 7](#step-7-publish-the-components)), and two S3 buckets: one in your Greengrass region for the component artifacts and recipes, and one for the OPC UA data. Create both before you start; the S3 target does not create buckets.
 
 # Introduction
 
@@ -93,72 +105,102 @@ The complete setup will create components for the SFC modules:
 - sfc-main
 - debug-target
 - aws-s3-target
-- aws-iot-mqtt-target
+- mqtt-target
 - opcua
 
 **The setup will configure all modules to be started in SFC's [`IPC mode`](../../docs/sfc-running-adapters.md#running-the-jvm-protocol-adapters-as-an-ipc-service)**. That means that all SFC modules run outside the sfc-main process on a single host.
 
 >Note! <br>
-If you have previously installed the modules in SFC's in -process mode you must remove first the components from IOT CORE and from your Greengrass deployment! 
+If you have previously installed the modules in SFC's in-process mode you must remove first the components from IOT CORE and from your Greengrass deployment! 
 
 
 # Setup
+
+All commands in this section run in a shell on the Linux core device (from a Windows PC, connect to it first with `ssh <user>@<core-device>`).
 
 ## Step 1: Preparing the working directories
 Log into the Greengrass environment and switch to your home directory 
 and create the working folders with the following command:
 
 ```bash
-mkdir -p ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.{sfc-main,opcua,aws-s3-target,aws-iot-mqtt-target,debug-target}/1.0.0
+mkdir -p ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.{sfc-main,opcua,aws-s3-target,mqtt-target,debug-target}/1.0.0
 
 mkdir -p ~/environment/GreengrassSFC/recipes
 ```
 You should now see the following directory structure:
 
-![Working directory structure](img/directory_structure.png "working directory structure")
+```text
+~/environment/GreengrassSFC
+├── artifacts
+│   ├── com.amazon.sfc.aws-s3-target/1.0.0
+│   ├── com.amazon.sfc.debug-target/1.0.0
+│   ├── com.amazon.sfc.mqtt-target/1.0.0
+│   ├── com.amazon.sfc.opcua/1.0.0
+│   └── com.amazon.sfc.sfc-main/1.0.0
+└── recipes
+```
 
-## 2.Step: Downloading the SFC modules
-Download the sfc modules and store them into the artifacts folder with the following command:
+## Step 2: Downloading the SFC modules
+Download the sfc modules of the latest SFC release and store them into the artifacts folder with the following command:
   
 ```bash
-PATH_TO_REPOSITORY=https://dyy8lqvmsyeqk.cloudfront.net/55b40a6/modules
+PATH_TO_REPOSITORY=https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download
 
-curl $PATH_TO_REPOSITORY/sfc-main.tar.gz -o ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.sfc-main/1.0.0/sfc-main.tar.gz
+curl -fL $PATH_TO_REPOSITORY/sfc-main.tar.gz -o ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.sfc-main/1.0.0/sfc-main.tar.gz
 
-curl $PATH_TO_REPOSITORY/debug-target.tar.gz -o ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.debug-target/1.0.0/debug-target.tar.gz
+curl -fL $PATH_TO_REPOSITORY/debug-target.tar.gz -o ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.debug-target/1.0.0/debug-target.tar.gz
 
-curl $PATH_TO_REPOSITORY/aws-iot-mqtt-target.tar.gz -o ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.aws-iot-mqtt-target/1.0.0/aws-iot-mqtt-target.tar.gz
+curl -fL $PATH_TO_REPOSITORY/mqtt-target.tar.gz -o ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.mqtt-target/1.0.0/mqtt-target.tar.gz
 
-curl $PATH_TO_REPOSITORY/aws-s3-target.tar.gz -o ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.aws-s3-target/1.0.0/aws-s3-target.tar.gz
+curl -fL $PATH_TO_REPOSITORY/aws-s3-target.tar.gz -o ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.aws-s3-target/1.0.0/aws-s3-target.tar.gz
 
-curl $PATH_TO_REPOSITORY/opcua.tar.gz -o ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.opcua/1.0.0/opcua.tar.gz
+curl -fL $PATH_TO_REPOSITORY/opcua.tar.gz -o ~/environment/GreengrassSFC/artifacts/com.amazon.sfc.opcua/1.0.0/opcua.tar.gz
 ```
 
 You should see now the following directory structure:
 
-![Working directory structure with downloaded modules](img/directory_structure1.png "working directory structure with downloaded modules")
+```text
+~/environment/GreengrassSFC
+├── artifacts
+│   ├── com.amazon.sfc.aws-s3-target/1.0.0/aws-s3-target.tar.gz
+│   ├── com.amazon.sfc.debug-target/1.0.0/debug-target.tar.gz
+│   ├── com.amazon.sfc.mqtt-target/1.0.0/mqtt-target.tar.gz
+│   ├── com.amazon.sfc.opcua/1.0.0/opcua.tar.gz
+│   └── com.amazon.sfc.sfc-main/1.0.0/sfc-main.tar.gz
+└── recipes
+```
 
 
 ## Step 3: Creating Greengrass recipes
 Now we create the recipes for the sfc modules. Execute the following command:
 
 ```sh
-touch ~/environment/GreengrassSFC/recipes/com.amazon.sfc.{sfc-main,debug-target,opcua,aws-iot-mqtt-target,aws-s3-target}-1.0.0.json
+touch ~/environment/GreengrassSFC/recipes/com.amazon.sfc.{sfc-main,debug-target,opcua,mqtt-target,aws-s3-target}-1.0.0.json
 ```
 
 You should see now the following directory structure:
 
-![Working directory structure with downloaded modules](img/directory_structure2.png "working directory structure with downloaded modules")
+```text
+~/environment/GreengrassSFC
+├── artifacts
+│   └── (the five module folders from Step 2)
+└── recipes
+    ├── com.amazon.sfc.aws-s3-target-1.0.0.json
+    ├── com.amazon.sfc.debug-target-1.0.0.json
+    ├── com.amazon.sfc.mqtt-target-1.0.0.json
+    ├── com.amazon.sfc.opcua-1.0.0.json
+    └── com.amazon.sfc.sfc-main-1.0.0.json
+```
 
 
-Now copy the following content into the file **~/environment/GreengrassSFC/recipes/com.amazon.sfc.aws-iot-mqtt-target-1.0.0.json**:
+Now copy the following content into the file **~/environment/GreengrassSFC/recipes/com.amazon.sfc.mqtt-target-1.0.0.json**:
 
 ```json
 {
    "RecipeFormatVersion": "2020-01-25",
-   "ComponentName": "com.amazon.sfc.aws-iot-mqtt-target",
+   "ComponentName": "com.amazon.sfc.mqtt-target",
    "ComponentVersion": "1.0.0",
-   "ComponentDescription": "SFC-com.amazon.sfc.aws-iot-mqtt-target adapter component",
+   "ComponentDescription": "SFC mqtt-target component",
    "ComponentPublisher": "Amazon",
    "ComponentConfiguration": {
       "DefaultConfiguration": {
@@ -175,11 +217,11 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
              
             "Install": {
                 "RequiresPrivilege": true,
-                "Script": "cd {artifacts:path} && tar -xvf aws-iot-mqtt-target.tar.gz"
+                "Script": "cd {artifacts:path} && tar -xvf mqtt-target.tar.gz"
             }, 
             "Run": {
                 "RequiresPrivilege": true,
-                "Script": "if $IPC_MODE; then {artifacts:path}/aws-iot-mqtt-target/bin/aws-iot-mqtt-target -port {configuration:/ipc_port}; fi",
+                "Script": "if $IPC_MODE; then {artifacts:path}/mqtt-target/bin/mqtt-target -port {configuration:/ipc_port}; fi",
                 "Setenv": {
                     "IPC_MODE": "{configuration:/ipc_mode}"
                 }
@@ -187,7 +229,7 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
          },
          "Artifacts":[
             {
-               "URI": "s3://[REPLACE WITH YOUR S3 BUCKET]/artifacts/com.amazon.sfc.aws-iot-mqtt-target/1.0.0/aws-iot-mqtt-target.tar.gz"
+               "URI": "s3://[REPLACE WITH YOUR S3 BUCKET]/artifacts/com.amazon.sfc.mqtt-target/1.0.0/mqtt-target.tar.gz"
             }
             
          ]
@@ -361,7 +403,7 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
       "VersionRequirement": "^1.0.0",
       "DependencyType": "HARD"
     },
-    "com.amazon.sfc.aws-iot-mqtt-target": {
+    "com.amazon.sfc.mqtt-target": {
       "VersionRequirement": "^1.0.0",
       "DependencyType": "HARD"
     }
@@ -370,7 +412,7 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
       "DefaultConfiguration": {
          "SFC_CONFIG_JSON": {
               "AWSVersion": "2022-04-02",
-              "Name": "OPCUA to S3, using in process source and targets",
+              "Name": "OPCUA to S3 and IoT Core over IPC",
               "Version": 1,
               "LogLevel": "Info",
               "ElementNames": {
@@ -381,7 +423,7 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
               "Schedules": [
                 {
                   "Name": "OpcuaToS3",
-                  "Interval": 50,
+                  "Interval": 1000,
                   "Description": "Read data of all OPCUA data types once per second and send to S3",
                   "Active": true,
                   "TimestampLevel": "Both",
@@ -421,27 +463,27 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
                     },
                     "Machine1AbsoluteErrorTime": {
                       "Name": "AbsoluteErrorTime",
-                      "NodeId": "ns=21;i=59048"
+                      "NodeId": "ns=20;i=59217"
                     },
                     "Machine1AbsoluteLength": {
                       "Name": "AbsoluteLength",
-                      "NodeId": "ns=21;i=59066"
+                      "NodeId": "ns=20;i=59235"
                     },
                     "Machine1AbsoluteMachineOffTime": {
                       "Name": "AbsoluteMachineOffTime",
-                      "NodeId": "ns=21;i=59041"
+                      "NodeId": "ns=20;i=59210"
                     },
                     "Machine1AbsoluteMachineOnTime": {
                       "Name": "AbsoluteMachineOnTime",
-                      "NodeId": "ns=21;i=59050"
+                      "NodeId": "ns=20;i=59219"
                     },
                     "Machine1AbsolutePiecesIn": {
                       "Name": "AbsolutePiecesIn",
-                      "NodeId": "ns=21;i=59068"
+                      "NodeId": "ns=20;i=59237"
                     },
                     "Machine1FeedSpeed": {
                       "Name": "FeedSpeed",
-                      "NodeId": "ns=21;i=59039"
+                      "NodeId": "ns=20;i=59208"
                     }
                   }
                 }
@@ -462,7 +504,7 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
                     "BucketName":"[REPLACE WITH YOUR S3 BUCKET FOR OPCUA DATA]",
                     "CredentialProviderClient" :"AwsIotClient",
                     
-                    "Interval": 10,
+                    "Interval": 60,
                     "BufferSize": 1,
                     "Prefix": "sfc",
                     "Compression": "NONE"
@@ -470,15 +512,15 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
                   },
                   "IOTCore": {
                     "Active": true,
-                    "TargetType": "AWS-IOT-MQTT",
-                    "TargetServer":"IOT-MQTT-TargetServer",
+                    "TargetType": "MQTT-TARGET",
+                    "TargetServer":"MqttTargetServer",
                     
-                    "Region": "[IOT CORE REGION]",
                     "TopicName":"sfc-greengrass",
-                    "Endpoint":"[AWS IOT DATA ENDPOINT]",
+                    "EndPoint":"ssl://[AWS IOT DATA ENDPOINT]",
+                    "Port": 8883,
                 
                     "Certificate": "/greengrass/v2/thingCert.crt",
-                    "Key": "/greengrass/v2/privKey.key",
+                    "PrivateKey": "/greengrass/v2/privKey.key",
                     "RootCA": "/greengrass/v2/rootCA.pem"
                   }
                 
@@ -493,7 +535,7 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
                     "Address": "localhost",
                     "Port":"50003"
                   },
-                  "IOT-MQTT-TargetServer":{
+                  "MqttTargetServer":{
                     "Address": "localhost",
                     "Port":"50004"
                   }
@@ -525,10 +567,9 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
                 "AwsIotClient": {
                   "#ThingName": "[IOT Thing Name]",
                   "#IotCredentialEndpoint": "[IOT CREDENTIAL ENDPOINT]",
-                  "RoleAlias": "GreengrassV2TokenExchangeRoleAlias",
-                  "#Certificate": "/greengrass/v2/thingCert.crt",
-                  "#PrivateKey": "/greengrass/v2/privKey.key",
-                  "#RootCA": "/greengrass/v2/rootCA.pem",
+                  "#CertificateFile": "/greengrass/v2/thingCert.crt",
+                  "#PrivateKeyFile": "/greengrass/v2/privKey.key",
+                  "#RootCa": "/greengrass/v2/rootCA.pem",
                   "SkipCredentialsExpiryCheck": false,
                   "GreenGrassDeploymentPath": "/greengrass/v2"
                 }
@@ -549,9 +590,9 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
             }, 
             "Run": {
                 "RequiresPrivilege": true,
-                "Script": "printf '{configuration:/SFC_CONFIG_JSON}' > {artifacts:path}/conf.json && {artifacts:path}/sfc-main/bin/sfc-main -config {artifacts:path}/conf.json",
+                "Script": "{artifacts:path}/sfc-main/bin/sfc-main",
                 "Setenv": {
-                    "SFC_DEPLOYMENT_DIR": "{artifacts:path}"
+                    "SFC_CONFIG": "{configuration:/SFC_CONFIG_JSON}"
                 }
             }
          },
@@ -568,14 +609,11 @@ Now copy the following content into the file **~/environment/GreengrassSFC/recip
 
 ```
 >Note! <br>
- 1. Make sure that after copying the script into the file that the line with the **"Script": "printf '{configuration:/SFC_CONFIG_JSON}' > {artifacts:path}/conf.json && {artifacts:path}/sfc-main/bin/sfc-main -config {artifacts:path}/conf.json""** has the ticks (') and not the less than character (**<**) as some markup viewer replace the (**'**) with (**<**).  
- 2. Replace the placeholder ***[REPLACE WITH YOUR S3 BUCKET]*** with an S3 bucket name where you want later to store your Greengrass components artifacts and recepes!
+ 1. Replace the placeholder ***[REPLACE WITH YOUR S3 BUCKET]*** with an S3 bucket name where you want later to store your Greengrass components artifacts and recepes!
  
- 3. Replace the placeholder ***[REPLACE WITH YOUR S3 BUCKET FOR OPCUA DATA]*** with an S3 bucket name and ***[AWS BUCKET REGION]*** with the AWS region where you want to store the data collected from the OPCUA server!
+ 2. Replace the placeholder ***[REPLACE WITH YOUR S3 BUCKET FOR OPCUA DATA]*** with an S3 bucket name and ***[AWS BUCKET REGION]*** with the AWS region where you want to store the data collected from the OPCUA server!
 
- 4. Replace the ***[AWS IOT CORE REGION]*** with the AWS region where you are connecting your Greengrass environment.
-
- 5. Replace ***[AWS IOT DATA ENDPOINT]*** with the value you get with the following command:
+ 3. Replace ***[AWS IOT DATA ENDPOINT]*** with the value you get with the following command, and keep the `ssl://` in front of it:
  ```
  aws iot describe-endpoint --region [YOUR AWS REGION] --endpoint-type iot:Data-ATS --output text
  ```
@@ -583,9 +621,16 @@ Alternatively you can find the device data endpoint name in the AWS IOT Core web
 
 ![](img/IOTCORE_SETTINGS.png "AWS IoT Core web console")
 
+The MQTT target `IOTCore` connects to AWS IoT Core with the certificate and key of the core device in `/greengrass/v2`, so the device's AWS IoT policy must allow `iot:Connect` (the target uses a client ID that starts with `MqttTargetWriter_IOTCore_`) and `iot:Publish`.
 
 >Notice: <br>
 Please pay attention to the section ComponentDependencies in the JSON document. There we define which components are needed for com.amazon.sfc.sfc-main to be able to run. It is important to remember to add dependencies when you want to use other SFC modules in future!
+
+>Notice: <br>
+`sfc-main` reads its configuration from the `SFC_CONFIG` environment variable that the `Run` lifecycle sets.
+
+>Note! <br>
+The IPC recipes on this page run only on Linux core devices. On a Windows core device use the [uberjar component](../greengrass-uberjar/README.md) instead, with the configuration of the [in-process lab](../greengrass-in-process/README.md#step-3-creating-greengrass-recipes) as its `SFC_CONFIG` without the `JarFiles` entries, and write the Windows Greengrass root with forward slashes: `"GreenGrassDeploymentPath": "C:/greengrass/v2"`, and `"C:/greengrass/v2/thingCert.crt"`, `"C:/greengrass/v2/privKey.key"` and `"C:/greengrass/v2/rootCA.pem"` for the MQTT target.
 
 ## Step 4: Local Deployment
  Here we deploy locally and start the `com.amazon.sfc.sfc-main` component. As we have defined the other modules as dependencies Greengrass will automatically try to deploy them.
@@ -622,19 +667,18 @@ Component Name: com.amazon.sfc.opcua
     Version: 1.0.0
     State: RUNNING
     Configuration: {"ipc_mode":"true","ipc_port":"50002"}
-Component Name: com.amazon.sfc.aws-iot-mqtt-target
+Component Name: com.amazon.sfc.mqtt-target
     Version: 1.0.0
     State: RUNNING
     Configuration: {"ipc_mode":"true","ipc_port":"50004"}
 Component Name: com.amazon.sfc.sfc-main
     Version: 1.0.0
     State: RUNNING
-    Configuration: {"SFC_CONFIG_JSON":{"AdapterTypes":{"OPCUA": ....
+    Configuration: {"SFC_CONFIG_JSON":{ ....
 ```
 
 >Notice: <br>
-Because we use [`in process model`](../../docs/sfc-running-adapters.md#running-protocol-adapters-in-process) the components on which sfc-main depends only unpack the modules during deployment and do not start a process. So they report State: *Finished*. <br>
-The component sfc-main is the only component which actually start a process and keeps running.
+Because we use the [IPC model](../../docs/sfc-running-targets.md#running-targets-as-an-ipc-service), every module component starts its own service process and reports State: *RUNNING*; sfc-main connects to them on ports 50001-50004.
 
 >Note! <br>
 If you do not find this lines then you have to analyze the log files which can be found in directory **/greengrass/v2/logs**.
@@ -647,8 +691,8 @@ sudo /greengrass/v2/bin/greengrass-cli deployment create --remove "com.amazon.sf
 ```
 
 >Note! <br>
-If you had not started the OPCUA test docker container before deploying the sfc-main component you will see in the **/greengrass/v2/logs/com.amazon.sfc.sfc-main.log** the following error code which you can ignore: <br>
-*ERROR - Error creating client for source "OPCUA-SOURCE" at  opc.tcp://localhost:4840//, Connection refused: localhost/127.0.0.1:4840*. 
+If you had not started the OPCUA test docker container before deploying the sfc-main component you will see in the **/greengrass/v2/logs/com.amazon.sfc.opcua.log** (in IPC mode the OPC UA adapter runs in that component) the following error code which you can ignore: <br>
+*ERROR - Error creating client for for source "OPCUA-SOURCE" at  opc.tcp://localhost:4840//, Connection refused: localhost/127.0.0.1:4840*. 
 
 
 ## Step 5: Testing the deployment
@@ -662,9 +706,7 @@ docker run -d -p 4840:4840 ghcr.io/umati/sample-server:main
 After starting the docker container with the test OPCUA server use the following command to look into the traces of the **com.amazon.sfc.debug-target** component to see the values read from OPCUA server:
 
 ```bash
-sudo su
-cd /greengrass/v2/logs
-more  com.amazon.sfc.debug-target.log | grep -e Absolute* -e FeedSpeed    -A3
+sudo grep -A3 -e Absolute -e FeedSpeed /greengrass/v2/logs/com.amazon.sfc.debug-target.log
 ``` 
 
 you should see the similar lines written by the debug-target module:
@@ -697,7 +739,7 @@ you should see the similar lines written by the debug-target module:
 ```
 
 - Now we want to see if the data is written also to the S3 bucket. <br>For that open the AWS S3 web console and look into the S3 bucket with the name you entered for ***[REPLACE WITH YOUR S3 BUCKET FOR OPCUA DATA]*** in the **com.amazon.sfc.sfc-main-1.0.0.json** file.<br>
-There you should see the folder with the name **sfc**. In this folder the data is written by the **aws-s3-target** module.
+There you should see the folder with the name **sfc**. In this folder the data is written by the **aws-s3-target** module (with `"Interval": 60` it writes once a minute).
 
 - Now we check if the data is also written to IOT Core MQTT topic: **sfc-greengrass**. <br>
 For that open the **IOT Core web console** and select **MQTT test client**.
@@ -745,7 +787,7 @@ aws greengrassv2 create-component-version  --inline-recipe fileb://com.amazon.sf
 
 aws greengrassv2 create-component-version  --inline-recipe fileb://com.amazon.sfc.aws-s3-target-1.0.0.json --region $AWS_DEFAULT_REGION
 
-aws greengrassv2 create-component-version  --inline-recipe fileb://com.amazon.sfc.aws-iot-mqtt-target-1.0.0.json --region $AWS_DEFAULT_REGION
+aws greengrassv2 create-component-version  --inline-recipe fileb://com.amazon.sfc.mqtt-target-1.0.0.json --region $AWS_DEFAULT_REGION
 
 aws greengrassv2 create-component-version  --inline-recipe fileb://com.amazon.sfc.opcua-1.0.0.json --region $AWS_DEFAULT_REGION
 ```
@@ -755,7 +797,7 @@ You should see for each component a similar output as in:
 ```json
 {
     "arn": "arn:aws:greengrass:eu-central-1:xxxxx:components:com.amazon.sfc.sfc-main:versions:1.0.0",
-    "componentName": "com.amazon.sfc.sfc-maint",
+    "componentName": "com.amazon.sfc.sfc-main",
     "componentVersion": "1.0.0",
     "creationTimestamp": "2023-10-27T09:46:02.349000+00:00",
     "status": {
@@ -770,6 +812,8 @@ You should see for each component a similar output as in:
 You also should see in the AWS IoT Core web console under **Manage/Greengrass devices/Components** all components under the tab **"My Components"**:
 
 ![](img/IOTCORE_greengrass_components.png  "Registered components in AWS Iot web console")
+
+(The console screenshots on this page are from an earlier version of this lab: where they show `com.amazon.sfc.aws-iot-mqtt-target`, your console lists `com.amazon.sfc.mqtt-target`.)
 
  
 
@@ -812,7 +856,7 @@ There you should see all modules on your device:
 
 >Notice: <br>
 Although we deployed only **com.amazon.sfc.sfc-main** component all components where deployed to fulfill the dependencies!
-Because we used SFC's `IPC` model all components which deploy the dependencies are in the state *RUNNING* and  **`com.amazonsfc.sfc-main`** is in the state *Running* and dependency type *Root*.
+Because we used SFC's `IPC` model all components which deploy the dependencies are in the state *RUNNING* and  **`com.amazon.sfc.sfc-main`** is in the state *Running* and dependency type *Root*.
 
 
 # Removing components from deployment and deleting components
@@ -866,7 +910,9 @@ To delete the components from IOT Core do the following steps:
 4. Repeat the steps 1 to 3 for all the other modules:
 - com.amazon.sfc.opcua
 - com.amazon.sfc.aws-s3-target
-- com.amazon.sfc.aws-iot-mqtt-target
-- com-amazon.svf.debug-target
+- com.amazon.sfc.mqtt-target
+- com.amazon.sfc.debug-target
 
-[Examples](../../docs/examples/README.md)
+5. Remove what else the lab left behind: the OPC UA test container (find its ID with `docker ps`, then `docker rm -f <id>`), the **sfc** folder in your OPC UA data bucket, the uploaded `artifacts/com.amazon.sfc.*` and `recipes/com.amazon.sfc.*` objects in your component bucket, and any bucket you created only for this lab.
+
+Docs used: [OPC UA adapter](../../docs/adapters/opcua.md) · [AWS S3 target](../../docs/targets/aws-s3.md) · [MQTT target](../../docs/targets/mqtt.md) · [Debug target](../../docs/targets/debug.md) · [AWS IoT credential provider](../../docs/core/aws-iot-credential-provider-configuration.md#greengrassdeploymentpath) · [IPC mode](../../docs/sfc-deployment.md#ipc) · [Server configuration](../../docs/core/server-configuration.md) · [All examples](../../docs/examples/README.md)

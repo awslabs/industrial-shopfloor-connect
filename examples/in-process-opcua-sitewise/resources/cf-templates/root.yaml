@@ -8,19 +8,21 @@ Description: >
 
 
 Outputs:
-  nestedPlcStackName:
-    Description: The name of the nested PLC stack
-    Value: !GetAtt nestedPlcStack.Outputs.PlcStackName
-    Export:
-      Name: nestedPlcStackName
+  PlcPrivateIP:
+    Description: The private IP of the PLC instance that runs the OPC-UA server
+    Value: !GetAtt nestedPlcStack.Outputs.PlcPrivateIP
 
-  nestedSfcComponentStackName:
-    Description: The name of the nested SFC Component stack
-    Value: !GetAtt nestedSfcComponentStack.Outputs.SfcComponentStackName
-    Export:
-      Name: SfcComponentStackName
+  Cloud9URL:
+    Description: The Cloud9 environment of the SFC Component
+    Value: !GetAtt nestedSfcComponentStack.Outputs.Cloud9URL
 
 Parameters:
+  TemplateBucketUrl:
+    Description: "URL of the S3 bucket that holds the uploaded templates: the root.yaml URL without /root.yaml, e.g. https://my-bucket.s3.eu-central-1.amazonaws.com"
+    Type: String
+    AllowedPattern: '^https://\S+[^/]$'
+    ConstraintDescription: must start with https:// and must not end with a slash
+
   EnvironmentName:
     Description: An environment name that is prefixed to resource names
     Type: String
@@ -45,7 +47,7 @@ Resources:
   nestedBaseInfrastructureStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://sfc-cloudformation-20240123.s3.eu-central-1.amazonaws.com/nested-base-infrastructure.yaml
+      TemplateURL: !Sub '${TemplateBucketUrl}/nested-base-infrastructure.yaml'
       Parameters:
         EnvironmentName: !Ref EnvironmentName
         VpcCIDR: !Ref VpcCIDR
@@ -55,7 +57,7 @@ Resources:
   nestedPlcStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://sfc-cloudformation-20240123.s3.eu-central-1.amazonaws.com/nested-plc.yaml
+      TemplateURL: !Sub '${TemplateBucketUrl}/nested-plc.yaml'
       Parameters:
         PrivateSubnet1Param: !GetAtt nestedBaseInfrastructureStack.Outputs.PrivateSubnet1
         VPC: !GetAtt nestedBaseInfrastructureStack.Outputs.VPC
@@ -63,7 +65,7 @@ Resources:
   nestedSfcComponentStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://sfc-cloudformation-20240123.s3.eu-central-1.amazonaws.com/nested-sfc-component.yaml
+      TemplateURL: !Sub '${TemplateBucketUrl}/nested-sfc-component.yaml'
       Parameters:
         PublicSubnet1Param: !GetAtt nestedBaseInfrastructureStack.Outputs.PublicSubnet1
 

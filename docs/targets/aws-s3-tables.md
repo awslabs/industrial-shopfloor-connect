@@ -6,18 +6,60 @@
 
 The adapter can map data from a TargetData set into one or more tables, as defined in its configuration. Each table has one or more mappings that describe how the target data for the records in that table is retrieved from the TargetData set. This allows generating multiple records from a single set of target data for a specific table.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `AWS-S3-TABLES` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWS-S3-TABLES": {
-      "JarFiles" : ["<location of deployment>/aws-s3-tables-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
-   }
+"TargetTypes": {
+  "AWS-S3-TABLES": { "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter" }
 }
 ```
 
+**In-process** - module bundle `aws-s3-tables-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
 
+```json
+"TargetTypes": {
+  "AWS-S3-TABLES": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-s3-tables-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "S3TablesTarget": {
+    "TargetType": "AWS-S3-TABLES",
+    "TargetServer": "S3TablesServer"
+  }
+},
+"TargetServers": {
+  "S3TablesServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-s3-tables-target/bin/aws-s3-tables-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-s3-tables-target\lib\*" com.amazonaws.sfc.awss3tables.AwsS3TablesTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awss3tables.AwsS3TablesTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awss3tables.AwsS3TablesTargetService -port 50001`).
+
+**Examples:** uberjar: [Quickstart step 3](../../README.md#3-real-opc-ua-to-s3-tables), [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md), [simulator-to-s3tables-uberjar.json](../../examples/in-process-sim-s3tables/sfc-to-s3tables/simulator-to-s3tables-uberjar.json) · in-process: [in-process-sim-s3tables](../../examples/in-process-sim-s3tables/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 
@@ -38,11 +80,11 @@ AwsS3TablesTargetConfiguration extends the type TargetConfiguration with specifi
 Requires IAM permissions:
 
 ```
-"ListNamespaces", "ListTables", "ListTableBuckets", "CreateTableBucket", 
-"CreateNamespace", "CreateTable", 
-"GetTableBucket", "GetTableData", "GetTable", "GetTableMetadataLocation", 
-"PutTableData",
-"UpdateTableMetadataLocation"
+"s3tables:ListNamespaces", "s3tables:ListTables", "s3tables:ListTableBuckets", "s3tables:CreateTableBucket", 
+"s3tables:CreateNamespace", "s3tables:CreateTable", 
+"s3tables:GetTableBucket", "s3tables:GetTableData", "s3tables:GetTable", "s3tables:GetTableMetadataLocation", 
+"s3tables:PutTableData",
+"s3tables:UpdateTableMetadataLocation"
 ```
 
 - [Schema](#awss3tablestargetconfiguration-schema)
@@ -56,9 +98,10 @@ Requires IAM permissions:
 - [Endpoint](#endpoint)
 - [Interval](#interval)
 - [Namespace](#namespace)
+- [Region](#region)
 - [TableBucket](#tablebucket)
 - [Tables](#tables)
-- [WarnIfValueMissing](#warnifvalueismissing)
+- [WarnIfValueMissing](#warnifvaluemissing)
 
 ---
 ### AutoCreate
@@ -79,6 +122,8 @@ The number of records accumulated before writing them as a batch to the table. T
 
 Default is 100 records in total for all tables
 
+Sizing BufferCount and [Interval](#interval) for high-frequency data: [Tuning for high-frequency machine data](../../examples/in-process-sim-s3tables/README.md#tuning-for-high-frequency-machine-data).
+
 ---
 ### CredentialProviderClient
 
@@ -91,7 +136,7 @@ If no CredentialProviderClient is configured the [AWS Java SDK credential provid
 ---
 ### Endpoint
 
-The EndPoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
+Endpoint overrides only the S3 Tables API endpoint used to look up the table bucket, namespaces and tables and to create the table bucket and namespace, for example with a VPC endpoint (AWS PrivateLink). The Iceberg REST catalog, which creates and loads the tables and commits the data, always uses `https://s3tables.<Region>.amazonaws.com/iceberg`. When not specified, the service's default public endpoint for the configured region will be used.
 
 https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html
 
@@ -120,6 +165,13 @@ If [AutoCreate](#autocreate) is set to false, then the namespace must already ex
 **Type**: String
 
 ---
+### Region
+
+The AWS Region of the table bucket, e.g. "us-west-2". Required; it also selects the Iceberg REST catalog endpoint `https://s3tables.<Region>.amazonaws.com/iceberg`.
+
+**Type**: String
+
+---
 ### TableBucket
 The name of the AWS S3 Tables bucket that serves as the top-level container for storing table data and metadata. This bucket is specifically designed for S3 Tables and acts as the warehouse location for all namespaces and tables within this target configuration. The bucket name must follow S3 naming conventions: 3-63 characters long, containing only lowercase letters, numbers, periods, and hyphens, starting and ending with a letter or number, with no consecutive periods, and cannot use reserved prefixes like 'xn--', 'sthree-', 'amzn-s3-demo-' or suffixes like '-s3alias', '--ol-s3', '--x-s3'.
 
@@ -135,13 +187,13 @@ If [AutoCreate](#autocreate) is set to true, then the table bucket is created if
 
 An array of [table configurations](#tableconfiguration) that define the destination tables to which target data is written within the S3 Tables namespace. At least one table must be specified for a target configuration. By specifying multiple tables, records can be selectively written to different tables based on the data , enabling flexible data distribution and organization within the same target configuration.
 
-**Type** : [TableConfiguration](#tableconfiguration)
+**Type** : List of [TableConfiguration](#tableconfiguration)
 
 ---
 
-### WarnIfValueIsMissing
+### WarnIfValueMissing
 
-Determines whether a warning is generated if a value cannot be retrieved from the target data for a non-optional column. In such cases, no record is written to the table. However, this setting can be intentionally set to false for a specific mapping to create an optional record based on the existence of certain values, eliminating the need for warnings.
+Determines whether a warning is generated if a value cannot be retrieved from the target data for a non-optional column. In such cases, no record is written to the table. The setting applies to the whole target: set it to false when some mappings are expected to be incomplete, for example to create a record only when certain values exist; the message is then logged at trace level instead.
 
 **Type:** Boolean
 
@@ -208,7 +260,7 @@ Default value is true
         "BufferCount": {
           "type": "integer",
           "minimum": 1,
-          "default": 50,
+          "default": 100,
           "description": "Number of records to buffer before writing"
         },
         "Interval": {
@@ -223,6 +275,7 @@ Default value is true
   "required": [
     "TableBucket",
     "Namespace",
+    "Region",
     "Tables"
   ]
 }
@@ -231,10 +284,11 @@ Default value is true
 
 ### AwsS3TablesTargetConfiguration Examples
 
+Runnable variant with a simulator source: the `S3TablesTarget` in [simulator-to-s3tables.json](../../examples/in-process-sim-s3tables/sfc-to-s3tables/simulator-to-s3tables.json). The example below reads an OPC-UA source.
+
 ```json
 "S3TablesTarget": {
       "TargetType": "AWS-S3-TABLES",
-      "#TargetServer": "S3TablesServer",
       "CredentialProviderClient": "CredentialProviderClient",
       "Interval": 60000,
       "BufferCount": 100,
@@ -303,9 +357,6 @@ Default value is true
                 "sawtooth": {
                 "ValueQuery": "@.sources.OPCUA.values.SimulationSawtooth.value"
               },
-                "sinus": {
-                "ValueQuery": "@.sources.OPCUA.values.SimulationSinus.value"
-              },
                 "square": {
                 "ValueQuery": "@.sources.OPCUA.values.SimulationSquare.value"
               },
@@ -345,14 +396,14 @@ Defines the structure and properties of an individual table within an AWS S3 Tab
 - [Mappings](#mappings)
 
 - [Partition](#partition)
-- [PartitioningOptimization](#partitioningoptimization)
+- [PartitionOptimization](#partitionoptimization)
 - [Schema](#schema)
 - [TableName](#tablename)
 
 
 ---
 ### Mappings
-An array of field mapping configurations that define how source data fields are transformed and mapped to the corresponding table columns. Each mapping entry is a key-value object where the key represents the source field identifier and the value contains the field mapping configuration specifying transformation rules, data type conversions, and column assignments. At least one mapping must be specified to establish the relationship between incoming data and the table schema. Optionally, multiple mappings can be defined, in which case multiple records can be created from a single target dataset, enabling data duplication, transformation variations, or record splitting scenarios during the write process.
+An array of mappings that define how the target data is mapped to the table columns. Each entry is an object whose keys are column names from [Schema](#schema) and whose values are [ColumnMappingConfiguration](#columnmappingconfiguration); keys that are not columns are ignored. At least one mapping must be specified. Each entry produces at most one record, so multiple entries create multiple records from a single target data set, enabling data duplication, transformation variations, or record splitting scenarios during the write process.
 
 **Type**: List of Map<String, [ColumnMappingConfiguration](#columnmappingconfiguration) >
 
@@ -362,36 +413,36 @@ An optional configuration that defines the partitioning strategy for the table t
 
 The configuration is a map, where the key is the name of the partition transform, and the value is the name of the column to use for the transform.
 
-Supported transforms are:
+Supported transforms are (transform names are lower-case):
 
 - "identity", Source value.
-   e.g. `{"identity "<columnname>"}`
+   e.g. `{"identity": "<columnname>"}`
 
 - "truncate[`w`]" , Value truncated to width `w`,
-  e.g. `{"truncate[3]", "<columnname>"}`
+  e.g. `{"truncate[3]": "<columnname>"}`
 
 - "bucket[`n`]", Hash of value, mod `n`
-   e.g. `{"bucket[16]", "<columnname>"}`
+   e.g. `{"bucket[16]": "<columnname>"}`
 
 - "day", Extract a date or timestamp day, as days from 1970-01-01
-   e.g. `{"day", "<columnname>"}`
+   e.g. `{"day": "<columnname>"}`
 
 - "hour", Extract a timestamp hour, as hours from 1970-01-01 00:00:00,
-  e.g. `{"hour", "<columnname>"}`
+  e.g. `{"hour": "<columnname>"}`
 
 - "month", Extract a date or timestamp month, as months from 1970-01-01
-   e.g. `{"month", "<columnname>"}`
+   e.g. `{"month": "<columnname>"}`
 
 - "year", Extract a date or timestamp year, as years from 1970
-   e.g. `{"year", "<columnname>"}`
+   e.g. `{"year": "<columnname>"}`
 
 Iceberg table partitioning and transforms are described in detail at https://iceberg.apache.org/spec/#partitioning
 
 **Type**: Map<String,String> where the key string is one of the transforms,  and in the format as listed above.
 
 ---
-### PartitioningOptimization
-When writing buffered records data to the table, the records are grouped based on the values of the partitioning used for these records, requiring a separate write action for each group. However, when using fine-grained partitioning, this may result in numerous write actions for small groups of records. To address this issue, setting the PartitioningOptimization to false ensures that all records are written in a single write action, utilizing the values of the first record as the values for the partitioning transform, but affecting the optimization from partitioning.
+### PartitionOptimization
+When writing buffered records data to the table, the records are grouped based on the values of the partitioning used for these records, requiring a separate write action for each group. However, when using fine-grained partitioning, this may result in numerous write actions for small groups of records. To address this issue, setting the PartitionOptimization to false ensures that all records are written in a single write action, utilizing the values of the first record as the values for the partitioning transform, but affecting the optimization from partitioning.
 
 **Type**: Boolean
 
@@ -401,7 +452,7 @@ Default is true
 ### Schema
 A required array of field configurations that defines the structure and data types of the table columns. The schema specifies each column's name, data type (including primitive types like string, int, double, boolean, as well as complex types like list, map, and struct), and whether the column is optional or required. This schema definition is used to create the underlying Iceberg table structure and must be specified before the table can be created or data can be written. The schema supports all Iceberg-compatible data types and nested structures, enabling flexible data modeling for various use cases. At least one field must be defined in the schema to create a valid table configuration.
 
-**When the table doesn't exist and the AutoCreate property is set to true, the table is created using the specified schema. If an existing table is used, ensure that the schema matches the schema of the existing table. Otherwise, writing to the table is guaranteed to fail.**
+**When the table doesn't exist and the AutoCreate property is set to true, the table is created using the specified schema. If an existing table is used, ensure that the schema matches the schema of the existing table.** At startup SFC checks that each configured column exists in the table with the same type; column order does not matter. Otherwise it logs "Configured schema for table ... does not match the table" and writes nothing.
 
 **Type**: List of [ColumnConfiguration](#columnconfiguration)
 
@@ -409,7 +460,7 @@ A required array of field configurations that defines the structure and data typ
 ### TableName
 A required string that specifies the unique name of the table within the namespace. The table name must follow AWS S3 Tables naming conventions: 1-225 characters long, starting and ending with a letter or number, containing only lowercase letters, numbers, and underscores, and cannot be the reserved name 'aws_s3_metadata' or start with an underscore. This name, combined with the namespace, creates a unique table identifier within the S3 Tables bucket and is used for all table operations including data writes, queries, and schema management.
 
-If [AutoCreate](#autocreate) is set to true, then the namespace is created in  [table bucket](#tablebucket) according to the configured [schema](#schema) if it does not exist. 
+If [AutoCreate](#autocreate) is set to true, then the table is created in the namespace from the configured [schema](#schema) if it does not exist. 
 
 **Type**: String
 
@@ -531,9 +582,6 @@ If [AutoCreate](#autocreate) is set to true, then the namespace is created in  [
       "sawtooth": {
         "ValueQuery": "@.sources.OPCUA.values.SimulationSawtooth.value"
       },
-      "sinus": {
-        "ValueQuery": "@.sources.OPCUA.values.SimulationSinus.value"
-      },
       "square": {
         "ValueQuery": "@.sources.OPCUA.values.SimulationSquare.value"
       },
@@ -593,6 +641,8 @@ Default is true
 ---
 ### Type
 A required field that specifies the data type of the column using valid Iceberg type specifications. Supports primitive types (boolean, int, long, float, double, decimal, date, time, timestamp, timestamptz, string, uuid, fixed, binary), complex types including list for arrays, map<keyType,valueType> for key-value pairs, and struct types defined as arrays of nested field configurations. The type specification must be compatible with Iceberg's type system and is validated during configuration processing. For parameterized types, use syntax like fixed[16] for fixed-length binary or decimal(10,2) for decimal with precision and scale. This type definition directly maps to the underlying Iceberg table schema and determines how data is stored and queried.
+
+list<T> and map<K,V> take primitive types only, e.g. list<string>, map<string,int>.
 
 For more info on data types see https://iceberg.apache.org/spec/#primitive-types.
 
@@ -677,7 +727,7 @@ Non-optional column, named "source" of type string.
 ```json
 {
   "Name": "source",
-  "Type": "String",
+  "Type": "string",
   "Optional": false
 }
 ```
@@ -685,7 +735,7 @@ Non-optional column, named "timestamp" of type timestamp.
 ```json
   {
     "Name": "timestamp",
-    "Type": "timestampt",
+    "Type": "timestamp",
     "Optional": false
   }
 ```
@@ -719,17 +769,17 @@ Non-optional column, named "identifier" of type fixed[8].
 }
 ```
 
-Non-optional column, named "measurement" of type decimal(4,2).
+Non-optional column, named "measurement_value" of type decimal(4,2).
 
 ```json
 {
-  "Name": "measuremant_value",
+  "Name": "measurement_value",
   "Type": "decimal(4,2)",
   "Optional": false
 }
 ```
 
-Non-optional column named "device" that holds a structure containing a nested values "name" and "version", both non-optional and of type string.Because both nested values are non-optimal, both must be specified in order to fulfill the non-optional requirement for the device column.
+Non-optional column named "device" that holds a structure containing a nested values "name" and "version", both non-optional and of type string. Because both nested values are non-optional, both must be specified in order to fulfill the non-optional requirement for the device column.
 
 ```json
 {
@@ -756,7 +806,7 @@ Non-optional column named "device" that holds a structure containing a nested va
 
 [AwsS3TablesTargetConfiguration](#awss3tablestargetconfiguration) > [Tables](#tables) > [Mappings](#mappings)  > values
 
-Defines the structure and properties of an individual column within a table schema for AWS S3 Tables. It specifies the column name, data type (supporting primitive types like string, int, double, boolean, as well as complex types like list, map, and struct), and whether the column is optional or required. The configuration automatically generates unique column identifiers and builds the appropriate Iceberg field definitions based on the specified type. It supports nested structures, lists and map datatypes, enabling flexible schema design for various data modeling requirements in S3 Tables.
+Defines where one column's value comes from: a JMESPath [ValueQuery](#valuequery) over the target data, optionally followed by a [Transformation](#transformation) and a [ValueFilter](#valuefilter), or, for a struct column, nested [Mappings](#mappings-1) per sub-field.
 
 
 
@@ -786,7 +836,7 @@ Type: Map<String, [ColumnMappingConfiguration](#columnmappingconfiguration)>
 
  An optional string that specifies the name of a transformation to apply to the extracted value after the [ValueQuery](#valuequery) has been executed. The transformation name must correspond to a transformation definition that exists in the [Transformations](../core/sfc-configuration.md#transformations) property of the [SFC Configuration](../core/sfc-configuration.md). This allows for data processing operations such as format conversion, mathematical calculations, string manipulation, or custom business logic to be applied to the raw extracted data before it is written to the table column. The transformation is applied after value extraction but before any value filtering, enabling a pipeline of data processing operations during the mapping process.
 
-References a transformation defined in the  [Transformations](../core/sfc-configuration.md#transformations) property of the [SFC configuration]()
+References a transformation defined in the  [Transformations](../core/sfc-configuration.md#transformations) property of the [SFC configuration](../core/sfc-configuration.md)
 
 **Type**: String
 
@@ -798,24 +848,21 @@ An optional string that specifies the name of a value filter to apply to the ext
 
 When any of the filters configured for a mapping for a record doesn't match the value retrieved by the ValueQuery and, optionally, transformed by the Transformation, no record is generated for that mapping. This feature enables the selection of the generation of a specific record for one of the mappings for a table based on data values.
 
-References a transformation defined in the  [ValueFilters](../core/sfc-configuration.md#valuefilters) property of the [SFC configuration]()
+References a value filter defined in the  [ValueFilters](../core/sfc-configuration.md#valuefilters) property of the [SFC configuration](../core/sfc-configuration.md)
+
+Known limitation: a mapping that sets ValueFilter currently also needs a [Transformation](#transformation); without one, the target cannot read its configuration and is not created.
 
 **Type**: String
-
-Default is true
 
 ---
 
 ### ValueQuery
 
-JMESPath expression used to extract the value gor a columns from the target data structure.
-
-**Type**: String
+JMESPath expression used to extract the value for a column from the target data structure.
 
 The value must be a valid JMESPath query https://jmespath.org.
 
-Note that if the source or channel name contains non-alphanumeric characters, then these elements must be quoted.
-The quoted characters must be escaped with a \ character in the JSON configuration.
+If a source or channel name starts with a digit or contains characters other than letters, digits, `_`, `-` and `/`, that element must be quoted, and the quotes must be escaped as `\"` in the JSON configuration. `-` and `/` need no quotes: SFC rewrites them in both the source and channel names and the query. Because the whole query is rewritten, other keys used in a query, such as metadata names, must not contain `-` or `/`.
 
 **Type**: String
 
@@ -881,15 +928,15 @@ Mapping to retrieve the value from the SimulationRandom channel from the OPCUA s
 }
 ```
 
-Mapping to retrieve the metadata value "meta-1" from the SimulationRandom channel.
+Mapping to retrieve the metadata value "meta1" from the SimulationRandom channel.
 
 ```json
 {
-    "ValueQuery": "@.sources.OPCUA.values.SimulationRandom.metadata.meta-1"
+    "ValueQuery": "@.sources.OPCUA.values.SimulationRandom.metadata.meta1"
 }
 ```
 
-Mapping to retrieve the value from the SimulationRandom channel in the OPCUA source, with a value filter named NotZero. If the value is 0, no record is generated for the record this mapping is for.
+Mapping to retrieve the value from the SimulationRandom channel in the OPCUA source, with a value filter named NotZero. If the value is 0, no record is generated for the record this mapping is for. (Currently this also needs a Transformation, see the known limitation under [ValueFilter](#valuefilter).)
 
 ```json
 {
@@ -925,7 +972,7 @@ Definition for the "AsInteger" transformation
     "AsInteger" : [
       {"Operator" : "ToInt"}
     ]
-  },
+  }
 ```
 
 Mapping to retrieve a value, applying the "AsInteger" transformer to the retrieved value, and then applying the "NotZero" filter on the result.

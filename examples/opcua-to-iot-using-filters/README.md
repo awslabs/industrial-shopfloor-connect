@@ -3,22 +3,25 @@ Example: OPC UA to AWS IoT Core using filters
 
 ## What does the example do?
 This example reads data from a public, open OPC UA server (uademo.prosysopc.com) and sends it to AWS IoT Core, demonstrating the 
-usage of *[Metadata](../../docs/README.md#metadata)*, *[Transformations](../../docs/sfc-data-processing-filtering.md#transformations)* as well as the following filter types: *[Change Filter](../../docs/sfc-data-processing-filtering.md#data-change-filters)*, *[Condition Filter](../../docs/sfc-data-processing-filtering.md#condition-filters)*, *[Value Filter](../../docs/sfc-data-processing-filtering.md#data-change-filters)*.  
+usage of *[Metadata](../../docs/README.md#metadata)*, *[Transformations](../../docs/sfc-data-processing-filtering.md#transformations)* as well as the following filter types: *[Change Filter](../../docs/sfc-data-processing-filtering.md#data-change-filters)*, *[Condition Filter](../../docs/sfc-data-processing-filtering.md#condition-filters)*, *[Value Filter](../../docs/sfc-data-processing-filtering.md#value-filters)*.  
 
 The public OPC UA server exposes simulation tags which we will use. We use two tags:  
 1. A counter tag that is incremented by 1 from 0 to 30 in an infinite loop.  
 2. A tag producing random values in the range -2 to 2.  
   
-The counter tag is used as a trigger. Whenever its value changes by at least 50%, we forward the data.  
+The counter tag is used as a trigger. Whenever its value differs by at least 50% from the last value we forwarded, we forward the data.  
 To do so, we use a *Change Filter*.  
 Here's an example of how it works:  
-- previous value 1, new value 2: Change 50% -> tag is read, channel value exists.  
-- previous value 3, new value 4: Change only 33% -> tag is not read, channel value does not exist.  
+- last forwarded value 1, new value 2: change +100% -> value is forwarded, channel value exists.  
+- last forwarded value 3, new value 4: change only +33% -> value is read but dropped, channel value does not exist.  
+
+Starting at 0, the filter therefore forwards the counter values 0, 1, 2, 3, 5, 8, 12, 18 and 27. Its `AtLeast` of 60000 ms
+re-sends an unchanged value after a minute; it does not force out changes smaller than 50%.  
 
 Three flavors of the random value tag are connected to the trigger tag through a *Condition Filter*.  
 That data is only forwarded if the trigger channel has a value.   
 
-Besides, the example demonstrates a *Value Filter* only forwarding data greater than zero and also a *Transformation* rounding values to two digits.  
+Besides, the example demonstrates a *Value Filter* only forwarding data greater than zero and also a *Transformation* truncating values to two decimals (`TruncAt`).  
 Further, the application of *Metadata* is demonstrated.
 
 A real-world use case for this setup is to create a snapshot of certain OPC-UA tags when the trigger tag is changed.  
@@ -28,49 +31,38 @@ This can be used in scenarios where the tags hold final processing data like tor
 The setup of the scenario is similar to the steps in the [Quickstart example](../../README.md#quickstart) of this repo with small modifications.  
 Please note that sending data to AWS IoT Core might incur a cost when exceeding the free tier limit.
 
->**Requirements**: Java runtime, aws cli [Credentials Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html#configure-precedence). 
+>**Requirements**: Java 17 or newer, aws cli [Credentials Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html#configure-precedence). 
+On Windows: `winget install EclipseAdoptium.Temurin.17.JDK` and `winget install Amazon.AWSCLI`.
 Make sure you have AWS permissions as described in [AWS IoT Core Target](../../docs/targets/aws-iot-core.md)
 
 ### Installation
 
-First, we have to clone that repo so we can access the current version.  
-
-Then we download and extract the SFC bundles. These are precompiled executables to get started quickly:
-
-```shell
-# Define sfc version and directory
-export VERSION=$(git describe --tags --abbrev=0)
-export SFC_DEPLOYMENT_DIR="./sfc"
-```
-
-```shell
-# Download and extract bundles into folder ./sfc
-mkdir $SFC_DEPLOYMENT_DIR && cd $SFC_DEPLOYMENT_DIR
-wget https://github.com/aws-samples/shopfloor-connectivity/releases/download/$VERSION/\
-{aws-iot-core-target,debug-target,opcua,sfc-main}.tar.gz
-
-for file in *.tar.gz; do
-  tar -xf "$file"
-  rm "$file"
-done
-cd -
-```
+Install SFC with sfcup as in [step 1 of the Quickstart](../../README.md#1-install). It installs the uberjar, which
+already contains the OPC UA adapter and the AWS IoT Core and debug targets, so the configuration below names them by
+their `FactoryClassName` only.
 
 ### Configure
 
-Next we will define the AWS region we want to send the data to:
+Next we will define the AWS region we want to send the data to. The configuration reads it as `${AWS_REGION}`:
+
+**Linux / macOS**
 
 ```shell
 export AWS_REGION="us-east-1"
 ```
 
-Now we will have to configure the SFC, therefore create the config file as follows.
+**Windows (PowerShell)**
 
-```shell
-cat << EOF > $SFC_DEPLOYMENT_DIR/example.json
+```powershell
+$env:AWS_REGION = "us-east-1"
+```
+
+Now we will have to configure the SFC, therefore save the following as `example.json` in a folder of your choice.
+
+```json
   {
     "AWSVersion": "2022-04-02",
-    "Name": "OPCUA to AWS IoT core denoing filter features",
+    "Name": "OPCUA to AWS IoT core demoing filter features",
     "Version": 1,
     "LogLevel": "Info",
     "ElementNames": {
@@ -91,7 +83,8 @@ cat << EOF > $SFC_DEPLOYMENT_DIR/example.json
           ]
         },
         "Targets": [
-          "IoTCoreTarget"
+          "IoTCoreTarget",
+          "DebugTarget"
         ]
       }
     ],
@@ -177,29 +170,20 @@ cat << EOF > $SFC_DEPLOYMENT_DIR/example.json
       "IoTCoreTarget": {
         "Active": true,
         "TargetType": "AWS-IOT-CORE",
-        "Region": "us-east-1",
+        "Region": "${AWS_REGION}",
         "TopicName": "some/iot/topic"
       }
     },
     "TargetTypes": {
       "DEBUG-TARGET": {
-        "JarFiles": [
-          "./sfc/debug-target/lib"
-        ],
         "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
       },
       "AWS-IOT-CORE": {
-        "JarFiles": [
-          "./sfc/aws-iot-core-target/lib"
-        ],
         "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
       }      
     },
     "AdapterTypes": {
       "OPCUA": {
-        "JarFiles": [
-          "./sfc/opcua/lib"
-        ],
         "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter"
       }
     },
@@ -218,23 +202,22 @@ cat << EOF > $SFC_DEPLOYMENT_DIR/example.json
       }
     }
   }
-
-EOF
 ```
 
 <br/>
-With the file being created everything is set up so you can run the process
+With the file being created everything is set up so you can run the process from the folder of `example.json`:
 
 ```shell
-# run sfc
-sfc/sfc-main/bin/sfc-main -config sfc/example.json
+sfcx -config example.json -info
 ```
 
 ### Observe result
 
-Once you start the process as given in the quickstart, the data will become visible in AWS IoT Core.  
+The debug target prints the forwarded values, with their metadata, to the console. Once SFC runs, the data also becomes visible in AWS IoT Core.  
 
 To observe the data in AWS IoT Core, log on to your AWS account, and use the built-in MQTT client  
 of the AWS IoT Core console to subscribe to the topic named in the *IoTCoreTarget* definition.  
-Also, make sure you are using the region as mentioned in the definition.
+Also, make sure you are using the region set in `AWS_REGION`.
+
+Docs used: [OPC UA adapter](../../docs/adapters/opcua.md) · [AWS IoT Core target](../../docs/targets/aws-iot-core.md) · [Debug target](../../docs/targets/debug.md) · [Data filtering](../../docs/sfc-data-processing-filtering.md#data-filtering) · [Change filter](../../docs/core/change-filter-configuration.md) · [Value filter](../../docs/core/value-filter-configuration.md) · [Condition filter](../../docs/core/condition-filter-configuration.md) · [TruncAt](../../docs/core/transformation-operator-configuration.md#truncat) · [Uberjar mode](../../docs/sfc-deployment.md#uberjar) · [All examples](../../docs/examples/README.md)
 

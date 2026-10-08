@@ -2,18 +2,60 @@
 
 The AWS IoT [SiteWise](https://aws.amazon.com/iot-sitewise/) target adapter enables Shop Floor Connectivity's uninterrupted streaming of industrial device data directly to AWS IoT SiteWise assets and measurements. This adapter facilitates the mapping of device data to SiteWise asset properties, with the option of automatically creating the necessary SiteWise assets. Additionally, it handles data types and timestamps. 
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `AWS-SITEWISE` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWS-SITEWISE": {
-      "JarFiles" : ["<location of deployment>/aws-sitewise-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
-   }
+"TargetTypes": {
+  "AWS-SITEWISE": { "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter" }
 }
 ```
 
+**In-process** - module bundle `aws-sitewise-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
 
+```json
+"TargetTypes": {
+  "AWS-SITEWISE": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-sitewise-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "SiteWiseTarget": {
+    "TargetType": "AWS-SITEWISE",
+    "TargetServer": "SiteWiseServer"
+  }
+},
+"TargetServers": {
+  "SiteWiseServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-sitewise-target/bin/aws-sitewise-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-sitewise-target\lib\*" com.amazonaws.sfc.awssitewise.AwsSitewiseTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awssitewise.AwsSitewiseTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awssitewise.AwsSitewiseTargetService -port 50001`).
+
+**Examples:** in-process: [in-process-s7-sitewise](../../examples/in-process-s7-sitewise/README.md), [in-process-opcua-sitewise](../../examples/in-process-opcua-sitewise/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 
@@ -37,18 +79,18 @@ Required IAM permissions:
 - `iotsitewise:CreateAsset` (*)
 - `iotsitewise:CreateAssetModel` (*)
 - `iotsitewise:DescribeAsset` (*) (**)
-- `iotsitewise:DescribeAssetModel` (*) (**)
-- `iotsitewise:DescribeEndpoint`
+- `iotsitewise:DescribeAssetModel` (*)
 - `iotsitewise:ListAssetModels` (*) (**)
-- `iotsitewise:ListAssetModelProperties` (*) (**)
 - `iotsitewise:ListAssets` (*) (**)
 - `iotsitewise:UpdateAssetModel` (*)
-- `iotsitewise:UpdateAssetModelProperty` (*)
+- `iotsitewise:UpdateAssetProperty` (*) (only with [AssetPropertyAlias](#assetpropertyalias))
 - `iotsitewise:TagResource` (*)
 
 (*) required when using Asset creation
 
-(**) required when  using AssetName, AssetExternalId, AssetPropertyName,AssetPropertyExternalId in asset and asset property configuration
+(**) required when an asset uses AssetName or AssetExternalId, or a property uses PropertyName or PropertyExternalId
+
+Without AssetCreation, and with every asset addressed only by AssetId/PropertyId or PropertyAlias, only `iotsitewise:BatchPutAssetPropertyValue` is needed.
 
 
 - [Schema](#awssitewisetargetconfiguration-schema)
@@ -57,7 +99,7 @@ Required IAM permissions:
 **Properties:**
 - [AssetCreation](#assetcreation)
 - [Assets](#assets)
-- [Batch Size](#batchsize)
+- [BatchSize](#batchsize)
 - [CredentialProviderClient](#credentialproviderclient)
 - [Endpoint](#endpoint)
 - [Interval](#interval)
@@ -65,21 +107,11 @@ Required IAM permissions:
 
 ---
 ### AssetCreation
-Controls the automatic creation of AWS IoT SiteWise asset models and assets by the adapter. When this configuration is present, the adapter will automatically create the necessary asset models and assets based on the incoming device data structure. 
+Controls the automatic creation of AWS IoT SiteWise asset models and assets by the target. When AssetCreation is present (even as `{}`), SFC creates one asset model ([AssetModelName](#assetmodelname)) and one asset ([AssetName](#assetname)) per source, with one measurement property per channel ([AssetPropertyName](#assetpropertyname)). The data type of a property comes from the first value, and its unit from the channel metadata key named by [AssetPropertyMetadataUnitName](#assetpropertymetadataunitname). Channels that appear later are added to the model. Models and assets are matched by their rendered name: an existing model or asset with that name is reused, so sources whose names render to the same value share one model or asset.
 
-- Automatically generates asset models from device data schemas
-- Creates corresponding assets from the generated models
-- Handles property definitions and hierarchies
-- Supports asset naming conventions and property configurations
+Without AssetCreation, nothing is created, and existing assets must be configured in [Assets](#assets).
 
-The configuration can be empty to use default settings, or can be customized to control:
-
-- Asset and model naming patterns
-- Property configurations
-- Hierarchy definitions
-- Model versioning behavior
-
-When this property is absent, even if it's not set to an empty  [AwsSiteWiseAssetCreationConfiguration](#awssitewiseassetcreationconfiguration) value, automatic asset and model creation is disabled. In such cases, existing assets must be explicitly referenced in the configuration.
+Example configuration: [in-process-s7-sitewise-autocreate-assets.json](../../examples/in-process-s7-sitewise/in-process-s7-sitewise-autocreate-assets.json).
 
 **Type**:  [AwsSiteWiseAssetCreationConfiguration](#awssitewiseassetcreationconfiguration)
 
@@ -94,13 +126,13 @@ Each asset configuration in the list specifies:
 - Data type conversions and transformations
 - Timestamp handling
 
-This configuration can be used alongside automatically created assets (defined in AssetModelCreation), providing flexibility to:
+This configuration can be used alongside automatically created assets (defined in [AssetCreation](#assetcreation)), providing flexibility to:
 
 - Write to existing asset structures
 - Combine with dynamically created assets
 - Support hybrid deployment scenarios
 
-Required if writing to existing assets. Optional if using only automatically created assets through AssetModelCreation.
+Required if writing to existing assets. Optional if using only automatically created assets through [AssetCreation](#assetcreation).
 
 **Type**: List of [AwsSiteWiseAssetConfiguration](#awssitewiseassetconfiguration)
 
@@ -109,20 +141,7 @@ Required if writing to existing assets. Optional if using only automatically cre
 
 ---
 ### BatchSize
-Specifies the maximum number of property values to include in a single BatchPutAssetPropertyValue request to AWS IoT SiteWise. This setting helps optimize data ingestion performance and manage API quotas.
-
-Constraints:
-
-- Maximum allowed value: 10 (AWS IoT SiteWise service limit)
-- Each batch entry can contain up to 10 property values
-- Timestamps must be within 7 days in the past and 10 minutes in the future
-
-The batch size setting helps:
-
-- Optimize network utilization
-- Reduce API calls
-- Balance throughput and latency
-- Manage service quotas efficiently
+Number of target-data messages (schedule reads) to buffer before writing to AWS IoT SiteWise. The buffered values are split automatically into BatchPutAssetPropertyValue requests of at most 10 entries with 10 values each, so BatchSize is not limited to 10.
 
 Optional. If not specified, the default value of 10 will be used.
 
@@ -141,9 +160,11 @@ If no CredentialProviderClient is configured the [AWS Java SDK credential provid
 
 ### Endpoint
 
-The EndPoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
+The Endpoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
 
 https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html
+
+Region, Endpoint and CredentialProviderClient are also described in [AwsServiceConfiguration](../core/aws-service-configuration.md).
 
 **Type:** String
 
@@ -162,7 +183,7 @@ Optional. When not specified, data transmission is controlled solely by BatchSiz
 
 **Type**: Integer
 
-Optional, if not set only [BatchSize](#batchsize) is used, minimum value is 10
+Optional, if not set only [BatchSize](#batchsize) is used. The value must be greater than 10 (milliseconds).
 
 
 ---
@@ -182,7 +203,7 @@ Important considerations:
 - Impacts latency between data source and SiteWise service
 - Should align with your organization's AWS infrastructure
 
-Required. The adapter will connect to the AWS IoT SiteWise endpoint in the specified region.
+Optional. When not set, the AWS SDK default region provider chain is used, e.g. the AWS_REGION environment variable. The target connects to the AWS IoT SiteWise endpoint in that region.
 
 **Type**: String
 
@@ -231,7 +252,7 @@ Required. The adapter will connect to the AWS IoT SiteWise endpoint in the speci
           "description": "AWS region for SiteWise"
         }
       },
-      "oneOf": [
+      "anyOf": [
         {
           "required": ["AssetCreation"]
         },
@@ -252,6 +273,8 @@ Required. The adapter will connect to the AWS IoT SiteWise endpoint in the speci
 
 ### AwsSitewiseTargetConfiguration Examples
 
+Example configuration: [in-process-s7-sitewise](../../examples/in-process-s7-sitewise/README.md) (existing assets by AssetId and PropertyId).
+
  Config with full asset creation for all:
 
 ```json
@@ -260,11 +283,11 @@ Required. The adapter will connect to the AWS IoT SiteWise endpoint in the speci
   "Region": "us-east-1",
   "AssetCreation": {
     "AssetName": "Production %line% %source%",
-    "AssetDescription": "Production line %source%",
+    "AssetDescription": "Production line %line%",
     "AssetModelName": "Production %line%  %source%",
     "AssetPropertyName": "%source%-%channel%",
     "AssetTags": {
-      "Location": "%plant%",
+      "Location": "Plant-1",
       "Department": "Production"
     }
   },
@@ -274,7 +297,7 @@ Required. The adapter will connect to the AWS IoT SiteWise endpoint in the speci
 
 
 
-Configuration using existing model and assets:
+Mixed: auto-created plus existing assets:
 
 ```json
 {
@@ -287,7 +310,7 @@ Configuration using existing model and assets:
     "AssetModelName": "%plant%-%source%-model",
     "AssetPropertyName": "%plant%-%source%-%channel%",
     "AssetTags": {
-      "Location": "%plant%-%source%",
+      "Location": "Plant-1",
       "Department": "Production"
     }
   },
@@ -297,32 +320,32 @@ Configuration using existing model and assets:
       "AssetName": "AMS-Motor-1",
       "Properties": [
         {
-          "PropertyId": "speed",
+          "PropertyName": "speed",
           "DataType": "double",
           "DataPath": "@.sources.Motor1.values.Speed.value"
         },
         {
-          "PropertyId": "power",
+          "PropertyName": "power",
           "DataType": "double",
           "DataPath": "@.sources.Motor1.values.Power.value"
-        },
+        }
       ]
     },
     {
       "AssetName": "AMS-Motor-2",
       "Properties": [
         {
-          "PropertyId": "speed",
+          "PropertyName": "speed",
           "DataType": "double",
           "DataPath": "@.sources.Motor2.values.Speed.value"
         },
         {
-          "PropertyId": "power",
+          "PropertyName": "power",
           "DataType": "double",
           "DataPath": "@.sources.Motor2.values.Power.value"
-        },
+        }
       ]
-    },
+    }
   ],
   "CredentialProviderClient": "aws-credentials-provider"
 }
@@ -330,7 +353,7 @@ Configuration using existing model and assets:
 
 
 
-Mixed Configuration:
+Existing assets only:
 
 ```json
 {
@@ -343,38 +366,36 @@ Mixed Configuration:
       "AssetName": "Motor-1",
       "Properties": [
         {
-          "PropertyId": "speed",
+          "PropertyName": "speed",
           "DataType": "double",
           "DataPath": "@.sources.Motor1.values.Speed.value"
         },
         {
-          "PropertyId": "power",
+          "PropertyName": "power",
           "DataType": "double",
           "DataPath": "@.sources.Motor1.values.Power.value"
-        },
+        }
       ]
     },
     {
       "AssetName": "Motor-2",
       "Properties": [
         {
-          "PropertyId": "speed",
+          "PropertyName": "speed",
           "DataType": "double",
           "DataPath": "@.sources.Motor2.values.Speed.value"
         },
         {
-          "PropertyId": "power",
+          "PropertyName": "power",
           "DataType": "double",
           "DataPath": "@.sources.Motor2.values.Power.value"
-        },
+        }
       ]
-    },
+    }
   ],
   "CredentialProviderClient": "aws-credentials-provider"
 }
 ```
-
-Copy
 
 [^top](#aws-sitewise-target)
 
@@ -382,23 +403,25 @@ Copy
 
 [AwsSitewiseTarget](#awssitewisetargetconfiguration) > [AssetCreation](#assetcreation)
 
-Configuration for automatic creation and management of AWS IoT SiteWise asset models and assets. Defines how the adapter generates and maintains asset hierarchies, property definitions, and model relationships based on incoming device data structure. When enabled, the adapter automatically creates and updates the necessary SiteWise resources while following specified naming conventions and configuration patterns.
+Configuration for automatic creation of AWS IoT SiteWise asset models and assets. Defines the templates for the names, descriptions, external IDs and tags of the asset models, assets and measurement properties the target creates, and how their values are timestamped. What is created is described under [AssetCreation](#assetcreation).
 
-
+The external ID keys in AssetCreation end in `ID` (AssetExternalID, AssetModelExternalID, AssetModelPropertyExternalID); in an [Assets](#awssitewiseassetconfiguration) entry the key is AssetExternalId.
 
 - [Schema](#awssitewiseassetcreationconfiguration-schema)
 - [Examples](#awssitewiseassetcreationconfiguration-examples)
 
 **Properties:**
 
-- [AssetDescription ](#assetdescription )
-- [AssetExternalId](#assetexternalid)
-- [AssetModelDescription ](#assetmodeldescription )
-- [AssetModelExternalId](#assetmodelexternalid)
+- [AssetDescription](#assetdescription)
+- [AssetExternalID](#assetexternalid)
+- [AssetModelDescription](#assetmodeldescription)
+- [AssetModelExternalID](#assetmodelexternalid)
 - [AssetModelName](#assetmodelname)
+- [AssetModelPropertyExternalID](#assetmodelpropertyexternalid)
 - [AssetModelTags](#assetmodeltags)
 - [AssetName](#assetname)
 - [AssetPropertyAlias](#assetpropertyalias)
+- [AssetPropertyMetadataUnitName](#assetpropertymetadataunitname)
 - [AssetPropertyName](#assetpropertyname)
 - [AssetPropertyTimestamp](#assetpropertytimestamp)
 - [AssetTags](#assettags)
@@ -413,7 +436,7 @@ Available placeholders:
 
 - %schedule% - Schedule identifier
 - %target% - Target identifier
-- %source% - Source identifier
+- %source% - Source identifier (known limitation: in AssetDescription this is currently replaced by the target identifier)
 - %datetime% - Current date/time
 - ${name} - Environment variables
 - %metadataName% - Source/target metadata values
@@ -426,7 +449,7 @@ Optional. When not specified, the default template is used. The description help
 
 
 ---
-### AssetExternalId
+### AssetExternalID
 Defines the template used to generate external IDs for assets. External IDs provide a way to link SiteWise assets with external systems and maintain consistent identification across platforms.
 
 Available placeholders:
@@ -470,7 +493,7 @@ Optional. When not specified, the default template is used. The description help
 
 
 ---
-### AssetModelExternalId
+### AssetModelExternalID
 Template for external ID of created or updated asset models.
 
 **Type** : String
@@ -510,11 +533,29 @@ Available placeholders:
 
 Default: "%target%-%schedule%-%source%-model"
 
-Required. Must follow AWS IoT SiteWise naming constraints: [[2\]](https://docs.aws.amazon.com/iot-sitewise/latest/userguide/update-asset-models.html)
+Optional. Must follow AWS IoT SiteWise naming constraints: [[2\]](https://docs.aws.amazon.com/iot-sitewise/latest/userguide/update-asset-models.html)
 
 - Maximum length of 256 characters
 - Cannot contain control characters or certain special characters
 - Must be unique within your AWS account
+
+**Type**: String
+
+
+---
+### AssetModelPropertyExternalID
+Defines the template used to generate external IDs for the measurement properties of created asset models.
+
+Available placeholders:
+
+- %schedule% - Schedule identifier
+- %target% - Target identifier
+- %source% - Source identifier
+- %channel% - Channel identifier
+- ${name} - Environment variables
+- %metadataName% - Channel metadata values
+
+Optional. If not specified, no external ID will be assigned to the properties. A `/` in the rendered value is replaced by `_`.
 
 **Type**: String
 
@@ -528,8 +569,10 @@ Available placeholders in value templates:
 - %schedule% - Schedule identifier
 - %target% - Target identifier
 - %source% - Source identifier
+- %datetime% - Current date/time
 - ${name} - Environment variables
-- %metadataName% - Source/target metadata values
+
+Metadata placeholders are not replaced in tag values.
 
 Optional. When specified, these tags are automatically applied during asset model creation, enabling better resource organization and management in AWS IoT SiteWise.
 
@@ -549,11 +592,13 @@ Available placeholders:
 
 Default: "%target%-%schedule%-%source%"
 
-Required. Must follow AWS IoT SiteWise naming constraints:
+Optional. Must follow AWS IoT SiteWise naming constraints:
 
 - Maximum length of 256 characters
 - Must be unique within your asset hierarchy
 - Cannot contain control characters or certain special characters
+
+Rendered values are truncated to 128 characters.
 
 **Type**: String
 
@@ -586,6 +631,17 @@ Constraints:
 
 
 ---
+### AssetPropertyMetadataUnitName
+Name of the channel metadata key whose value is used as the unit of the measurement property created for that channel. Channels without this metadata key get a property without a unit.
+
+Default: "Unit"
+
+Optional.
+
+**Type**: String
+
+
+---
 ### AssetPropertyName
 Defines the template used to generate names for measurement asset properties. The template supports dynamic content through placeholders and metadata values to create descriptive and unique property names.
 
@@ -598,9 +654,9 @@ Available placeholders:
 - ${name} - Environment variables
 - %metadataName% - Metadata values from top, source, or channel level
 
-Default: "%target%-%schedule%-%source%-%channel%"
+Default: "%channel%"
 
-Required. Must follow AWS IoT SiteWise naming constraints:
+Optional. Must follow AWS IoT SiteWise naming constraints:
 
 - Maximum length of 256 characters
 - Must be unique within the asset
@@ -613,7 +669,7 @@ Required. Must follow AWS IoT SiteWise naming constraints:
 
 ---
 ### AssetPropertyTimestamp
-Specified which value to use for the timestamp of the measurement values written to the asset properties.
+Specifies which value to use for the timestamp of the measurement values written to the asset properties.
 
 The value specifies the starting point in the target output data from where a timestamp is searched for. The following values
 can be used. If no timestamp is available at the level in the output data, the next level up is tried. Depending on configuration
@@ -638,8 +694,10 @@ Available placeholders in value templates:
 - %schedule% - Schedule identifier
 - %target% - Target identifier
 - %source% - Source identifier
+- %datetime% - Current date/time
 - ${name} - Environment variables
-- %metadataName% - Source/target metadata values
+
+Metadata placeholders are not replaced in tag values.
 
 Optional. When specified, these tags are automatically applied during asset creation, enabling better resource organization and management in AWS IoT SiteWise.
 
@@ -661,7 +719,7 @@ Optional. When specified, these tags are automatically applied during asset crea
       "type": "string",
       "description": "Description of the asset"
     },
-    "AssetExternalId": {
+    "AssetExternalID": {
       "type": "string",
       "description": "External ID of the asset"
     },
@@ -669,7 +727,7 @@ Optional. When specified, these tags are automatically applied during asset crea
       "type": "string",
       "description": "Description of the asset model"
     },
-    "AssetModelExternalId": {
+    "AssetModelExternalID": {
       "type": "string",
       "description": "External ID of the asset model"
     },
@@ -677,50 +735,61 @@ Optional. When specified, these tags are automatically applied during asset crea
       "type": "string",
       "description": "Name of the asset model"
     },
-  "AssetModelTags": {
-    "type": "object",
-    "description": "Tags for the asset model",
-    "patternProperties": {
-      "^.*$": {
-        "type": "string"
-      }
+    "AssetModelPropertyExternalID": {
+      "type": "string",
+      "description": "External ID of the measurement properties of the asset model"
     },
-    "additionalProperties": false
-  },
-  "AssetName": {
-    "type": "string",
-    "description": "Name of the asset"
-  },
-  "AssetPropertyAlias": {
-    "type": "string",
-    "description": "Alias for the asset property"
-  },
-  "AssetPropertyName": {
-    "type": "string",
-    "description": "Name of the asset property"
-  },
-  "AssetPropertyTimestamp": {
-    "type": "string",
-    "description": "Timestamp type for the asset property",
-    "enum": ["Channel", "Source", "Schedule", "System"],
-    "default": "System"
-  },
-  "AssetTags": {
-    "type": "object",
-    "description": "Tags for the asset",
-    "patternProperties": {
-      "^.*$": {
-        "type": "string"
-      }
+    "AssetModelTags": {
+      "type": "object",
+      "description": "Tags for the asset model",
+      "patternProperties": {
+        "^.*$": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     },
-    "additionalProperties": false
+    "AssetName": {
+      "type": "string",
+      "description": "Name of the asset"
+    },
+    "AssetPropertyAlias": {
+      "type": "string",
+      "description": "Alias for the asset property"
+    },
+    "AssetPropertyMetadataUnitName": {
+      "type": "string",
+      "description": "Channel metadata key that holds the unit of the asset property",
+      "default": "Unit"
+    },
+    "AssetPropertyName": {
+      "type": "string",
+      "description": "Name of the asset property"
+    },
+    "AssetPropertyTimestamp": {
+      "type": "string",
+      "description": "Timestamp type for the asset property",
+      "enum": ["Channel", "Source", "Schedule", "System"],
+      "default": "Channel"
+    },
+    "AssetTags": {
+      "type": "object",
+      "description": "Tags for the asset",
+      "patternProperties": {
+        "^.*$": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
   }
-}
 }
 
 ```
 
 ### AwsSiteWiseAssetCreationConfiguration Examples
+
+Example configuration: [in-process-s7-sitewise-autocreate-assets.json](../../examples/in-process-s7-sitewise/in-process-s7-sitewise-autocreate-assets.json).
 
 Config using all defaults
 
@@ -738,8 +807,8 @@ Configuration overwriting defaults for AssetPropertyName and alias using values 
   "AssetPropertyAlias": "%plant%-%source%-%channel%-alias",
   "AssetTags":{
      "environment" : "production",
-     "location" : "%plant%",
-     "batch" : "%batch-number%"
+     "location" : "Plant-1",
+     "batch" : "B-1001"
    }
 }
 ```
@@ -749,13 +818,15 @@ Setting all possible values and adding tags for assetmodel and asset
 ```json
 {
   "AssetName": "Assembly-Robot-%source%",
-  "AssetDescription": "Robotic assembly unit for schedule %schedule% for lacoaction %location",
-  "AssetExternalId": "%source%-external",
+  "AssetDescription": "Robotic assembly unit for schedule %schedule% for location %location%",
+  "AssetExternalID": "%source%-external",
   "AssetModelName": "RoboticAssemblyModel",
   "AssetModelDescription": "Standard model for robotic assembly units from source %source%",
-  "AssetModelExternalId": "%source%-external",
+  "AssetModelExternalID": "%source%-external",
+  "AssetModelPropertyExternalID": "%source%-%channel%-external",
   "AssetPropertyName": "%source%-%channel%",
   "AssetPropertyAlias": "%source%-%channel%-alias",
+  "AssetPropertyMetadataUnitName": "Unit",
   "AssetPropertyTimestamp": "Channel",
   "AssetTags": {
     "Type": "Robot %source%",
@@ -782,26 +853,28 @@ Configuration class that defines how data should be mapped to AWS IoT SiteWise a
 
 **Properties:**
 
-- [AssetExternalId](#assetexternalid)
+- [AssetExternalId](#assetexternalid-1)
 - [AssetId](#assetid)
-- [AssetName](#assetname)
+- [AssetName](#assetname-1)
 - [Properties](#properties)
 
 ---
 ### AssetExternalId
-Identifies an existing AWS IoT SiteWise asset using its external ID. This is an alternative to using the asset's UUID or name. The asset's id, name or external id must be specified, not both. If all properties for the asset use the property alias then ExternalId must NOT be specified.
+Identifies an existing AWS IoT SiteWise asset using its external ID. This is an alternative to using the asset's UUID or name. Only one of the asset's id, name or external id can be specified. If all properties for the asset use the property alias then ExternalId must NOT be specified.
 
 **Type**: String
 
 ---
 ### AssetId
-Identifies an existing AWS IoT SiteWise asset using its ID. Either the asset's id, name, or external id must be specified. If all properties for the asset use the property alias, then AssetId must NOT be specified.
+Identifies an existing AWS IoT SiteWise asset using its ID. Exactly one of the asset's id, name, or external id must be specified. If all properties for the asset use the property alias, then AssetId must NOT be specified.
+
+Must be the asset ID in UUID form (lower-case hex, 8-4-4-4-12), e.g. `a1b2c3d4-5678-90ef-1234-567890abcdef`; any other value is a configuration error. To address the asset by name, use [AssetName](#assetname-1).
 
 **Type**: String
 
 ---
 ### AssetName
-Identifies an existing AWS IoT SiteWise asset using its name. The asset's id, name OR external id must be specified, not both. If all properties for the asset use the property alias, then AssetName must NOT be specified.
+Identifies an existing AWS IoT SiteWise asset using its name. Only one of the asset's id, name or external id can be specified. If all properties for the asset use the property alias, then AssetName must NOT be specified.
 
 **Type**: String
 
@@ -840,40 +913,18 @@ Defines the list of property configurations that map data to AWS IoT SiteWise as
       "minItems": 1
     }
   },
-  "oneOf": [
-    {
-      "required": ["AssetId"],
-      "not": {
-        "required": ["AssetExternalId"]
-      },
-      "allOf": [
-        {
-          "required": ["Properties"]
-        }
-      ]
-    },
-    {
-      "required": ["AssetExternalId"],
-      "not": {
-        "required": ["AssetId"]
-      },
-      "allOf": [
-        {
-          "required": ["Properties"]
-        }
-      ]
-    }
-  ]
+  "required": ["Properties"]
 }
 
 ```
+
+Exactly one of AssetId, AssetName or AssetExternalId, or none when every property uses PropertyAlias.
 
 ### AwsSiteWiseAssetConfiguration Examples
 
 ```json
 {
-  "AssetId": "a1b2c3d4-5678-90ef-ghij-klmnopqrstuv",
-  "AssetName": "Production Line 1",
+  "AssetId": "a1b2c3d4-5678-90ef-1234-567890abcdef",
   "Properties": [
     {
       "PropertyName": "IsActive",
@@ -882,7 +933,7 @@ Defines the list of property configurations that map data to AWS IoT SiteWise as
       "WarnIfNotPresent": true
     },
     {
-      "PropertyId": "Speed",
+      "PropertyName": "Speed",
       "DataType": "double",
       "DataPath": "@.sources.PumpMotor.values.Speed.value"
     }
@@ -921,11 +972,13 @@ Configuration class that defines how data values should be mapped to a specific 
 
 A path typically has the format 
 
-`"sources.< source name >.values< value name>.value"` 
+`"sources.<source name>.values.<channel name>.value"` 
+
+The trailing `.value` can be left out; keep it if the value's own timestamp should be used without a [TimestampPath](#timestamppath).
 
 Important notes:
 
-- Special characters (like '-') must be enclosed in quotes
+- Names that start with a digit or contain characters other than letters, digits, `_`, `-` and `/` must be enclosed in quotes; `-` and `/` need no quotes
 - Path must follow JMESPath syntax rules
 - Must resolve to a single value in the data structure
 - Case-sensitive
@@ -955,7 +1008,7 @@ If no type is specified the type of the value is used to determine type that is 
 Alias that identifies the AWS IoT SiteWise asset property.
 
 Only one of the property id, name, external id or alias must be specified.
-If PropertyAlias is used for all properties of an asset, then the AssetID, AssetName, and AssetExternalID must not be configured for that asset.
+If PropertyAlias is used for all properties of an asset, then the AssetId, AssetName, and AssetExternalId must not be configured for that asset.
 
 **Type**: String
 
@@ -973,6 +1026,8 @@ ID of the AWS IoT SiteWise asset property.
 
 Only one of the property id, name, external id or alias must be specified.
 
+Must be the property ID in UUID form (lower-case hex, 8-4-4-4-12), e.g. `a1b2c3d4-5678-90ef-1234-567890abcdef`; any other value is a configuration error. To address the property by name, use [PropertyName](#propertyname).
+
 **Type**: String
 
 ---
@@ -989,10 +1044,10 @@ Defines the path to extract timestamp information using JMESPath syntax.
 
 A path typically has the format 
 
-`"sources.< source name >.values< value name >.timestamp"`
+`"sources.<source name>.values.<channel name>.timestamp"`
 
 If not specified, the adapter will look for a timestamp in the order: value level, source level, root level.
-Note that JMESPath syntax treats characters like '-' as special characters, and therefore the element in the path must be in quotes.
+Names that start with a digit or contain characters other than letters, digits, `_`, `-` and `/` must be enclosed in quotes; `-` and `/` need no quotes.
 
 **Type**: String
 
@@ -1101,7 +1156,7 @@ Default is true
   "PropertyName": "IsActive",
   "DataType": "boolean",
   "DataPath": "@.sources.PumpMotor.values.Active.value",
-  "TimestampPath": "@.sources.Pump.values.Active.timestamp",
+  "TimestampPath": "@.sources.PumpMotor.values.Active.timestamp",
   "WarnIfNotPresent": true
 }
 

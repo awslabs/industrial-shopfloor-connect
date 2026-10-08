@@ -6,9 +6,13 @@ sending the data to an S3 bucket.
 
 The main.tmc program file is included to declare the variables which are read from the device.
 
+The same pipeline with the adapter and the targets as IPC services:
+[ipc-ads-s3](../ipc-ads-s3/README.md).
+
 
 In order to use the configuration, make the changes described below, and
-use it as the value of the --config parameter when starting sfc-main.
+use it as the value of the `-config` parameter when starting sfc-main, as
+shown under [Deployment directory](#deployment-directory).
 
 A debug target is included in the example to optionally write the output
 to the console.
@@ -17,19 +21,46 @@ to the console.
 
 ## Deployment directory
 
-A Placeholder ${SFC_DEPLOYMENT_DIR} is used in the configuration. SFC
-dynamically replaces these placeholders with the value of the
-environment variable from the placeholder. In this example it should
-have the value of the pathname of the directory where scf-main, the used
-adapters and targets are deployed with the following directory
-structure. (This structure can be changed by setting the pathnames in
-the AdapterTypes and TargetTypes sections)
+The `JarFiles` entries of the configuration use the placeholder
+`${SFC_DEPLOYMENT_DIR}`, which SFC replaces with the value of the
+environment variable `SFC_DEPLOYMENT_DIR`. Point it at the directory into
+which you unpack the module bundles `sfc-main`, `debug-target`,
+`aws-s3-target` and `ads` of the
+[latest release](https://github.com/awslabs/industrial-shopfloor-connect/releases/latest)
+(for another layout, change the `JarFiles` paths). `sfc-main` needs a
+Java 17 (or newer) runtime (Windows: `winget install EclipseAdoptium.Temurin.17.JDK`).
+More about this mode: [In-process](../../docs/sfc-deployment.md#in-process).
 
-${SFC_DEPLOYMENT_DIR}  
-&nbsp;&nbsp;&nbsp;|-sfc-main  
-&nbsp;&nbsp;&nbsp;|-debug-target    
-&nbsp;&nbsp;&nbsp;|-aws-s3-target  
-&nbsp;&nbsp;&nbsp;|-ads  
+Unpack the bundles, set the variable and, once you have made the changes
+described below, start `sfc-main` from this example's folder:
+
+**Linux / macOS**
+
+```shell
+export SFC_DEPLOYMENT_DIR="$HOME/sfc"
+mkdir -p "$SFC_DEPLOYMENT_DIR"
+for m in sfc-main debug-target aws-s3-target ads; do
+  curl -fsSL "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz" | tar -xzf - -C "$SFC_DEPLOYMENT_DIR"
+done
+"$SFC_DEPLOYMENT_DIR/sfc-main/bin/sfc-main" -config in-process-ads-s3.json
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$env:SFC_DEPLOYMENT_DIR = "C:/sfc"
+New-Item -ItemType Directory -Force C:\sfc | Out-Null
+foreach ($m in "sfc-main", "debug-target", "aws-s3-target", "ads") {
+    curl.exe -fsSL -o "C:\sfc\$m.tar.gz" "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz"
+    tar -xf "C:\sfc\$m.tar.gz" -C C:\sfc
+}
+java -cp "C:\sfc\sfc-main\lib\*" com.amazonaws.sfc.MainController -config in-process-ads-s3.json
+```
+
+On Windows start `sfc-main` with `java -cp` as shown, not with
+`bin\sfc-main.bat` ([Platform support](../../docs/README.md#platform-support)).
+With the uberjar from [sfcup](../../README.md#1-install), remove the
+`JarFiles` entries and run `sfcx -config in-process-ads-s3.json`.
 &nbsp;  
 &nbsp;
 
@@ -68,7 +99,7 @@ uncomment the DebugTarget by deleting the '#'.
 
 -   < YOUR-REGION >, your region e.g., eu-west-1
 
--   <YOUR-BUCKET-NAME >, bucket name to store data
+-   < YOUR-BUCKET-NAME >, bucket name to store data
 
 -   < OPTIONAL PREFIX TO USE IN BUCKET >, Optional prefix for data in
     the bucket
@@ -89,10 +120,19 @@ section AwsIotCredentialProviderClients below.
 ## Sources Section
 
 In this section, the values are defined as channels, which are read from
-the controller. In this template there is an example for every
-address/type supported by the adapter. In order to change the name of
+the controller. In this template there is a channel for every variable
+declared in main.tmc, plus TwinCAT system symbols. In order to change the name of
 the value as it is included in the data which is sent to the targets,
 include a setting "Name" for the channel.
+
+Set `SourceAmsNetId` and `SourceAmsPort` to the AMS address of SFC: for a
+client the NetId is typically the IP address of the SFC host followed by
+`.1.1`; the port only has to be set, this example uses `32905`. Set
+`TargetAmsNetId` to the AMS NetId of the PLC and `TargetAmsPort` to the AMS
+port of its PLC runtime (`851` for the first TwinCAT 3 runtime). To
+authorize SFC as a client, add its `SourceAmsNetId` as an AMS route under
+SYSTEM > Routes on the TwinCAT target. Details:
+[AdsSourceConfiguration](../../docs/adapters/ads.md#adssourceconfiguration).
 &nbsp;  
 &nbsp;  
 
@@ -104,79 +144,47 @@ include a setting "Name" for the channel.
         "AdapterType": "ADS",
         "Devices": {
             "CX8190": {
-                "Address": "< DEVICE IP ADDRESS >"
+                "Address": "<DEVICE IP ADDRESS>"
             }
         }
     }
-},
-
+}
 ```
 
--   <CONTROLLER IP ADDRESS >, IP address of the controller
+-   \<DEVICE IP ADDRESS\>, IP address of the controller
 
 This section configures the controller from which the data is read. The
 default port 48898 is used which can be changed by Including a Port
 setting specifying that value.
 
-OptimizeReads is set to true to allow the adapter to combine reads from
-the controller.
+**Try it without hardware:** omni-plc-sim, the PLC simulator that
+[uberjar-plc-sim-s3tables](../uberjar-plc-sim-s3tables/README.md) uses,
+simulates a TwinCAT 3 runtime that serves every symbol this configuration
+reads. Start it as in [step 1](../uberjar-plc-sim-s3tables/README.md#1-start-the-plcs)
+of that example, then set `Address` to `127.0.0.1`, `TargetAmsNetId` to
+`192.168.100.10.1.1` and `TargetAmsPort` to `851`.
 &nbsp;  
 &nbsp;  
 
 
 ## AwsIotCredentialProviderClients
 
-This section configures one or more clients which can be referred to by
-targets which need access to AWS services.
+The client `AwsIotClient` in this section obtains temporary credentials for
+the S3 target from the AWS IoT credentials provider, using the certificate
+of a Thing in AWS IoT. Fill in `IotCredentialEndpoint`, `RoleAlias`,
+`ThingName`, `CertificateFile`, `PrivateKeyFile` and `RootCa`. On a
+Greengrass V2 core device you can instead remove the `#` from
+`GreenGrassDeploymentPath`, set it to the Greengrass root folder, e.g.
+`/greengrass/v2`, and delete the other settings. The role that
+`RoleAlias` points to must allow `s3:PutObject` on the bucket. On Windows
+write the file paths with forward slashes, e.g. `"C:/sfc/certs/device.crt"`.
 
-A credential provider will make use of the AWS IoT Credentials service
-to obtain temporary credentials. This process is described at
-<https://aws.amazon.com/blogs/security/how-to-eliminate-the-need-for-hardcoded-aws-credentials-in-devices-by-using-the-aws-iot-credentials-provider/>
+All settings:
+[AwsIotCredentialProviderClients](../../docs/core/aws-iot-credential-provider-configuration.md).
+To use the AWS SDK default credentials chain instead, delete this section
+and the target's `CredentialProviderClient`; see
+[AWS service credentials](../../docs/sfc-aws-service-credentials.md). For
+production environments the temporary credentials of a credential provider
+client are strongly recommended.
 
-The resources used in the configuration can easily be setup by creating
-a Thing in the AWS IoT service. The role that `RoleAlias` points to, must
-give access to the services used by the target which uses the client.
-
-```json
-"AwsIotCredentialProviderClients" : {
-  "AwsIotClient": {
-    "IotCredentialEndpoint": "<ID>.credentials.iot.<YOUR REGION>.amazonaws.com",
-    "RoleAlias": "< ROLE EXCHANGE ALIAS >”,
-    "ThingName": "< THING NAME > ",
-    "Certificate": "< PATH TO DEVICE CERTIFICATE .crt FILE >",
-    "PrivateKey": "< PATH TO PRIVATE KEY .key FILE >",
-    "RootCa": "< PATH TO ROOT CERTIFICATE .pem FILE >",
-  }
-}
-```
-
-
-If there is a GreenGrass V2 deployment on the same machine, instead of
-all settings a setting named GreenGrassDeploymentPath can be used to
-point to that deployment. SFC will use the GreenGrass V2 configurations
-setting. Specific setting can be overridden by setting a value for that
-setting, which will replace the value from the GreenGrass V2
-Configuration. Note that although SFC can be deployed as a GreenGrass
-component, it can also run as a standalone process or in a docker
-container and still use a GreenGrass configuration.
-&nbsp;  
-&nbsp;  
-
-
-```json
-"AwsIotCredentialProviderClients": {
-  "AwsIotClient": {
-    "GreenGrassDeploymentPath": "<GREENGRASS DEPLOYMENT DIR>/v2"
-  }
-}
-```
-
-When the AWS service credentials are provided using one of the options
-in the AWS SDK credentials provider chain
-(<https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html>)
-AwsIotCredentialProviderClients and any references in the targets can be
-deleted. Using the temporary credentials provided through a configured
-AwsIotCredentialProviderClient for production environment is strongly
-recommended.
-
-[Examples](../../docs/examples/README.md)
+Docs used: [ADS adapter](../../docs/adapters/ads.md) · [S3 target](../../docs/targets/aws-s3.md) · [Debug target](../../docs/targets/debug.md) · [AWS service credentials](../../docs/sfc-aws-service-credentials.md) · [In-process mode](../../docs/sfc-deployment.md#in-process) · [All examples](../../docs/examples/README.md)

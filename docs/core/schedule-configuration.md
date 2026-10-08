@@ -64,11 +64,11 @@ A required unique identifier for the schedule that is included with all collecte
 
 **Type**: String
 
-Must be specified and unique in the configuration
+Must be specified and unique in the configuration. Uniqueness is not validated: if two schedules share a name, SFC runs only one schedule under that name, with a mix of the settings of both.
 
 ---
 ### Sources
-Defines which data points to collect from each source using a map of source IDs to channel lists. Each source must be defined in the [Sources](./sfc-configuration.md#sources) configuration section. Use "*" to read all channels from a source. At least one source and channel must be specified
+Defines which data points to collect from each source using a map of source IDs to channel lists. Each source must be defined in the [Sources](./sfc-configuration.md#sources) configuration section; the keys here are the source IDs (the keys under Sources, not the source's Name). List channel IDs (the keys under the source's Channels, not their Name), or `["*"]` on its own to read all channels from a source. Prefix a source key with # to disable it. At least one source and channel must be specified
 
 **Type**: Map [String, String[]]
 
@@ -80,12 +80,14 @@ List of target identifiers to send the output of the schedule to. The target ide
 
 Must at least contain one active target.
 
+Entries that are not an existing, active target are skipped without an error. Prefix an entry with # (e.g. "#DebugTarget") to switch it off. If no target is left, the schedule does not run and no error is logged, so check the spelling first when a schedule produces no output.
+
 ---
 ### TimestampLevel
 
-Controls timestamp inclusion in the output data. Timestamp field names are configurable via [ElementNames](./sfc-configuration.md#elementnames).
+Controls timestamp inclusion in the output data. Timestamp field names are configurable via [ElementNames](./sfc-configuration.md#elementnames). See [output data format](../sfc-data-format.md#output-data-format).
 
-- "None": No timestamps will be included in the output data.
+- "None": No source or channel timestamps (the timestamp at the top level of each output message is always present).
 - "Channel": A timestamp will be included with every channel output value. The output values will be an element that contains both the value and timestamp. The names of the fields in this element can be specified in the Value and Timestamp fields of the ElementNames entry of the configuration
 - "Source": A single timestamp will be included in the output at the source level. The name of the element that contains the timestamp can be specified in the Timestamp field at the ElementNames entry of the configuration.
 - "Both": Timestamps will be added at both source-level and channel value levels. See Channel and Source level for more information on the name of the elements containing the timestamps and values.
@@ -94,7 +96,11 @@ Controls timestamp inclusion in the output data. Timestamp field names are confi
 
 Default is "None"
 
+> With IPC adapter services, channel timestamps currently equal the source timestamp.
+
 [^top](#scheduleconfiguration)
+
+See it running: [Quickstart simulator.json](../../README.md#2-first-data--no-hardware-no-cloud) (one schedule, one source) and [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md) (three simulated PLCs as sources in one schedule, no hardware).
 
 
 
@@ -131,7 +137,11 @@ Default is "None"
       "type": "object",
       "patternProperties": {
         "^[A-Za-z0-9_-]+$": {
-          "type": "object",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
         }
       },
       "minProperties": 1,
@@ -175,13 +185,11 @@ Basic configuration, collecting all channels for source
 {
   "Name": "TankData",
   "Sources": {
-    "Tank1": {
-      "Channels": ["*"]
-    }
+    "Tank1": ["*"]
   },
   "Targets": ["S3TargetBucket"],
   "Interval": 5000,
-  "TimestampLevel": "Source",
+  "TimestampLevel": "Source"
 }
 ```
 
@@ -193,14 +201,12 @@ Basic configuration, collecting selected channels for source and adding metadata
 {
   "Name": "TankData",
   "Sources": {
-    "Tank1": {
-      "Channels": ["Temperature", "Pressure", "Level"]
-    }
+    "Tank1": ["Temperature", "Pressure", "Level"]
   },
   "Targets": ["S3TargetBucket"],
   "Interval": 5000,
   "TimestampLevel": "Source",
-    "Metadata": {
+  "Metadata": {
     "location": "Factory-1",
     "line": "Production-A",
     "criticality": "high",
@@ -219,12 +225,8 @@ Configuration with aggregation to collect average, minimum and maximum values ov
   "Description": "Production line monitoring schedule",
   "Active": true,
   "Sources": {
-    "Assembly-A": {
-      "Channels": ["Speed", "Temperature"],
-    },
-    "Assembly-B": {
-      "Channels": ["Pressure", "Flow"],
-    }
+    "Assembly-A": ["Speed", "Temperature"],
+    "Assembly-B": ["Pressure", "Flow"]
   },
   "Targets": ["IoTSiteWise", "S3"],
   "Interval": 1000,

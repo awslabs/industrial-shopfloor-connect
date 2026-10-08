@@ -7,7 +7,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.sh | bash
 #
 # Installs the SFC uberjar - the core plus every protocol adapter and target in one jar - into
-# ~/.sfc, and puts `sfc` on PATH. Re-run it (or the installed `sfcup`) to upgrade.
+# ~/.sfc, and puts `sfcx` on PATH. Re-run it (or the installed `sfcup`) to upgrade.
 #
 # Dependencies: java 17+, tar, and either curl or wget. No jq: the latest release is resolved from
 # GitHub's own redirect rather than the JSON API, which also avoids the API's unauthenticated
@@ -61,9 +61,9 @@ Usage: sfcup.sh [options]
   -h, --help          show this message
   -V, --sfcup-version print the version of this installer
 
-After installing, both \`sfc\` and \`sfc-uberjar\` are on PATH and take the usual SFC options:
+After installing, \`sfcx\` is on PATH and takes the usual SFC options:
 
-  sfc -config example.json -info
+  sfcx -config example.json -info
 EOF
 }
 
@@ -233,6 +233,8 @@ check_java
 SRC_TARBALL=""
 if [ "$FROM_LOCAL" = 1 ]; then
   # Developer path: use the tarball this checkout just built, so local changes are what gets installed.
+  # BASH_SOURCE is empty when the script is piped into bash, and set -u would abort on it.
+  [ -n "${BASH_SOURCE[0]:-}" ] || die "--local needs the script run from a checkout:  ./sfcup.sh --local"
   here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   SRC_TARBALL="$here/build/distribution/$BUNDLE"
   [ -f "$SRC_TARBALL" ] || die "no local bundle at $SRC_TARBALL
@@ -330,13 +332,22 @@ mv "$TMP/$BUNDLE_DIR" "$TARGET"
 ln -sfn "versions/$VERSION" "$CURRENT.new"
 mv -f "$CURRENT.new" "$CURRENT"
 
-# Both names, so new docs can say `sfc` while every existing reference to `sfc-uberjar` keeps working.
-ln -sfn "../current/$LAUNCHER" "$BIN_DIR/sfc"
-ln -sfn "../current/$LAUNCHER" "$BIN_DIR/sfc-uberjar"
+# One command name on every OS: `sfcx`. (Plain `sfc` is taken on Windows by the System File Checker.)
+ln -sfn "../current/$LAUNCHER" "$BIN_DIR/sfcx"
+# Earlier installs linked `sfc` and `sfc-uberjar`; drop them so only one name stays in use.
+rm -f "$BIN_DIR/sfc" "$BIN_DIR/sfc-uberjar"
 
-# Keep a copy of this script so `sfcup` can upgrade the install later.
-if [ -f "${BASH_SOURCE[0]}" ]; then
-  cp "${BASH_SOURCE[0]}" "$BIN_DIR/sfcup" && chmod +x "$BIN_DIR/sfcup"
+# Keep a copy of this script so `sfcup` can upgrade the install later. Under `curl ... | bash` there is
+# no script file (BASH_SOURCE is empty, and set -u would abort on it), so fetch the published copy.
+if [ -n "${BASH_SOURCE[0]:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+  # An upgrade run from the installed copy must not copy the file onto itself.
+  [ "${BASH_SOURCE[0]}" -ef "$BIN_DIR/sfcup" ] || { cp "${BASH_SOURCE[0]}" "$BIN_DIR/sfcup" && chmod +x "$BIN_DIR/sfcup"; }
+elif fetch_stdout "https://raw.githubusercontent.com/$REPO_SLUG/main/sfcup.sh" > "$BIN_DIR/sfcup.new" 2>/dev/null \
+     && [ -s "$BIN_DIR/sfcup.new" ]; then
+  mv -f "$BIN_DIR/sfcup.new" "$BIN_DIR/sfcup" && chmod +x "$BIN_DIR/sfcup"
+else
+  rm -f "$BIN_DIR/sfcup.new"
+  warn "could not save sfcup for later upgrades; re-run the install command to upgrade"
 fi
 
 # --------------------------------------------------------------------------------------- PATH
@@ -354,6 +365,10 @@ EOF
 PATH_WIRED=0
 if [ "$MODIFY_PATH" = 1 ]; then
   rcs=""
+  # zsh, the macOS default, reads neither .profile nor .bashrc, and a fresh account may have no .zshrc yet.
+  case "${SHELL:-}" in
+    */zsh) [ -f "$HOME/.zshrc" ] || touch "$HOME/.zshrc" ;;
+  esac
   for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
     [ -f "$rc" ] && rcs="$rcs $rc"
   done
@@ -387,7 +402,7 @@ JAR=$(find "$TARGET/lib" -maxdepth 1 -name 'sfc-uberjar-*.jar' 2>/dev/null | hea
 say ""
 ok "SFC $VERSION installed in ${SFC_HOME/#$HOME/~}"
 say ""
-say "  ${C_DIM}commands${C_0}  sfc, sfc-uberjar          ${C_DIM}(same launcher, either name)${C_0}"
+say "  ${C_DIM}command${C_0}   sfcx"
 say "  ${C_DIM}jar${C_0}       ${JAR/#$HOME/~}"
 say "  ${C_DIM}update${C_0}    sfcup"
 say ""
@@ -405,7 +420,7 @@ fi
 say ""
 say "Then try it — this needs no hardware and no cloud account:"
 say ""
-say "  ${C_B}sfc -config <your-config>.json -info${C_0}"
+say "  ${C_B}sfcx -config <your-config>.json -info${C_0}"
 say ""
-say "  ${C_DIM}Ready-made configurations: $REPO/tree/main/examples${C_0}"
+say "  ${C_DIM}Ready-made configurations: $REPO/blob/main/docs/examples/README.md${C_0}"
 say ""

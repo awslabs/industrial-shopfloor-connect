@@ -36,7 +36,7 @@ ProtocolAdapters:
         Path: OPCUA/SimulationServer
 Targets:
   IoTCoreTarget:
-    TargetType: AWS-IOT-HTTP
+    TargetType: AWS-IOT-CORE
     TopicName: sfc-data-topic
     Region: eu-west-1
     CredentialProviderClient: AwsIotClient
@@ -53,26 +53,26 @@ Targets:
 AdapterTypes:
   OPCUA:
     JarFiles:
-      - "/sfc/opcua/lib"
+      - "${SFC_DEPLOYMENT_DIR}/opcua/lib"
     FactoryClassName: com.amazonaws.sfc.opcua.OpcuaAdapter
 TargetTypes:
-  AWS-IOT-HTTP:
+  AWS-IOT-CORE:
     JarFiles:
-      - "/sfc/aws-iot-http-target/lib"
-    FactoryClassName: com.amazonaws.sfc.awsiot.http.AwsIotHttpTargetWriter
+      - "${SFC_DEPLOYMENT_DIR}/aws-iot-core-target/lib"
+    FactoryClassName: com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter
   AWS-S3:
     JarFiles:
-      - "/sfc/aws-s3-target/lib"
+      - "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
     FactoryClassName: com.amazonaws.sfc.awss3.AwsS3TargetWriter
   DEBUG-TARGET:
     JarFiles:
-      - "/sfc/debug-target/lib"
+      - "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
     FactoryClassName: com.amazonaws.sfc.debugtarget.DebugTargetWriter
 AwsIotCredentialProviderClients:
   AwsIotClient:
     IotCredentialEndpoint: 1234567890abcd.credentials.iot.eu-west-1.amazonaws.com
     RoleAlias: TokenExchangeRoleAlias
     ThingName: MyThingName
-    Certificate: "/sfc/cert/certificate.crt"
-    PrivateKey: "/sfc/cert/private.key"
+    CertificateFile: "/sfc/cert/certificate.crt"
+    PrivateKeyFile: "/sfc/cert/private.key"
     RootCa: "/sfc/cert/root.pem"

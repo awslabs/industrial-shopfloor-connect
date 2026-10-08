@@ -11,12 +11,12 @@
 **Properties:**
 
 - [AggregatorChannelSize](#aggregatorchannelsize)
+- [AggregatorChannelTimeout](#aggregatorchanneltimeout)
 - [AllSourcesReadTimeout](#allsourcesreadtimeout)
 - [ChannelSizePerMetricsProvider](#channelsizepermetricsprovider)
 - [MaxConcurrentSourceReaders](#maxconcurrentsourcereaders)
 - [MetricsChannelTimeout](#metricschanneltimeout)
 - [ScheduleReaderResultsChannelSize](#schedulereaderresultschannelsize)
-- [ScheduleReaderResultsChannelTimeout](#schedulereaderresultschanneltimeout)
 - [ScheduleReaderResultsChannelTimeout](#schedulereaderresultschanneltimeout)
 - [TargetForwardingChannelSize](#targetforwardingchannelsize)
 - [TargetForwardingChannelTimeout](#targetforwardingchanneltimeout)
@@ -25,11 +25,19 @@
 - [TargetResultsChannelSize](#targetresultschannelsize)
 - [TargetResultsChannelTimeout](#targetresultschanneltimeout)
 - [WriterInputChannelSize](#writerinputchannelsize)
-- [WriterInputChannelSizeTimeout](#writerinputchannelsizetimeout)
+- [WriterInputChannelTimeout](#writerinputchanneltimeout)
 
 ---
 ### AggregatorChannelSize
 Specifies the size of the internal buffer used for sending data to the aggregator component. The default value is 1000 items. You can increase this value if you experience timeouts on **ScheduleReader:aggregationChannel**. Conversely, you can decrease it to reduce memory consumption used for aggregation operations. This setting helps balance throughput with memory usage in the aggregation process
+
+**Type**: Int
+
+Default is 1000
+
+---
+### AggregatorChannelTimeout
+Specifies the timeout period (in milliseconds) for writing to the internal buffer that sends data to the aggregation component. The default value is 1000 milliseconds (1 second). If writing operations exceed this timeout, they will be considered failed. You should increase this value if you experience timeout errors on **ScheduleReader:aggregationChannel** and have limited available memory. This setting helps ensure reliable data flow to aggregation while preventing indefinite blocking
 
 **Type**: Int
 
@@ -45,11 +53,11 @@ Default is 60000
 
 ---
 ### ChannelSizePerMetricsProvider
-Specifies the buffer size allocated for each metrics provider in the internal metrics processor. The default value is 1000 items. You can increase this value if you encounter timeouts on **MetricsProcessor:metricsChannel.** Alternatively, you can decrease it to reduce memory consumption. This setting helps balance the throughput of metrics processing with memory utilization.
+Specifies the buffer size allocated for each metrics provider in the internal metrics processor. The default value is 100 items. You can increase this value if you encounter timeouts on **MetricsProcessor:metricsChannel.** Alternatively, you can decrease it to reduce memory consumption. This setting helps balance the throughput of metrics processing with memory utilization.
 
 **Type**: Int
 
-Default is 1000
+Default is 100
 
 
 
@@ -63,37 +71,29 @@ Default is 5
 
 ---
 ### MetricsChannelTimeout
-Specifies the timeout period (in milliseconds) for writing to the internal metrics processor buffer. The default value is 5000 milliseconds (5 seconds). If writing operations exceed this timeout, they will be considered failed. You should increase this value if you experience timeout errors on metrics channels and have limited available memory. This setting helps ensure reliable metrics processing while preventing indefinite blocking
+Specifies the timeout period (in milliseconds) for writing to the internal metrics processor buffer. The default value is 10000 milliseconds (10 seconds). If writing operations exceed this timeout, they will be considered failed. You should increase this value if you experience timeout errors on metrics channels and have limited available memory. This setting helps ensure reliable metrics processing while preventing indefinite blocking
 
 **Type**: Int
 
-Default is 5000
+Default is 10000
 
 ---
 ### ScheduleReaderResultsChannelSize
-Specifies the size of the internal buffer used for storing data read from sources. The default value is 5000 items. You can increase this value if you experience timeouts on **ScheduleReader:writerInputChannel**. Conversely, you can decrease it to reduce memory consumption by the reader component. This setting helps balance read performance with memory utilization.
+Specifies the size of the internal buffer used for storing data read from sources. The default value is 10000 items. You can increase this value if you experience timeouts on **ScheduleReader:resultsChannel**. Conversely, you can decrease it to reduce memory consumption by the reader component. This setting helps balance read performance with memory utilization.
+
+**Type**: Int
+
+Default is 10000
+
+Increment when getting timeouts on ScheduleReader:resultsChannel, reduce to limit memory use by reader
+
+---
+### ScheduleReaderResultsChannelTimeout
+Specifies the timeout period (in milliseconds) for writing to the internal buffer when reading from sources. The default value is 5000 milliseconds (5 seconds). If writing operations exceed this timeout, they will be considered failed. You should increase this value if you experience timeout errors on **ScheduleReader:resultsChannel** and have limited available memory. This setting helps ensure reliable data reading while preventing indefinite blocking.
 
 **Type**: Int
 
 Default is 5000
-
-Increment when getting timeouts on ScheduleReader:writerInputChannel, reduce to limit memory use by reader
-
----
-### ScheduleReaderResultsChannelTimeout
-Specifies the timeout period (in milliseconds) for writing to the internal buffer when reading from sources. The default value is 1000 milliseconds (1 second). If writing operations exceed this timeout, they will be considered failed. You should increase this value if you experience timeout errors on **ScheduleReader:resultsChannel** and have limited available memory. This setting helps ensure reliable data reading while preventing indefinite blocking.
-
-**Type**: Int
-
-Default is 1000
-
----
-### ScheduleReaderResultsChannelTimeout
-Specifies the timeout period (in milliseconds) for writing to the internal buffer that sends data to the aggregation component. The default value is 1000 milliseconds (1 second). If writing operations exceed this timeout, they will be considered failed. You should increase this value if you experience timeout errors on **ScheduleReader:aggregationChannel** and have limited available memory. This setting helps ensure reliable data flow to aggregation while preventing indefinite blocking
-
-**Type**: Int
-
-Default is 1000
 
 ---
 ### TargetForwardingChannelSize
@@ -115,21 +115,21 @@ Default is 1000
 
 ---
 ### TargetResubmitChannelSize
-Specifies the size of the internal buffer used for resubmitting data in chained targets. The default value is 1000 items. You can increase this value if you experience timeouts on **resubmit** channels. Alternatively, you can decrease it to reduce memory consumption. This setting helps balance the throughput of data resubmission between chained targets with memory utilization
+Specifies the size of the internal buffer used for resubmitting data in chained targets. The default value is 100 items. You can increase this value if you experience timeouts on **resubmit** channels. Alternatively, you can decrease it to reduce memory consumption. This setting helps balance the throughput of data resubmission between chained targets with memory utilization
 
 **Type**: Int
 
-Default is 1000
+Default is 100
 
 Increment when getting timeouts on resubmit channels, reduce to limit memory use 
 
 ---
 ### TargetResubmitChannelTimeout
-Specifies the timeout period (in milliseconds) for writing to the resubmit buffer used by chained targets. The default value is 1000 milliseconds (1 second). If writing operations exceed this timeout, they will be considered failed. You should increase this value if you experience timeout errors on resubmit channels and have limited available memory. This setting helps ensure reliable data resubmission while preventing indefinite blocking
+Specifies the timeout period (in milliseconds) for writing to the resubmit buffer used by chained targets. The default value is 10000 milliseconds (10 seconds). If writing operations exceed this timeout, they will be considered failed. You should increase this value if you experience timeout errors on resubmit channels and have limited available memory. This setting helps ensure reliable data resubmission while preventing indefinite blocking
 
 **Type**: Int
 
-Default is 1000
+Default is 10000
 
 ---
 ### TargetResultsChannelSize
@@ -149,15 +149,15 @@ Default is 5000
 
 ---
 ### WriterInputChannelSize
-Specifies the size of the internal buffer used for sending data to writers. The default value is 10000 items. You can increase this value if you experience timeouts on **ScheduleController:writerInputChannel**. Alternatively, you can decrease it to reduce memory consumption. This setting helps balance the throughput of data transmission to writers with memory utilization.
+Specifies the size of the internal buffer used for sending data to writers. The default value is 10000 items. You can increase this value if you experience timeouts on **ScheduleReader:readerOutputChannel** (aggregated schedules: **com.amazonaws.sfc.ScheduleAggregator:readerOutputChannel**). Alternatively, you can decrease it to reduce memory consumption. This setting helps balance the throughput of data transmission to writers with memory utilization.
 
 **Type**: Int
 
 Default is 10000
 
 ---
-### WriterInputChannelSizeTimeout
-Specifies the timeout period (in milliseconds) for writing to the internal buffer that sends data to writers. The default value is 1000 milliseconds (1 second). If writing operations exceed this timeout, they will be considered failed. You should increase this value if you experience timeout errors on writerInputChannel and have limited available memory. This setting helps ensure reliable data transmission to writers while preventing indefinite blocking.
+### WriterInputChannelTimeout
+Specifies the timeout period (in milliseconds) for writing to the internal buffer that sends data to writers. The default value is 1000 milliseconds (1 second). If writing operations exceed this timeout, they will be considered failed. You should increase this value if you experience timeout errors on readerOutputChannel and have limited available memory. This setting helps ensure reliable data transmission to writers while preventing indefinite blocking.
 
 **Type**: Int
 
@@ -179,6 +179,11 @@ Default is 1000
       "default": 1000,
       "description": "Size of the aggregator channel"
     },
+    "AggregatorChannelTimeout": {
+      "type": "integer",
+      "default": 1000,
+      "description": "Timeout for aggregator channel in milliseconds"
+    },
     "AllSourcesReadTimeout": {
       "type": "integer",
       "default": 60000,
@@ -186,7 +191,7 @@ Default is 1000
     },
     "ChannelSizePerMetricsProvider": {
       "type": "integer",
-      "default": 1000,
+      "default": 100,
       "description": "Channel size for each metrics provider"
     },
     "MaxConcurrentSourceReaders": {
@@ -196,22 +201,22 @@ Default is 1000
     },
     "MetricsChannelTimeout": {
       "type": "integer",
-      "default": 5000,
+      "default": 10000,
       "description": "Timeout for metrics channel in milliseconds"
     },
     "ScheduleReaderResultsChannelSize": {
       "type": "integer",
-      "default": 1,
+      "default": 10000,
       "description": "Size of the schedule reader results channel"
     },
     "ScheduleReaderResultsChannelTimeout": {
       "type": "integer",
-      "default": 0,
+      "default": 5000,
       "description": "Timeout for schedule reader results channel in milliseconds"
     },
     "TargetForwardingChannelSize": {
       "type": "integer",
-      "default": 5000,
+      "default": 1000,
       "description": "Size of the target forwarding channel"
     },
     "TargetForwardingChannelTimeout": {
@@ -221,12 +226,12 @@ Default is 1000
     },
     "TargetResubmitChannelSize": {
       "type": "integer",
-      "default": 1000,
+      "default": 100,
       "description": "Size of the target resubmit channel"
     },
     "TargetResubmitChannelTimeout": {
       "type": "integer",
-      "default": 1000,
+      "default": 10000,
       "description": "Timeout for target resubmit channel in milliseconds"
     },
     "TargetResultsChannelSize": {
@@ -244,7 +249,7 @@ Default is 1000
       "default": 10000,
       "description": "Size of the writer input channel"
     },
-    "WriterInputChannelSizeTimeout": {
+    "WriterInputChannelTimeout": {
       "type": "integer",
       "default": 1000,
       "description": "Timeout for writer input channel in milliseconds"
@@ -268,25 +273,26 @@ Increase number of concurrent source readers
 
 
 
-Full configuration
+Full configuration with the default values. Start from the defaults and change only the parameter named in a channel warning.
 
 ```json
 {
   "AggregatorChannelSize": 1000,
-  "AllSourcesReadTimeout": 1000,
+  "AggregatorChannelTimeout": 1000,
+  "AllSourcesReadTimeout": 60000,
   "ChannelSizePerMetricsProvider": 100,
-  "MaxConcurrentSourceReaders": 16,
-  "MetricsChannelTimeout": 1000,
-  "ScheduleReaderResultsChannelSize": 1000,
-  "ScheduleReaderResultsChannelTimeout": 1000,
+  "MaxConcurrentSourceReaders": 5,
+  "MetricsChannelTimeout": 10000,
+  "ScheduleReaderResultsChannelSize": 10000,
+  "ScheduleReaderResultsChannelTimeout": 5000,
   "TargetForwardingChannelSize": 1000,
   "TargetForwardingChannelTimeout": 1000,
-  "TargetResubmitChannelSize": 1000,
-  "TargetResubmitChannelTimeout": 1000,
+  "TargetResubmitChannelSize": 100,
+  "TargetResubmitChannelTimeout": 10000,
   "TargetResultsChannelSize": 1000,
-  "TargetResultsChannelTimeout": 1000,
-  "WriterInputChannelSize": 1000,
-  "WriterInputChannelSizeTimeout": 1000
+  "TargetResultsChannelTimeout": 5000,
+  "WriterInputChannelSize": 10000,
+  "WriterInputChannelTimeout": 1000
 }
 ```
 

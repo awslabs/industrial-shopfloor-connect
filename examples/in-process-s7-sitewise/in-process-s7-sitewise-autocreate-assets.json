@@ -2,7 +2,7 @@
   "AWSVersion": "2022-04-02",
   "Name": "S7 to Sitewise",
   "Version": 1,
-  "LogLevel": "Trace",
+  "LogLevel": "Info",
   "Schedules": [
     {
       "Name": "TestSchedule",
@@ -46,13 +46,13 @@
   "Targets": {
     "DebugTarget": {
       "Active": true,
-      "LogLevel": "Trace",
+      "LogLevel": "Info",
       "TargetType": "DEBUG-TARGET"
     },
     "SitewiseTarget": {
       "Active": true,
       "TargetType": "AWS-SITEWISE",
-      "Region": "<REGION>",
+      "Region": "<YOUR-REGION>",
       "CredentialProviderClient": "AwsIotClient",
       "AssetCreation": {
 
@@ -75,7 +75,7 @@
         },
 
         "AssetPropertyName": "%schedule%-%source%-%channel%",
-        "PropertyTimestamp": "Channel"
+        "AssetPropertyTimestamp": "Channel"
 
 
       }
@@ -108,7 +108,7 @@
       "AdapterType": "S7",
       "Controllers": {
         "S7-PLC-1": {
-          "Address": "192.168.0.2",
+          "Address": "<CONTROLLER IP ADDRESS>",
           "ReadPerSingleField": false,
           "LocalRack": 0,
           "LocalSlot": 1,

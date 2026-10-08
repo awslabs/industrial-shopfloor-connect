@@ -2,9 +2,11 @@
 
 [SFC Configuration](./sfc-configuration.md) > [ChangeFilters](./sfc-configuration.md#changefilters)
 
-The ChangeFilterConfiguration defines settings for filtering data based on value changes. It allows configuration of how and when data should be filtered by comparing changes in values. The class includes validation logic to ensure proper configuration of filter parameters. It contains properties for the filter value threshold, filter type, and minimum time interval between changes. This configuration is used to determine when data should be passed through or filtered out based on how its value changes over time
+A change filter passes a channel value only if it differs enough from the last value that passed the filter (Type Always compares with the first value that passed, see [Type](#type)). With [AtLeast](#atleast), an unchanged value is passed again after a minimum interval.
 
 For more information see [DataFiltering](../sfc-data-processing-filtering.md#data-filtering)
+
+Reference a change filter by its ID from a [source](./source-configuration.md#changefilter) (applies to all its channels) or a [channel](./channel-configuration.md#changefilter) (overrides the source). It sees the value after the channel transformation. Absolute and Percent work on numeric values only; use Always for strings and booleans. Percent is relative to the last value that passed.
 
 - [Schema](#schema)
 - [Examples](#examples)
@@ -17,7 +19,7 @@ For more information see [DataFiltering](../sfc-data-processing-filtering.md#dat
 
 ---
 ### AtLeast
-The AtLeast property specifies a minimum time interval in milliseconds during which at least one value will be passed through the filter, regardless of whether the value has changed or met the filter value threshold. This ensures that data is reported at a minimum frequency even when values remain stable. For example, if set to 60000 (1 minute), it guarantees that at least one value will be passed through every minute, even if no significant changes have occurred
+Interval in milliseconds. If the value is exactly equal to the last value that passed (for Type Always: the first value that passed), it is passed again once AtLeast milliseconds have elapsed since that value last passed. Values that changed by less than [Value](#value) stay filtered; AtLeast does not force them through.
 
 **Type**: Long
 
@@ -26,8 +28,8 @@ The AtLeast property specifies a minimum time interval in milliseconds during wh
 The Type property defines how changes in values are evaluated by the filter. It accepts three possible values:
 
 - "Absolute": Filters based on the absolute numerical difference between values
-- "Percent": Filters based on the relative percentage change between values
-- "Always": Passes through any change in value, regardless of magnitude
+- "Percent": Filters based on the relative percentage change between values. Known limitation: while the last value that passed is negative, every changed value passes
+- "Always": Passes every value that differs from the first value that passed. A value equal to that first value counts as unchanged, so without AtLeast the values A, B, A, B pass as A, B, B
 
 If not specified, it defaults to "Always". This property determines the method used to compare current and previous values when deciding whether to pass or filter the data
 
@@ -38,9 +40,9 @@ If not specified, it defaults to "Always". This property determines the method u
 - The Value property specifies the threshold amount that determines when a change should be filtered. Its interpretation depends on the Type setting:
   - For "Absolute" type: Represents the minimum absolute numerical difference required between values
   - For "Percent" type: Represents the minimum percentage change required between values
-  - For "Always" type: This value is ignored as any change will be passed through
+  - For "Always" type: This value is ignored
 
-The default value is 0.0. The value must be greater than or equal to 0
+The default value is 0.0. The value must be greater than or equal to 0 (this is not checked at startup)
 
 **Type**: Double
 
@@ -59,7 +61,7 @@ Default is 0.0
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "FilterType": {
+    "Type": {
       "type": "string",
       "enum": [
         "Absolute",
@@ -69,14 +71,14 @@ Default is 0.0
       "default": "Always",
       "description": "Type of change filter to apply"
     },
-    "FilterValue": {
+    "Value": {
       "type": "number",
       "default": 0.0,
       "description": "Threshold value for the filter"
     },
     "AtLeast": {
-      "type": "number",
-      "description": "Time interval to pas value even when not changed"
+      "type": "integer",
+      "description": "Interval in milliseconds to pass a value again when it did not change"
     }
   },
   "additionalProperties": false
@@ -91,8 +93,8 @@ Absolute change filter:
 
 ```json
 {
-  "FilterType": "Absolute",
-  "FilterValue": 5.0
+  "Type": "Absolute",
+  "Value": 5.0
 }
 ```
 
@@ -102,8 +104,8 @@ Percentage change filter:
 
 ```json
 {
-  "FilterType": "Percent",
-  "FilterValue": 10.0
+  "Type": "Percent",
+  "Value": 10.0
 }
 ```
 
@@ -113,7 +115,7 @@ Any change:
 
 ```json
 {
-  "FilterType": "Always"
+  "Type": "Always"
 }
 ```
 
@@ -123,12 +125,14 @@ Absolute change filter, with at least a value every 5 seconds even when value di
 
 ```json
 {
-  "FilterType": "Absolute",
-  "FilterValue": 5.0,
-  "Atleast" : 10000
+  "Type": "Absolute",
+  "Value": 5.0,
+  "AtLeast" : 5000
 }
 ```
 
 
+
+**Runnable example:** [OPC UA to AWS IoT Core using filters](../../examples/opcua-to-iot-using-filters/README.md) (Percent filter with AtLeast on a trigger channel).
 
 [^top](#changefilterconfiguration)

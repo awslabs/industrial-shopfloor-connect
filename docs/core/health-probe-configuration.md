@@ -6,7 +6,23 @@
 
 [SFC Configuration](./sfc-configuration.md) > [AdapterServers](./sfc-configuration.md#adapterservers) > [AdapterServer](./server-configuration.md) > [HealthProbe](./server-configuration.md#healthprobe)
 
+[SFC Configuration](./sfc-configuration.md) > [Metrics](./metrics-configuration.md) > [Writer](./metrics-configuration.md#writer) > [MetricsServer](./metrics-writer-configuration.md#metricsserver) > [HealthProbe](./server-configuration.md#healthprobe)
+
 The HealthProbeConfiguration class defines settings for a health monitoring endpoint that allows external systems to check the operational status of a service. It specifies network settings (port, interface, allowed IPs), response behavior, and automatic shutdown conditions when a service remains unhealthy for a specified period.
+
+Check the probe at the address SFC logs at startup (`Started health probe service, listening on <address>:<Port><Path>`), e.g. for `"Port": 8080` and `"Path": "/health"`. A healthy service returns 200 with the [Response](#response) text; an unhealthy one closes the connection without a reply.
+
+**Linux / macOS**
+
+```shell
+curl -i http://<address>:8080/health
+```
+
+**Windows (PowerShell)**
+
+```powershell
+curl.exe -i http://<address>:8080/health
+```
 
 - [Schema](#schema)
 - [Examples](#examples)
@@ -26,15 +42,15 @@ The HealthProbeConfiguration class defines settings for a health monitoring endp
 
 ---
 ### AllowedIpAddresses
-The AllowedIpAddresses property defines a list of IP addresses permitted to access the health probe endpoint. This optional string array supports wildcard patterns (e.g., 10.10.10*) and defaults to an empty list allowing access from any IP. Requests from unauthorized IPs receive a 403 HTTP error response.
+The AllowedIpAddresses property defines a list of IP addresses permitted to access the health probe endpoint. This optional string array supports `*` wildcards for whole octets (e.g., 10.10.10.*) and defaults to an empty list allowing access from any IP. Requests from unauthorized IPs receive a 403 HTTP error response.
 
 **Type**: [String]
 
 ---
 ### Interface
-The Interface property specifies which network interface the health probe endpoint should use (e.g., en0). This optional string property allows using an alternative interface than the one used for device communication. If not specified, the default IPv4 network interface is used.
+The Interface property specifies which network interface the health probe endpoint should use (e.g., `en0` on macOS, `eth0` on Linux; on Windows use the name Java reports, such as `eth0` or `wlan0`, or the adapter's InterfaceDescription shown by `Get-NetAdapter`). This optional string property allows using an alternative interface than the one used for device communication. If not specified, the probe listens on the address the local host name resolves to; set it explicitly in containers or on hosts with multiple network interfaces.
 
-**Type**: Sting
+**Type**: String
 
 ---
 ### Path
@@ -42,15 +58,17 @@ The Path property defines the URL path where the health probe endpoint will be a
 
 **Type**: String
 
+Default is "/"
+
 ---
 ### Port
-The Port property specifies the network port number for the health probe endpoint. This required integer value must be explicitly configured and must be unique - it cannot conflict with ports used by other endpoints on the same system or network interface.
+The Port property specifies the network port number for the health probe endpoint. This required integer value must be explicitly configured and must be unique - it cannot conflict with ports used by other endpoints on the same system or network interface. If it is omitted, the probe listens on a random free port.
 
 **Type**: Int
 
 ---
 ### RateLimit
-The RateLimit property defines the maximum number of health probe requests allowed to the endpoint. This integer property defaults to 10 requests. When the rate limit is exceeded, the endpoint returns an HTTP 503 error response.
+The RateLimit property defines the maximum number of health probe requests per second allowed to the endpoint. This integer property defaults to 10 requests per second. Excess requests get an HTTP 429 (Too Many Requests) response.
 
 **Type**: Int
 
@@ -79,7 +97,7 @@ The StopAfterUnhealthyPeriod property defines the duration (in seconds) after wh
 
 ## Schema
 
-```json{
+```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
@@ -87,14 +105,9 @@ The StopAfterUnhealthyPeriod property defines the duration (in seconds) after wh
     "AllowedIpAddresses": {
       "type": "array",
       "items": {
-        "type": "string",
-        "format": "ipv4"
+        "type": "string"
       },
       "description": "List of IP addresses allowed to access the health probe"
-    },
-    "Active": {
-      "type": "boolean",
-      "default": true
     },
     "Interface": {
       "type": "string",
@@ -154,7 +167,6 @@ Basic configuration
 ```json
 {
   "Port": 8080,
-  "Active": true,
   "Path": "/health",
   "Response": "OK",
   "RateLimit": 10,
@@ -169,7 +181,6 @@ Full configuration:
 ```json
 {
   "Port": 8080,
-  "Active": true,
   "Path": "/healthcheck",
   "Interface": "eth0",
   "AllowedIpAddresses": [
@@ -193,7 +204,6 @@ Custom path and response:
   "Port": 3000,
   "Path": "/status",
   "Response": "System operational",
-  "Active": true,
   "RateLimit": 20,
   "RetainStatePeriod": 1500
 }
@@ -201,15 +211,6 @@ Custom path and response:
 
 
 
-Disabled probe configuration:
-
-```json
-{
-  "Port": 8080,
-  "Active": false,
-  "RetainStatePeriod": 1000,
-  "StopAfterUnhealthyPeriod": 3000
-}
-```
+To disable the health probe, remove the HealthProbe section.
 
 [^top](#healthprobeconfiguration)

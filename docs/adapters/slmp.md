@@ -6,16 +6,62 @@ The SFC SLMP protocol adapter enables communication with Mitsubishi/Melsec PLCs 
 
 In order to reduce the number of interactions between the adapter and the controller read action for single BIT, WORD and DOUBLEWORD elements are combined in batches of maximum 192 values using the SLMP Read Random request. For reading arrays of multiple values, STRING values and values of custom structured types a per configured channel SLMP Read request is used.
 
-In order to use this adapter as in [in-process](../sfc-running-adapters.md#running-protocol-adapters-in-process) type adapter the type must be added to the [AdapterTypes](../core/sfc-configuration.md#adaptertypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+**Try it without hardware:** the `omni-plc-sim` PLC simulator from [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md#1-start-the-plcs) also serves SLMP. Start it with `--serve slmp` (a simulated iQ-R CPU on port 40000) and use a controller with `"Address": "127.0.0.1", "Port": 40000`; for example `D100` (`WORD`) reads -12345 and `D200` (`STRING(16)`) reads "SFC-SIM". `--print-map slmp` lists every simulated tag, with the AccessPoint and DataType for each tag SFC can read.
+
+## Deploy this adapter
+
+`AdapterType` is `SLMP` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"AdapterTypes" :{
-  "SLMP" : {
-    "JarFiles" : ["<location of deployment>/slmp/lib"]
-  },
-  "FactoryClassName" : "com.amazonaws.sfc.slmp.SlmpAdapter"
+"AdapterTypes": {
+  "SLMP": { "FactoryClassName": "com.amazonaws.sfc.slmp.SlmpAdapter" }
 }
 ```
+
+**In-process** - module bundle `slmp` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"AdapterTypes": {
+  "SLMP": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/slmp/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.slmp.SlmpAdapter"
+  }
+}
+```
+
+**IPC** - no `AdapterTypes`; the adapter runs as its own service:
+
+```json
+"ProtocolAdapters": {
+  "SlmpAdapter": {
+    "AdapterType": "SLMP",
+    "AdapterServer": "SlmpServer"
+  }
+},
+"AdapterServers": {
+  "SlmpServer": { "Address": "localhost", "Port": 50000 }
+}
+```
+
+Start the service before SFC, on the port of its `AdapterServers` entry:
+
+**Linux / macOS**
+
+```shell
+slmp/bin/slmp -port 50000
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\slmp\lib\*" com.amazonaws.sfc.slmp.SlmpProtocolService -port 50000
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.slmp.SlmpProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.slmp.SlmpProtocolService -port 50000`).
+
+**Examples:** in-process: [in-process-slmp-s3](../../examples/in-process-slmp-s3/README.md) · IPC: [ipc-slmp-s3](../../examples/ipc-slmp-s3/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 
@@ -60,7 +106,7 @@ At least 1 channel must be configured.
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "description": "Configuration for S7 source",
+  "description": "Configuration for SLMP source",
   "allOf": [
     {
       "$ref": "#/definitions/SourceConfiguration"
@@ -70,13 +116,13 @@ At least 1 channel must be configured.
       "properties": {
         "AdapterController": {
           "type": "string",
-          "description": "Reference to the S7 controller configuration in the adapter"
+          "description": "Reference to the SLMP controller configuration in the adapter"
         },
         "Channels": {
           "type": "object",
           "description": "Map of SLMP channel configurations",
           "additionalProperties": {
-            "$ref": "#/definitions/SLMPChannelConfiguration"
+            "$ref": "#/definitions/SlmpChannelConfiguration"
           },
           "minProperties": 1
         }
@@ -100,7 +146,7 @@ At least 1 channel must be configured.
       "Name": "Temperature",
       "Description": "Process temperature",
       "AccessPoint": "D100",
-      "DataType": "Float"
+      "DataType": "WORD"
     },
     "RunStatus": {
       "Name": "RunStatus",
@@ -131,6 +177,7 @@ The SlmpChannelConfiguration type extends the [ChannelConfiguration](../core/cha
 **Properties:**
 - [AccessPoint](#accesspoint)
 - [DataType](#datatype)
+- [ForceDeviceRead](#forcedeviceread)
 - [Size](#size)
 
 ---
@@ -141,6 +188,8 @@ The AccessPoint property defines the device address to read from in the Mitsubis
 
 
 Access points consists of a device code and a decimal device number, e.g. "D200" for Data register 200, "X0" for Input 0 and "Y0" for output 0.
+
+Device numbers are always decimal. MELSEC notation writes X, Y, B, W, SB, SW, DX and DY numbers in hexadecimal (X and Y in octal on iQ-F); convert them, e.g. X1F becomes "X31" and W0A0 becomes "W160".
 
 Valid devices codes and their data types are:
 
@@ -197,6 +246,8 @@ Valid data types are:
 - "DOUBLEWORD" (read as 32-bit integer)
 - "STRING(x)" (read as words and decoded to as a string of length x or shorter if the string is zero terminated)
 
+There is no floating-point (REAL) data type: a REAL read as a DOUBLEWORD returns a 32-bit integer, not the floating-point value.
+
 It is possible to define custom structures and use these as a data type as well. These structures are defined in the "Structures" section of the SLMP adapter configuration. All fields which can be any the types mentioned above, or another custom structure type, are mapped from the read word data to the fields of the structure in the order in which they are declared in the type.
 
 
@@ -205,10 +256,18 @@ In order to read multiple values, returned as an array, starting at the specifie
 E.g. 
 
 - "BIT[4]" reads 4 BIT values and returns an array of 4 boolean values.
-- "WORD[8]" reads 16 word values and returns an array of 8 16-bit integers.
-- "STRING(16)[2]" reads and array of 16 characters
+- "WORD[8]" reads 8 words and returns an array of 8 16-bit integers.
+- "STRING(16)[2]" reads 2 strings of up to 16 characters and returns an array of 2 strings.
 
 **Type**: String 
+
+---
+### ForceDeviceRead
+When set to true, a channel that reads a single BIT, WORD or DOUBLEWORD value is read with its own SLMP Read request instead of being combined into the batched SLMP Read Random request. Arrays, STRING values and structures always use their own Read request.
+
+**Type**: Boolean
+
+Default is false
 
 ---
 ### Size
@@ -217,7 +276,7 @@ The Size property defines how many consecutive values to read starting from the 
 **Type**: Integer
 
 
-The number of items to read can be specified as well in the DataType of the channel, e.g. WORD[size]. The Size setting can be used if the DataType field is omitted to read the default data type for the device. If the length is both specified in the DataType in both the Size setting a configuration error is raised.
+The number of items to read can be specified as well in the DataType of the channel, e.g. WORD[size]. The Size setting can be used if the DataType field is omitted to read the default data type for the device. Give the count either in the DataType or in Size, not both; when both are set, Size is used.
 
 ### SlmpChannelConfiguration Schema
 
@@ -241,13 +300,18 @@ The number of items to read can be specified as well in the DataType of the chan
           "type": "string",
           "description": "Data type of the channel"
         },
+        "ForceDeviceRead": {
+          "type": "boolean",
+          "description": "Read the channel with its own SLMP Read request instead of the batched Read Random request",
+          "default": false
+        },
         "Size": {
           "type": "integer",
           "description": "Number of items to read",
           "minimum": 1
         }
       },
-      "required": ["AccessPoint", "DataType"]
+      "required": ["AccessPoint"]
     }
   ]
 }
@@ -300,7 +364,7 @@ The Controllers property is a map of SLMP controller configurations, where each 
 ### Structures
 The Structures property is a map of custom data structure definitions that can be used as data types for channel values in the SLMP adapter. Each structure can contain fields of basic data types (BIT, WORD, etc.) or other custom structures (which must be defined before they can be referenced). These structures allow reading complex data types from the PLC in a single operation
 
-**Type**: Map[String,Map{String,String]]
+**Type**: Map[String,Map[String,String]]
 
 
 Below is an example defining a custom structure "STRUCT1" containing two fields "A1" and "B1" of type word. This type used in a second type "STRUCT2" having a field "A2" containing an array of size 2 containing values of "STRUCT1", as well as a field "B2", containing 16 words and a field "C2" containing a 32 character string.
@@ -322,6 +386,8 @@ Below is an example defining a custom structure "STRUCT1" containing two fields 
 ```
 
 A SLMP channel can now use both type "STRUCT1" as "STRUCT2" as a DataType. The data is returned as a map of values indexed by the names of the fields.
+
+Runnable example: [structures.json](../../examples/in-process-slmp-s3/structures.json), which [in-process-slmp-s3](../../examples/in-process-slmp-s3/README.md) includes with `"Structures": "@file:structures.json"`; [ipc-slmp-s3](../../examples/ipc-slmp-s3/README.md) includes an identical copy the same way.
 
 ### SlmpAdapterConfiguration Schema
 
@@ -351,11 +417,7 @@ A SLMP channel can now use both type "STRUCT1" as "STRUCT2" as a DataType. The d
           "additionalProperties": {
             "type": "object",
             "additionalProperties": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "minItems": 1
+              "type": "string"
             }
           }
         }
@@ -371,13 +433,11 @@ A SLMP channel can now use both type "STRUCT1" as "STRUCT2" as a DataType. The d
 
 ```json
 {
-  "AdapterType": "SlmpAdapter",
+  "AdapterType": "SLMP",
   "Controllers": {
     "MainController": {
       "Address": "192.168.1.100",
-      "Port": 1025,
-      "NetworkNumber": 1,
-      "StationNumber": 1
+      "Port": 1025
     }
   }
 }
@@ -387,18 +447,18 @@ A SLMP channel can now use both type "STRUCT1" as "STRUCT2" as a DataType. The d
 
 ```json
 {
-  "Name": "BasicSlmpAdapter",
+  "AdapterType": "SLMP",
   "Controllers": {
     "MainController": {
       "Address": "192.168.1.100",
-      "Port": 1025,
-      "NetworkNumber": 1,
-      "StationNumber": 1
+      "Port": 1025
     }
   },
   "Structures": {
     "ProductData": {
-      "Fields": ["ItemCode", "Quantity", "Status"]
+      "ItemCode": "WORD",
+      "Quantity": "WORD",
+      "Status": "WORD"
     }
   }
 }
@@ -419,7 +479,6 @@ The SlmpControllerConfiguration class defines the configuration settings for con
 
 **Properties:**
 - [Address](#address)
-- [CommandTimeout](#commandtimeout)
 - [ConnectTimeout](#connecttimeout)
 - [ModuleNumber](#modulenumber)
 - [MonitoringTimer](#monitoringtimer)
@@ -442,14 +501,6 @@ The Address property specifies the network location of the SLMP controller (PLC)
 This address is used to establish the network connection with the PLC.
 
 **Type**: String
-
----
-### CommandTimeout
-Timeout for executing commands in milliseconds
-
-**Type**: Integer
-
-Default is 10000 milliseconds
 
 ---
 ### ConnectTimeout
@@ -525,9 +576,9 @@ Default is 0 (0x00)
 
 ---
 ### Port
-The PortNumber property specifies the TCP port number used for SLMP communications with the PLC.
+The Port property specifies the TCP port number used for SLMP communications with the PLC.
 
-- Default value is 48898, which is the standard port for SLMP protocol [[1\]](https://leki-hub.hashnode.dev/port-number)
+- Default value is 50000
 - It's a 16-bit unsigned integer value (valid range 1-65535)
 - Can be customized if the PLC is configured to use a different port
 - Port 0 is reserved and cannot be used
@@ -537,14 +588,14 @@ This setting must match the port number configured on the target PLC device for 
 
 **Type**: Integer
 
-Default is 48898
+Default is 50000
 
 ---
 ### ReadTimeout
 The ReadTimeout property defines how long the adapter will wait for a response packet from the SLMP controller (PLC) after sending a read request.
 
 - Specified in milliseconds
-- Default value is 50000 (50 seconds)
+- Default value is 5000 (5 seconds)
 - Determines maximum time to wait for response data
 - If no response is received within this time, the read operation will fail
 - Different from ConnectTimeout (initial connection) and MonitoringTimer (processing time)
@@ -553,7 +604,7 @@ This timeout is important for preventing the adapter from hanging indefinitely w
 
 **Type**: Integer
 
-Default is 50000
+Default is 5000
 
 ---
 ### StationNumber
@@ -616,10 +667,6 @@ Default is 10000
       "type": "string",
       "description": "IP address of the SLMP controller"
     },
-    "CommandTimeout": {
-      "type": "integer",
-      "description": "Timeout for command execution in milliseconds"
-    },
     "ConnectTimeout": {
       "type": "integer",
       "description": "Timeout for connection establishment in milliseconds"
@@ -630,7 +677,7 @@ Default is 10000
     },
     "MonitoringTimer": {
       "type": "integer",
-      "description": "Monitoring timer value in milliseconds"
+      "description": "Monitoring timer value, sent unchanged in the SLMP request header"
     },
     "MultiDropStationNumber": {
       "type": "integer",
@@ -671,6 +718,8 @@ Default is 10000
 ```
 
 ### SlmpControllerConfiguration Examples
+
+This example sets NetworkNumber and StationNumber to 1, not to their defaults 0 and 255; read [NetworkNumber](#networknumber) and [StationNumber](#stationnumber) before you copy them.
 
 ```json
 {

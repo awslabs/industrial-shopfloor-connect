@@ -12,7 +12,7 @@
         "ads": ["*"],
         "pccc": ["*"]
       },
-      "Targets": ["#DebugTarget", "File", "S3Tables"]
+      "Targets": ["DebugTarget", "File", "S3Tables"]
     }
   ],
   "Sources": {

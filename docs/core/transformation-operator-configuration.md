@@ -2,17 +2,34 @@
 
 [SFC Configuration](./sfc-configuration.md) > [Transformations](./sfc-configuration.md#transformations) 
 
-A transformation, defined in the Transformations section of the SFC top level transformation  consists of one or more TransformationOperators. Each Transformation operator has a property named : "Operator". Depending on the operator type, a Transformation can have no, or an operand,of which the type depends on that operator.
+A transformation, defined in the Transformations section of the top-level SFC configuration, consists of one or more TransformationOperators. Each Transformation operator has a property named "Operator". Depending on the operator type, a Transformation can have no operand, or an operand of which the type depends on that operator.
 
+- [How a transformation is applied](#how-a-transformation-is-applied)
+- [Numeric operands](#numeric-operands)
 - [Schema](#schema)
 - [Examples](#examples)
 - [Operators](#operators)
 
+### How a transformation is applied
+
+A transformation is a named list of operators in the [Transformations](./sfc-configuration.md#transformations) section. It is referenced by name from a [channel](./channel-configuration.md#transformation) Transformation, an aggregation output ([Transformations](./aggregation-configuration.md#transformations)), an OPC UA [target](../targets/opcua.md#transformation) or [writer](../targets/opcua-writer.md#transformation) node Transformation, or an [S3 Tables column](../targets/aws-s3-tables.md#transformation) Transformation.
+
+- The operators run in order; each operator receives the result of the previous one.
+- If the value is a list and the first operator does not take a list, the chain runs on each element.
+- If an operator returns null (Sqrt of a negative number, Divide by 0, AtIndex or MapRange out of range, invalid ParseInt input), the rest of the chain is skipped and the result is null. A schedule without aggregation does not send a channel whose value is null.
+- Values are not widened to the input type listed under **Type**, so a Short is not accepted where Int is listed. Convert first with ToInt, ToLong or ToDouble.
+
+### Numeric operands
+
+Numeric operands can be JSON numbers or strings. A value that contains "." is read as a 32-bit float; any other value is read as a 32-bit integer with Integer.decode, so "0xFF" and "#FF" are hexadecimal and a leading 0 means octal ("010" is 8). Write hexadecimal values as strings: a bare 0xFF is not valid JSON.
+
+Plus, Minus, Multiply, Mod, Max, Min and Equals convert the operand to the type of the input value. For Int, Short, Byte or Long input a fractional operand is truncated (Multiply 0.1 on an Int gives 0). Decimal operands are 32-bit floats, so Multiply 0.1 on the Double 25.0 gives 2.500000037252903, and Equals 0.1 never matches a Double 0.1. To scale by a decimal factor use [Divide](#divide) with a whole number: Divide 10 returns a Double for any input except Float.
+
 ### Operators
 
 - [Abs](#abs)
+- [Acos](#acos)
 - [And](#and)
-- [Abs](#abs)
 - [Asin](#asin)
 - [AtIndex](#atindex)
 - [Atan](#atan)
@@ -39,13 +56,14 @@ A transformation, defined in the Transformations section of the SFC top level tr
 - [Int16ToBytes](#int16tobytes)
 - [Int16sToInt32](#int16stoint32)
 - [Int32ToInt16s](#int32toint16s)
-- [IsoTimeStrSeconds](#isotimestrseconds)
-- [IsoTimeStrToEpocSeconds](#isotimestrtoepocseconds)
+- [IsoDateTimeStrToEpocMilliSeconds](#isodatetimestrtoepocmilliseconds)
+- [IsoDateTimeStrToEpocSeconds](#isodatetimestrtoepocseconds)
 - [IsoTimeStrToMilliSeconds](#isotimestrtomilliseconds)
 - [IsoTimeStrToNanoSeconds](#isotimestrtonanoseconds)
 - [IsoTimeStrToSeconds](#isotimestrtoseconds)
 - [Ln](#ln)
 - [Log10](#log10)
+- [Log2](#log2)
 - [LowerCase](#lowercase)
 - [MapRange](#maprange)
 - [MapStringToNumber](#mapstringtonumber)
@@ -74,6 +92,7 @@ A transformation, defined in the Transformations section of the SFC top level tr
 - [Sqrt](#sqrt)
 - [Str](#str)
 - [StrEquals](#strequals)
+- [StrEqualsNoCase](#strequalsnocase)
 - [SubString](#substring)
 - [Tan](#tan)
 - [Tanh](#tanh)
@@ -109,6 +128,20 @@ Calculates the absolute value of a number.
 ```
 
 ---
+### Acos
+Computes the arc cosine, returning an angle in the range from 0.0 to π radians; returns null for values outside -1..1.
+
+**Type**: Datatype: Numeric
+
+**Operand**: None
+
+```json
+{
+   "Operator": "Acos"
+}
+```
+
+---
 ### And
 Alias is "&"
 Bitwise and of value and parameter.
@@ -120,29 +153,13 @@ Bitwise and of value and parameter.
 ```json
 {
    "Operator": "And",
-    "Operand": 0xFF
-}
-```
-
----
-### Arc
-Computes the arc length, returning an angle in the range from 0.0 to π radians.
-
-**Type**: Datatype: Numeric
-
-**Operand**: None
-
-**Operand**: None
-
-```json
-{
-   "Operator": "Arc"
+    "Operand": "0xFF"
 }
 ```
 
 ---
 ### Asin
-Computes the arc, returning an angle in the range from -π/2 to π/2 radians.
+Computes the arc sine, returning an angle in the range from -π/2 to π/2 radians.
 
 **Type**: Datatype: Numeric
 
@@ -161,7 +178,7 @@ Returns item from an array at the specified index.
 
 **Type**: Datatype: Any[]
 
-**Operand:** Index for value to return, must be in the range of the array (0 .. items-1)
+**Operand:** Index of the item; negative values count from the end (-1 is the last item). An index outside the list returns null.
 
 
 
@@ -174,7 +191,7 @@ Returns item from an array at the specified index.
 
 ---
 ### Atan
-Computes the arc; the returned value is an angle in the range from - π/2 to  π/2 radians.
+Computes the arc tangent; the returned value is an angle in the range from - π/2 to  π/2 radians.
 
 **Type**: Datatype: Numeric
 
@@ -202,7 +219,7 @@ Converts Boolean value to a number. False value returns 0, True value returns 1
 
 ---
 ### BytesToDoubleBE
-Converts array of 8 bytes to a float value (Big-Endian)
+Converts array of 8 bytes to a double value (Big-Endian)
 
 **Type**: Datatype: byte[8]
 
@@ -216,13 +233,13 @@ Converts array of 8 bytes to a float value (Big-Endian)
 
 ---
 ### BytesToDoubleLE
-Converts array of 8 bytes to a float value (Little-Endian)
+Converts array of 8 bytes to a double value (Little-Endian)
 
 **Type**: Datatype: byte[8]
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "BytesToDoubleLE"
 }
@@ -236,7 +253,7 @@ Converts array of 4 bytes to a float value (Big-Endian)
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "BytesToFloatBE"
 }
@@ -250,7 +267,7 @@ Converts an array of four bytes into a float value (Little-Endian format).
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "BytesToFloatLE"
 }
@@ -264,7 +281,7 @@ Converts array of two bytes to a 16-bit integer (Big-Endian)
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "BytesToInt16"
 }
@@ -278,7 +295,7 @@ Rounds the value up to the next highest integer.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Ceil"
 }
@@ -292,7 +309,7 @@ Converts Fahrenheit temperature to Celsius.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Celsius"
 }
@@ -308,7 +325,7 @@ Splits a value, which contains a list of values, into a lists of smaller lists, 
 
 **Operand**: Chunk size
 
-```json{
+```json
 {
   "Operator": "Chunked",
   "Operand" : 16
@@ -323,7 +340,7 @@ Computes the cosine of the angle given in radians
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Cos"
 }
@@ -339,7 +356,7 @@ Computes the hyperbolic cosine
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Cosh"
 }
@@ -353,7 +370,7 @@ Decodes byte arrays (and ByteStrings) into UTF-8 String
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "DecodeToString"
 }
@@ -366,14 +383,16 @@ Divides values
 
 **Type**: Datatypes: Numeric
 
-**Operand:** Divider (must be > 0)
+**Operand:** Divider (must not be 0; division by 0 returns null). The result is a Double (Float for Float input), e.g. 5 / 2 = 2.5.
 
-```json{
+```json
 {
   "Operator": "Divide",
   "Operand" : 2
 }
+```
 
+```json
 { 
   "Operator" : "/",
   "Operand" : 10
@@ -386,11 +405,11 @@ Divides values
 ### EpocMilliSecondsToTimestamp
 Obtains a DateTime using milliseconds from the epoch of 1970-01-01T00:00:00Z.
 
-**Type**: Datatypes: Long
+**Type**: Datatypes: Long (convert Int values with ToLong first)
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "EpocMilliSecondsToTimestamp"
 }
@@ -400,9 +419,11 @@ Obtains a DateTime using milliseconds from the epoch of 1970-01-01T00:00:00Z.
 ### EpocSecondsToTimestamp
 Obtains a DateTime using seconds from the epoch of 1970-01-01T00:00:00Z.
 
-**Type**: Datatypes: Long
+**Type**: Datatypes: Long (convert Int values with ToLong first)
 
-```json{
+**Operand**: None
+
+```json
 {
   "Operator": "EpocSecondsToTimestamp"
 }
@@ -410,13 +431,14 @@ Obtains a DateTime using seconds from the epoch of 1970-01-01T00:00:00Z.
 
 ---
 ### Equals
-To compare two numbers, convert the unsigned number to a signed number using the ToSigned operator.
+Alias is "==".
+Returns true if the value equals the operand, otherwise false.
 
 **Type**: Datatype: Number
 
 **Operand**:  Number to test for equality
 
-```json{
+```json
 {
   "Operator": "Equals",
   "Operand": 1024
@@ -431,7 +453,7 @@ Calculates the value of e raised to the power of the input value.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Exp"
 }
@@ -445,7 +467,7 @@ Converts Celsius temperature to Fahrenheit.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Fahrenheit"
 }
@@ -459,7 +481,7 @@ Flatten multi-dimensional array values into a single-dimensional array value.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Flatten"
 }
@@ -473,7 +495,7 @@ Calculates the largest integer less than or equal to the value.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Floor"
 }
@@ -483,11 +505,13 @@ Calculates the largest integer less than or equal to the value.
 ### Int16ToBytes
 Converts a 16-bit value in an array of 2 8-bit values.
 
-**Type**: Datatype: 16-bit value
+Known limitation: a list returned by this operator as the final value cannot currently be sent to a target that runs in [IPC mode](../sfc-deployment.md#ipc).
+
+**Type**: Datatype: Int (convert a Short, e.g. from BytesToInt16, with ToInt first)
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Int16ToBytes"
 }
@@ -495,13 +519,13 @@ Converts a 16-bit value in an array of 2 8-bit values.
 
 ---
 ### Int16sToInt32
-Converts an array of two 16-bit values into a single 32-bit value.
+Converts an array of two 16-bit values into a single 32-bit value. The first element is the high word; apply ReverseList first for low-word-first devices.
 
 **Type**: Datatypes: int16[2]
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Int16sToInt32"
 }
@@ -511,45 +535,45 @@ Converts an array of two 16-bit values into a single 32-bit value.
 ### Int32ToInt16s
 Converts a 32-bit value in an array of 2 16-bit values.
 
+Known limitation: a list returned by this operator as the final value cannot currently be sent to a target that runs in [IPC mode](../sfc-deployment.md#ipc).
+
 **Type**: Datatype: 32-bit Value
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Int32ToInt16s"
 }
 ```
 
 ---
-### IsoTimeStrSeconds
-Converts a string in ISO-8601 duration format into milliseconds.
-Converts a string in a format such as 2007-12-03T10:15:30.00Z into the number of seconds from the epoch of 1970-01-01T00:00:00Z.
+### IsoDateTimeStrToEpocMilliSeconds
+Converts a string in a format such as 2007-12-03T10:15:30.00Z into the number of milliseconds from the epoch of 1970-01-01T00:00:00Z, as a Long.
 The string must represent a valid instant in UTC
 
 **Type**: Datatype : String
 
 **Operand**: None
 
-```json{
+```json
 {
-  "Operator": "IsoTimeStrSeconds"
+  "Operator": "IsoDateTimeStrToEpocMilliSeconds"
 }
 ```
 
 ---
-### IsoTimeStrToEpocSeconds
-Converts a string in ISO-8601 duration format into milliseconds.
-Converts a string in a format such as 2007-12-03T10:15:30.00Z into the number of milliseconds from the epoch of 1970-01-01T00:00:00Z.
+### IsoDateTimeStrToEpocSeconds
+Converts a string in a format such as 2007-12-03T10:15:30.00Z into the number of seconds from the epoch of 1970-01-01T00:00:00Z, as a Long.
 The string must represent a valid instant in UTC
 
 **Type**: Datatype : String
 
 **Operand**: None
 
-```json{
+```json
 {
-  "Operator": "IsoTimeStrToEpocSeconds"
+  "Operator": "IsoDateTimeStrToEpocSeconds"
 }
 ```
 
@@ -561,9 +585,9 @@ Converts a string representing a duration in ISO-8601 format into milliseconds.
 
 **Operand**: None
 
-```json{
+```json
 {
-  "Operator": "IsoTimeStrMilliSeconds"
+  "Operator": "IsoTimeStrToMilliSeconds"
 }
 ```
 
@@ -575,9 +599,9 @@ Converts a string representing a duration in ISO-8601 format into nanoseconds.
 
 **Operand**: None
 
-```json{
+```json
 {
-  "Operator": "IsoTimeStrNanoSeconds"
+  "Operator": "IsoTimeStrToNanoSeconds"
 }
 ```
 
@@ -589,7 +613,7 @@ Converts a string in ISO-8601 duration format into seconds
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "IsoTimeStrToSeconds"
 }
@@ -603,7 +627,7 @@ Calculates the natural logarithm (base E).
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Ln"
 }
@@ -613,13 +637,31 @@ Calculates the natural logarithm (base E).
 ### Log10
 Computes the common logarithm (base 10)
 
+Known limitation: only Float input currently returns the base 10 logarithm; Double and integer inputs return the natural logarithm (as [Ln](#ln)). Put ToFloat first to get base 10.
+
 **Type**: Datatype: Numeric
 
 **Operand**: None
 
-```json{
+```json
 {
-  "Operator": "Ln10"
+  "Operator": "Log10"
+}
+```
+
+---
+### Log2
+Computes the binary logarithm (base 2)
+
+Known limitation: only Float input currently returns the base 2 logarithm; Double and integer inputs return the natural logarithm (as [Ln](#ln)). Put ToFloat first to get base 2.
+
+**Type**: Datatype: Numeric
+
+**Operand**: None
+
+```json
+{
+  "Operator": "Log2"
 }
 ```
 
@@ -631,7 +673,7 @@ Converts string to lowercase.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "LowerCase"
 }
@@ -660,7 +702,7 @@ Maps numerical ranges.
    }
 }
 ```
-Maps range 0-1024 to range 1-100
+Maps range 0-1024 to range 0-100. Values outside the From range return null; Int, Byte and Long inputs return a rounded Long.
 
 ---
 ### MapStringToNumber
@@ -674,7 +716,7 @@ Maps a string value to an integer value or default value.
 {
    "Operator": "MapStringToNumber",
    "Operand": {
-     "Mapping": {
+     "Map": {
        "A": 1,
        "B": 2
      },
@@ -684,18 +726,17 @@ Maps a string value to an integer value or default value.
 
 ```
 
-**Operand**:  Map containing the string to value mapping
-Default: Default value is there is no mapping (default is 0)
+**Operand**: `Map` - object that maps strings to integers; `Default` - integer returned when a string has no mapping (default 0).
 
 ---
 ### Max
-Returns greater of value or parameter value.
+Returns greater of value or parameter value. The operand is converted to the type of the input value, see [Numeric operands](#numeric-operands).
 
 **Type**: Datatype: Numeric
 
 **Operand**: Numeric test value
 
-```json{
+```json
 {
   "Operator": "Max",
   "Operand" : 0
@@ -704,13 +745,13 @@ Returns greater of value or parameter value.
 
 ---
 ### Min
-Return smallest of value or parameter value.
+Return smallest of value or parameter value. The operand is converted to the type of the input value, see [Numeric operands](#numeric-operands).
 
 **Type**: Datatype: Numeric
 
 **Operand**: Numeric test value
 
-```json{
+```json
 {
   "Operator": "Min",
   "Operand" : 0
@@ -720,20 +761,20 @@ Return smallest of value or parameter value.
 ---
 ### Minus
 alias is "-"
-Subtracts the parameter value from the actual value.
+Subtracts the parameter value from the actual value. The operand is converted to the type of the input value, see [Numeric operands](#numeric-operands).
 
 **Type**: Datatype: Numeric
 
-**Operand:**: Numeric value to subtract
+**Operand**: Numeric value to subtract
 
-**Operand**: None
-
-```json{
+```json
 {
   "Operator": "Minus",
   "Operand" : 10
 }
+```
 
+```json
 { 
   "Operator" : "-",
   "Operand" : 10
@@ -743,18 +784,20 @@ Subtracts the parameter value from the actual value.
 ---
 ### Mod
 alias is "%"
-Calculates the remainder when a value is divided by a parameter value.
+Calculates the remainder when a value is divided by a parameter value. The operand is converted to the type of the input value, see [Numeric operands](#numeric-operands).
 
 **Type**: Datatype: Numeric
 
 **Operand**:  Divider
 
-```json{
+```json
 {
   "Operator": "Mod",
   "Operand" : 16
 }
+```
 
+```json
 { 
   "Operator" : "%",
   "Operand" : 10
@@ -766,18 +809,20 @@ Calculates the remainder when a value is divided by a parameter value.
 alias is "*"
 Multiplies value by parameter value.
 
+The operand is converted to the type of the input value: Multiply 0.1 on an Int gives 0, and on the Double 25.0 it gives 2.500000037252903. To scale by a decimal factor use [Divide](#divide), for example Divide 10. See [Numeric operands](#numeric-operands).
+
 **Type**: Datatype: Numeric
 
 **Operand**: Parameter: Multiplier
 
-**Operand**: None
-
-```json{
+```json
 {
   "Operator": "Multiply",
   "Operand" : 2
 }
+```
 
+```json
 { 
   "Operator" : "*",
   "Operand" : 2
@@ -793,9 +838,7 @@ Inverts the value of a Boolean variable.
 
 **Operand**: None
 
-**Operand**: None
-
-```json{
+```json
 {
   "Operator": "Not"
 }
@@ -805,13 +848,13 @@ Inverts the value of a Boolean variable.
 ### NumbersToFloatBE
 Takes a list of two numbers and converts the individual bytes of these numbers into a float value using Big Endian encoding.
 
-**Type**: Datatype :Type: Datatype : List of size 2 containing 2 numeric values. These values are first converted into 16-bit words from which the float value is decoded. 
+**Type**: Datatype: List of size 2 containing 2 numeric values. These values are first converted into 16-bit words from which the float value is decoded. 
 
 **Operand**: None
 
-```json{
+```json
 {
-  "Operator": "NumbersToFloatBe"
+  "Operator": "NumbersToFloatBE"
 }
 ```
 
@@ -823,7 +866,7 @@ Takes a list of two numbers and converts the individual bytes of these numbers i
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "NumbersToFloatLE"
 }
@@ -838,22 +881,20 @@ Bitwise or of value and parameter.
 
 **Operand**:  or mask
 
-**Operand**: None
-
-```json{
+```json
 {
   "Operator": "Or",
-  "Operand" : 0xFF
+  "Operand" : "0xFF"
 }
 ```
 
 ---
 ### OutsideRangeExclusive
-
+Returns true if the value is < MinValue or > MaxValue (the bounds count as inside).
 
 **Type**: Datatype: Numeric
 
-**Operand**: None
+**Operand**: Range with MinValue and MaxValue
 
 ```json
 {
@@ -869,11 +910,11 @@ Bitwise or of value and parameter.
 
 ---
 ### OutsideRangeInclusive
-Determine if a value falls inside an inclusive range.
+Returns true if the value is <= MinValue or >= MaxValue (the bounds count as outside).
 
 **Type**: Datatype: Numeric
 
-**Operand**: None
+**Operand**: Range with MinValue and MaxValue
 
 ```json
 {
@@ -888,13 +929,13 @@ Determine if a value falls inside an inclusive range.
 
 ---
 ### ParseInt
-Parses a string value as an integer number, ensure that the string represents a valid numerical value.
+Parses a string as a 32-bit integer with Integer.decode: "0x1F" and "#1F" are hex, a leading 0 is octal ("010" is 8); returns null if the string is invalid. Use ParseNumber for decimals.
 
 **Type**: Datatype: String
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ParseInt"
 }
@@ -904,11 +945,11 @@ Parses a string value as an integer number, ensure that the string represents a 
 ### ParseNumber
 Parses a string value as a double number. The string must be a valid representation of a number.
 
-**Type**: Datatype: String\
+**Type**: Datatype: String
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ParseNumber"
 }
@@ -917,18 +958,20 @@ Parses a string value as a double number. The string must be a valid representat
 ---
 ### Plus
 alias is "+" or "Add"
-Adds the value of the parameter to the value.
+Adds the value of the parameter to the value. The operand is converted to the type of the input value, see [Numeric operands](#numeric-operands).
 
 **Type**: Datatype: Numeric
 
 **Operand**: Numeric value to add
 
-```json{
+```json
 {
   "Operator": "Plus",
   "Operand" : 10
 }
+```
 
+```json
 { 
   "Operator" : "+",
   "Operand" : 10
@@ -937,15 +980,13 @@ Adds the value of the parameter to the value.
 
 ---
 ### Query
-Evaluate a JMESpath query against structured data type and returns the result.
+Evaluate a JMESpath query against structured data type and returns the result, or null if nothing matches.
 
-**Type**: String
+**Type**: Datatype: Any (structure, map or list)
 
-Operand: JMESPath expression, see https://jmespath.org/
+**Operand**: JMESPath expression, see https://jmespath.org/
 
-**Operand**: None
-
-```json{
+```json
 {
   "Operator": "Query",
   "Operand" : "@.PUMP.values.PRESSURE.value"
@@ -960,7 +1001,7 @@ Reverses the order of elements in a list.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ReverseList"
 }
@@ -968,13 +1009,13 @@ Reverses the order of elements in a list.
 
 ---
 ### Round
-Rounds the given value towards the closest integer.
+Rounds the given value towards the closest integer. Ties go to the even neighbour (2.5 becomes 2.0, 3.5 becomes 4.0); integer inputs are returned unchanged.
 
 **Type**: Datatype: Numeric
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Round"
 }
@@ -982,15 +1023,14 @@ Rounds the given value towards the closest integer.
 
 ---
 ### Shl
+Alias is "<<"
 Shifts this value left by a bit-count number of bits.
 
 **Type**: Datatype: Int, Byte, Short, Long
 
 **Operand**: bit-count
 
-**Operand**: None
-
-```json{
+```json
 {
   "Operator": "Shl",
   "Operand" : 2
@@ -999,7 +1039,8 @@ Shifts this value left by a bit-count number of bits.
 
 ---
 ### Shr
-Shifts this value right by a bit-count number of bits.
+Alias is ">>"
+Shifts this value right by a bit-count number of bits (arithmetic shift, keeps the sign).
 
 **Type**: Datatype: Int, Byte, Short, Long
 
@@ -1007,7 +1048,7 @@ Shifts this value right by a bit-count number of bits.
 
 
 
-```json{
+```json
 {
   "Operator": "Shr",
   "Operand" : 2
@@ -1028,7 +1069,7 @@ Returns the sign of the value.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Sign"
 }
@@ -1042,7 +1083,7 @@ Computes the sine of the angle given in radians
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Sin"
 }
@@ -1056,7 +1097,7 @@ Computes the hyperbolic sine of the value
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Sinh"
 }
@@ -1070,7 +1111,7 @@ Calculates the positive square root of a number.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Sqrt"
 }
@@ -1078,13 +1119,13 @@ Calculates the positive square root of a number.
 
 ---
 ### Str
-String representation of a number.
+String representation of a value.
 
-**Type**: Datatype: Numeric
+**Type**: Datatype: Any
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Str"
 }
@@ -1098,12 +1139,25 @@ Compares string value with a string parameter.
 
 **Operand**: Parameter: String to test for equality
 
-**Operand**: None
-
-```json{
+```json
 {
   "Operator": "StrEquals",
   "Operand" : "OK"
+}
+```
+
+---
+### StrEqualsNoCase
+Compares string value with a string parameter, ignoring case. Returns true if they are equal, otherwise false.
+
+**Type**: Datatype: String
+
+**Operand**: Parameter: String to test for equality
+
+```json
+{
+  "Operator": "StrEqualsNoCase",
+  "Operand" : "ok"
 }
 ```
 
@@ -1116,7 +1170,7 @@ When using negative values, it is the offset from the end of the input string (-
 
 If Start is omitted, its default value is 0, for the beginning of the string.
 
-If End is omitted, the default value is the end of the input string (length + 1).
+If End is omitted, the substring runs to the end of the input string.
 
 **Type**: Datatype: String
 
@@ -1141,7 +1195,7 @@ Computes the tangent of the angle given in radians
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Tan"
 }
@@ -1155,7 +1209,7 @@ Calculates the hyperbolic tangent of the input value.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Tanh"
 }
@@ -1169,9 +1223,9 @@ Converts a datetime value  to the number of milliseconds from the epoch of 1970-
 
 **Operand**: None
 
-```json{
+```json
 {
-  "Operator": "TimestampToEpochMilliSeconds"
+  "Operator": "TimestampToEpocMilliSeconds"
 }
 ```
 
@@ -1183,7 +1237,7 @@ Converts a datetime value into the number of seconds since the epoch of January 
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "TimestampToEpocSeconds"
 }
@@ -1197,11 +1251,9 @@ Converts a numeric value into a byte value.
 
 **Type**: Datatype: Numeric
 
-No operand
-
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ToByte"
 }
@@ -1215,7 +1267,7 @@ Converts numeric value to a double value
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ToDouble"
 }
@@ -1229,7 +1281,7 @@ Converts a numeric value into a floating-point number.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ToFloat"
 }
@@ -1243,7 +1295,7 @@ Converts a numeric value into an integer value.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ToInt"
 }
@@ -1257,7 +1309,7 @@ Converts a numeric value into a long 64-bit value.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ToLong"
 }
@@ -1271,7 +1323,7 @@ Converts a numeric value into a short 16-bit value.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ToShort"
 }
@@ -1281,11 +1333,13 @@ Converts a numeric value into a short 16-bit value.
 ### ToSigned
 Converts a numeric value into a signed value.
 
+Unsigned values: in the uberjar and in-process [deployment modes](../sfc-deployment.md#choose-a-deployment-mode) unsigned values are converted to signed values of the same width before the first operator (UShort 40000 becomes -25536, so Divide 10 gives -2553.6). With an IPC adapter single values arrive widened (UShort to Int, UInt to Long), so the same transformation gives 4000.0. For 8-bit and 16-bit values, ToInt followed by And "0xFF" or "0xFFFF" gives the unsigned value in every mode.
+
 **Type**: Datatype: Numeric
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ToSigned"
 }
@@ -1299,7 +1353,7 @@ Converts a numeric value to an unsigned integer.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "ToUnsigned"
 }
@@ -1313,7 +1367,7 @@ Truncates a number to an integer by removing the fractional part of the number.
 
 **Operand**: None
 
-```json{
+```json
 {
   "Operator": "Trunc"
 }
@@ -1321,15 +1375,13 @@ Truncates a number to an integer by removing the fractional part of the number.
 
 ---
 ### TruncAt
-Rounds the given value to a value with a specified number of decimal places.
+Truncates (does not round) the value to the given number of decimals: TruncAt 2 turns 2.999 into 2.99. A negative operand truncates integer digits: TruncAt -1 turns 1234 into 1230.
 
 **Type**: Datatype: Numeric
 
 **Operand**: Number of decimals to truncate value at
 
-**Operand**: None
-
-```json{
+```json
 {
   "Operator": "TruncAt",
   "Operand" : 2
@@ -1344,9 +1396,9 @@ Converts a string to uppercase.
 
 **Operand**: None
 
-```json{
+```json
 {
-  "Operator": "Uppercase"
+  "Operator": "UpperCase"
 }
 ```
 
@@ -1401,12 +1453,10 @@ Bitwise xor of value and parameter.
 
 **Operand** : Parameter: xor mask
 
-**Operand**: None
-
-```json{
+```json
 {
   "Operator": "Xor",
-  "Operand" : 0xFF
+  "Operand" : "0xFF"
 }
 ```
 
@@ -1440,4 +1490,31 @@ Bitwise xor of value and parameter.
 
 ## Examples
 
-See specific examples for operators listed above.
+A transformation with two operators that converts a Fahrenheit value to Celsius and truncates the result to one decimal (77.5 becomes 25.2):
+
+```json
+{
+  "Transformations": {
+    "CelsiusOneDecimal": [
+      { "Operator": "Celsius" },
+      { "Operator": "TruncAt", "Operand": 1 }
+    ]
+  }
+}
+```
+
+A channel of a source that references it by name. The channel also needs the properties of its protocol adapter, for example NodeId for OPC UA:
+
+```json
+{
+  "Channels": {
+    "OvenTemperature": {
+      "Transformation": "CelsiusOneDecimal"
+    }
+  }
+}
+```
+
+See the sections of the operators above for an example of each operator.
+
+**Runnable examples:** [OPC UA to AWS IoT Core using filters](../../examples/opcua-to-iot-using-filters/README.md) ([TruncAt](#truncat) on channels) · [S7 to OPC UA](../../examples/in-process-s7-opcua/README.md) ([Celsius](#celsius) and [ToInt](#toint) on an OPC UA target variable)

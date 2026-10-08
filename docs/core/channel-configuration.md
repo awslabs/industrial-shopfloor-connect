@@ -19,6 +19,8 @@ This base configuration includes core properties for channel configuration inclu
 
 The configuration  is designed to be extended by specific protocol implementations to add protocol-specific channel configuration properties while maintaining a consistent base set of functionality across different adapter types.
 
+Protocol-specific channel properties (NodeId, Address, ...): [adapters](../adapters/README.md). See it running: [OPC UA to AWS IoT Core using filters](../../examples/opcua-to-iot-using-filters/README.md).
+
 **Properties:**
 
 - [ChangeFilter](#changefilter)
@@ -59,15 +61,17 @@ The ConditionFilter property specifies a reference to a [condition filter](./con
 The Decompose property controls whether structured values from the channel should be broken down into individual elements. When set to true:
 
 - A structured value will be split into separate values for each sub-element
-- Each decomposed value is named using the pattern "originalName.subElementName"
+- Each decomposed value is named `<channel ID>.<field>` (the channel's Name is not used)
 - The original structured value is removed after decomposition
-- For lists of structures (when Spread is true), each structure is decomposed with names following the pattern "elementName.index.subElementName"
+- For lists of structures (when Spread is true), each structure is decomposed with names following the pattern `<channel ID>.<index>.<field>`
 
 This property can be set at both channel and [source levels](./source-configuration.md#decompose), with the channel-level setting taking precedence over the source-level setting. The default value is false.
 
+> Channel Metadata is currently not added to decomposed values.
+
 This feature is particularly useful when working with complex data structures that need to be broken down into simpler individual values for processing or analysis
 
-If the value is  list of structures and the value of the [Spread](#spread) setting is true then each structure in the list is decomposed. 
+If the value is a list of structures and the value of the [Spread](#spread) setting is true then each structure in the list is decomposed. 
 
 **Type**: Boolean
 
@@ -89,7 +93,7 @@ The optional [Metadata](../README.md#metadata) element can be used to add additi
 
 ---
 ### Name
- Name of the channel. If this element is specified, it is used as the channel key in the map of output values for its source. If no value is specified then the channel identifier is used. This name can be used to give a descriptive name in the output the data read from the channel (e.g., "InputTemperature", "RotationSpeed/RPM"
+ Name of the channel. If this element is specified, it is used as the channel key in the map of output values for its source. If no value is specified then the channel identifier is used. This name can be used to give a descriptive name in the output the data read from the channel (e.g., "InputTemperature", "RotationSpeed/RPM").
 
 **Type**: String
 
@@ -98,12 +102,14 @@ The optional [Metadata](../README.md#metadata) element can be used to add additi
 
 The Spread property determines how list values from the channel are handled. When set to true:
 
-- Each element in a list value will be converted into a separate individual value
-- The new values are named using the pattern "originalName.index" where index is a sequence number
+- Each structure in a list value will be converted into a separate individual value
+- The new values are named `<channel ID>.<index>` where index is a sequence number (the channel's Name and Metadata are not used for them)
 - The original list value is removed from the dataset after spreading
 - This setting overrides any [Spread](./source-configuration.md#spread)  setting configured at the source level
 
 The default value is false. This feature is useful when you need to process list elements as individual values rather than handling them as a single list structure.
+
+> Currently only lists of structures are spread. A list of primitive values (numbers, strings) is dropped from the output, so do not set Spread on such channels.
 
 **Type**: Boolean
 
@@ -118,7 +124,7 @@ The Transformation property specifies a reference to a [transformation](./transf
 
 ---
 ### ValueFilter
-The [ValueFilter](./value-filter-configuration.md) property specifies a reference to a value filter that should be applied to the channel's values. It accepts a string value that must match an ID of a filter defined in the [ValueFilters](./sfc-configuration.md#valuefilters)  section of the top-level SFC configuration. This filter determines whether values should be processed based on their actual content or value. The property is optional - if not specified, no value filtering will be applied to the channel. Value filters can use operators like ==, !=, >, >=, <, <= for numeric values, and == and != for non-numeric values to determine if a value should be processed
+The [ValueFilter](./value-filter-configuration.md) property specifies a reference to a value filter that should be applied to the channel's values. It accepts a string value that must match an ID of a filter defined in the [ValueFilters](./sfc-configuration.md#valuefilters)  section of the top-level SFC configuration. This filter determines whether values should be processed based on their actual content or value. The property is optional - if not specified, no value filtering will be applied to the channel. Operators: `eq`/`==`, `ne`/`!=`, `gt`/`>`, `ge`/`>=`, `lt`/`<`, `le`/`<=`, combined with `and`/`&&` and `or`/`||`; see [ValueFilterConfiguration](./value-filter-configuration.md).
 
 **Type**: String
 
@@ -264,21 +270,18 @@ Channel with decompose enabled:
 }
 ```
 
-Channel with spread enabled:
+Channel with spread enabled, for a value that is a list of structures:
 
 ```json
 {
-  "TemparatureList": {
-    "Name": "temperature_array",
-    "Spread": true,
-    "Metadata": {
-      "sensor_count": "4",
-      "sampling_rate": "1Hz",
-      "array_type": "linear"
-    }
+  "BatchList": {
+    "Description": "List of batch records",
+    "Spread": true
   }
 }
 ```
+
+If the value of channel "BatchList" is `[{"id": 1, "qty": 5}, {"id": 2, "qty": 7}]`, the output contains the values "BatchList.0" and "BatchList.1".
 
 
 

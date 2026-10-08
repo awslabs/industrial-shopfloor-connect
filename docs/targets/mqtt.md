@@ -4,16 +4,60 @@
 
 The SFC MQTT target adapter enables publishing collected data to MQTT brokers using configurable topic patterns. Topics can be dynamically constructed using target data and  metadata from the source readings. The adapter supports various MQTT protocol configurations, authentication methods, and quality of service (QoS) levels for reliable message delivery. 
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `MQTT-TARGET` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "MQTT_TARGET": {
-      "JarFiles" : ["<location of deployment>/mqtt-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter"
-   }
+"TargetTypes": {
+  "MQTT-TARGET": { "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter" }
 }
 ```
+
+**In-process** - module bundle `mqtt-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"TargetTypes": {
+  "MQTT-TARGET": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/mqtt-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "MqttTarget": {
+    "TargetType": "MQTT-TARGET",
+    "TargetServer": "MqttTargetServer"
+  }
+},
+"TargetServers": {
+  "MqttTargetServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+mqtt-target/bin/mqtt-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\mqtt-target\lib\*" com.amazonaws.sfc.mqtt.MqttTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.mqtt.MqttTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.mqtt.MqttTargetService -port 50001`).
+
+**Examples:** in-process: [greengrass-in-process](../../examples/greengrass-in-process/README.md) · IPC: [greengrass-ipc](../../examples/greengrass-ipc/README.md) · all: [examples catalog](../examples/README.md)
 
 ## MqttTargetConfiguration
 
@@ -31,8 +75,7 @@ MqttTargetConfiguration extends the type TargetConfiguration with specific confi
 - [ClientId](#clientid)
 - [Compression](#compression)
 - [ConnectRetries](#connectretries)
-- [Connection](#connection)
-- [ConnectionTimeout](#connectiontimeout)
+- [ConnectTimeout](#connecttimeout)
 - [EndPoint](#endpoint)
 - [Formatter](#formatter)
 - [MaxPayloadSize](#maxpayloadsize)
@@ -40,7 +83,7 @@ MqttTargetConfiguration extends the type TargetConfiguration with specific confi
 - [Port](#port)
 - [PrivateKey](#privatekey)
 - [PublishTimeout](#publishtimeout)
-- [QoS](#qos)
+- [Qos](#qos)
 - [Retain](#retain)
 - [RootCA](#rootca)
 - [SslServerCertificate](#sslservercertificate)
@@ -66,7 +109,7 @@ Batching is triggered when any configured threshold (BatchCount, [BatchSize](#ba
 
 ---
 ### BatchInterval
-The maximum time in milliseconds to hold messages in the buffer before publishing them as a batch to the MQTT topic, regardless of whether [BatchSize](#batchcount) or [BatchCount](#batchcount) limits have been reached.
+The maximum time in milliseconds to hold messages in the buffer before publishing them as a batch to the MQTT topic, regardless of whether [BatchSize](#batchsize) or [BatchCount](#batchcount) limits have been reached.
 
 Batching is triggered when any configured threshold ([BatchCount](#batchcount), [BatchSize](#batchsize), or BatchInterval) is reached
 
@@ -82,9 +125,9 @@ Batching is triggered when any configured threshold ([BatchCount](#batchcount), 
 
 ---
 ### Certificate
-The file system path to the client certificate file used for authentication with the MQTT broker when certificate-based authentication is enabled.
+The file system path to the client certificate file used for authentication with the MQTT broker.
 
- Only when using certificate-based authentication
+Required for `ssl://` endpoints, see [EndPoint](#endpoint).
 
 **Type**: String
 
@@ -117,38 +160,26 @@ The maximum number of attempts to establish a connection with the MQTT broker wh
 Default is 10
 
 ---
-### Connection
-Specifies the type of connection security to use when connecting to the MQTT broker. 
-
-Possible values:
-- "PlainText": Unencrypted connection, this is the default
-- "ServerSideTLS": TLS encryption with server certificate validation
-- "MutualTLS": TLS encryption with both server and client certificate validation
-
-**Type**: String
-
----
-### ConnectionTimeout
+### ConnectTimeout
 The maximum time in seconds to wait for establishing a connection with the MQTT broker before timing out.
 
 **Type**: Int
 
-Default is 10 seconds
+Default is 10 seconds. A configured value currently has no effect; the timeout is always 10 seconds.
 
 ---
 ### EndPoint
-The network address of the MQTT broker to connect to.
+The address of the MQTT broker, including the protocol scheme: `tcp://` for an unencrypted connection, `ssl://` for TLS. There is no separate property that selects TLS. Without a scheme, `tcp://` is added, or `ssl://` when [RootCA](#rootca), [Certificate](#certificate) or [PrivateKey](#privatekey) is set.
 
 **Type**: String
 
-- Port number is optional in the endpoint string (see [Port](#port) property)
-- If protocol scheme is omitted, it will be automatically added based on Connection type:
-  - PlainText: "tcp://" prefix
-  - ServerSideTLS or MutualTLS: "ssl://" prefix
+- `tcp://`: include the port, e.g. `"EndPoint": "tcp://broker.example.com:1883"`, and set the same port in [Port](#port).
+- `ssl://`: give the host only, e.g. `"EndPoint": "ssl://broker.example.com"`, and set [Port](#port) to 8883. The target connects to port 8883 for `ssl://` endpoints, and a port in an `ssl://` EndPoint currently makes the connection fail, so TLS works only with brokers that listen on 8883. `ssl://` requires [RootCA](#rootca), [Certificate](#certificate) and [PrivateKey](#privatekey) (client certificate authentication).
 
-For AWS IoT Core, use the ATS endpoint for your account To get the ATS endpoint for an account use the AWS CLI command
-```console
-aws iot describe-endpoint --endpoint-type iot:Data-ATS
+For AWS IoT Core, use `ssl://` with the ATS endpoint of your account and Port 8883. To get the ATS endpoint for an account use the AWS CLI command (the same in PowerShell):
+
+```shell
+aws iot describe-endpoint --endpoint-type iot:Data-ATS --query endpointAddress --output text
 ```
 https://awscli.amazonaws.com/v2/documentation/api/latest/reference/iot/describe-endpoint.html
 
@@ -158,7 +189,7 @@ https://awscli.amazonaws.com/v2/documentation/api/latest/reference/iot/describe-
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
@@ -184,24 +215,22 @@ The password credential for authenticating with the MQTT broker when using usern
 
 ---
 ### Port
-The TCP port number used to connect to the MQTT broker. 
+The TCP port number used to connect to the MQTT broker. When it is not set, a port in the [EndPoint](#endpoint) sets it; a configuration with neither Port nor a port in the EndPoint is rejected.
 
 **Type**: Integer
 
 Commonly port numbers are
 
-- 1883 for PlainText
-- 8883 for ServerSideTLS
-- 8884 for MutualTLS.
-- 443 for AWS IoT Core endpoints
+- 1883 for `tcp://` endpoints
+- 8883 for `ssl://` endpoints, including AWS IoT Core endpoints
 
-If no port number is specified, then the [EndPoint](#endpoint) address is searched for a training port number.
+With `tcp://` put the same port in the [EndPoint](#endpoint); with `ssl://` use 8883 and leave the port out of the EndPoint.
 
 ---
 ### PrivateKey
-The file system path to the private key file used for client authentication when using certificate-based authentication with the MQTT broker. 
+The file system path to the private key file used for client authentication with the MQTT broker.
 
-Only when using certificate-based authentication (MutualTLS)
+Required for `ssl://` endpoints, see [EndPoint](#endpoint).
 
 **Type**: String
 
@@ -209,13 +238,13 @@ Only when using certificate-based authentication (MutualTLS)
 ### PublishTimeout
 The maximum time in seconds to wait for a message to be published to the MQTT broker before timing out.
 
-**Type**: Long
+**Type**: Int
 
-Default is 10 seconds
+Default is 10 seconds. A configured value currently has no effect.
 
 ---
-### QoS
-The MQTT Quality of Service (QoS) level for message delivery. 
+### Qos
+The MQTT Quality of Service (QoS) level for message delivery. The key is spelled `Qos`; a `QoS` key is ignored and the level stays 0.
 
 - 0: At most once (Fire and forget), the default.
 - 1: At least once (Guaranteed delivery, but possible duplicates)
@@ -237,17 +266,17 @@ Default is false
 
 ---
 ### RootCA
-The file system path to the Root Certificate Authority (CA) certificate file.
+The file system path to the Root Certificate Authority (CA) certificate file used to validate the broker's identity.
 
-When using secure connections (TLS/SSL) to validate the broker's identity.
+Required for `ssl://` endpoints, see [EndPoint](#endpoint).
 
 **Type**: String
 
 ---
 ### SslServerCertificate
-The file system path to the server certificate file used to verify the MQTT broker's identity for ServerSideTLS and MutualTLS connection types.
+The file system path to a server certificate file for `ssl://` endpoints. The file must exist.
 
-Used to authenticate and verify the identity of the MQTT broker during secure connections.
+The setting is currently not used to verify the broker: the target trusts the certificate that the broker presents.
 
 **Type**: String
 
@@ -269,7 +298,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -279,7 +308,7 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
 
@@ -327,7 +356,7 @@ The delay period in seconds before attempting to reconnect after a failed connec
 
 **Type**: Int
 
-Default is 60 seconds
+Default is 10 seconds
 
 ---
 ### WarnAlternateTopicName
@@ -337,7 +366,7 @@ When enabled, logs a warning message if the system falls back to using the [Alte
 
 **Type**: Boolean
 
-Default is tue
+Default is true
 
 
 
@@ -369,7 +398,7 @@ Default is tue
         },
         "BatchSize": {
           "type": "integer",
-          "description": "Maximum size of batched messages in bytes"
+          "description": "Maximum size of batched messages in KB"
         },
         "Certificate": {
           "type": "string",
@@ -389,23 +418,17 @@ Default is tue
           "type": "integer",
           "description": "Number of connection retry attempts"
         },
-        "Connection": {
-          "type": "string",
-          "description": "Type of connection security",
-          "enum": ["PlainText", "ServerSideTLS", "MutualTLS"],
-          "default": "PlainText"
-        },
-        "ConnectionTimeout": {
+        "ConnectTimeout": {
           "type": "integer",
-          "description": "Connection timeout in milliseconds"
+          "description": "Connection timeout in seconds"
         },
         "EndPoint": {
           "type": "string",
-          "description": "MQTT broker endpoint"
+          "description": "MQTT broker endpoint, starting with tcp:// or ssl://"
         },
         "MaxPayloadSize": {
           "type": "integer",
-          "description": "Maximum size of message payload in bytes"
+          "description": "Maximum size of message payload in KB"
         },
         "Password": {
           "type": "string",
@@ -421,9 +444,9 @@ Default is tue
         },
         "PublishTimeout": {
           "type": "integer",
-          "description": "Timeout for publish operations in milliseconds"
+          "description": "Timeout for publish operations in seconds"
         },
-        "QoS": {
+        "Qos": {
           "type": "integer",
           "description": "Quality of Service level",
           "enum": [0, 1, 2],
@@ -451,7 +474,7 @@ Default is tue
         },
         "WaitAfterConnectError": {
           "type": "integer",
-          "description": "Wait time in milliseconds after connection error"
+          "description": "Wait time in seconds after a connection error"
         },
         "WarnAlternateTopicName": {
           "type": "boolean",
@@ -467,18 +490,32 @@ Default is tue
 
 ### MqttTargetConfiguration Examples
 
+To try the target, replace the `DebugTarget` of [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) with this entry (also in the schedule's `Targets`) and add the uberjar `TargetTypes` entry from [Deploy this target](#deploy-this-target). It publishes every record to the topic `sfc/demo` of a broker on the same host, for example Mosquitto on port 1883:
+
+```json
+"Targets": {
+  "MqttTarget": {
+    "TargetType": "MQTT-TARGET",
+    "EndPoint": "tcp://127.0.0.1:1883",
+    "Port": 1883,
+    "TopicName": "sfc/demo",
+    "Qos": 1
+  }
+}
+```
+
 MQTT Configuration using (secret) placeholders for username and password
 
 ```json
 {
   "TargetType" : "MQTT-TARGET",
-  "EndPoint": "mqtt.example.com",
+  "EndPoint": "tcp://mqtt.example.com:1883",
   "Port": 1883,
   "TopicName": "sensors/data",
-  "QoS": 1,
+  "Qos": 1,
   "Username": "${username}",
   "Password": "${password}",
-  "ConnectionTimeout": 30000
+  "ConnectTimeout": 30
 }
 ```
 
@@ -486,27 +523,28 @@ Secure MQTT with TLS:
 
 ```json
 {
-  "TargetType" : "MQTT-TARGET"
-  "EndPoint": "secure-mqtt.example.com",
+  "TargetType" : "MQTT-TARGET",
+  "EndPoint": "ssl://secure-mqtt.example.com",
   "Port": 8883,
   "TopicName": "production/metrics",
-  "Connection": "MutualTLS",
   "Certificate": "/path/to/client-cert.pem",
   "PrivateKey": "/path/to/private-key.pem",
   "RootCA": "/path/to/root-ca.pem",
-  "QoS": 2,
+  "Qos": 2,
   "Compression": "GZip",
   "BatchSize": 1024,
   "BatchInterval": 5000
 }
 ```
 
+On Windows write the certificate paths with forward slashes, e.g. `"Certificate": "C:/sfc/certs/client-cert.pem"`, `"PrivateKey": "C:/sfc/certs/private-key.pem"` and `"RootCA": "C:/sfc/certs/root-ca.pem"`.
+
 Configuration  with dynamic topic names from target- and metadata values
 
 ```json
 {
-  "TargetType" : "MQTT-TARGET"
-  "EndPoint": "mqtt.internal.com",
+  "TargetType" : "MQTT-TARGET",
+  "EndPoint": "tcp://mqtt.internal.com:1883",
   "Port": 1883,
   "TopicName": "data/%location%/%line%/%source%",
   "AlternateTopicName": "data/sensors",

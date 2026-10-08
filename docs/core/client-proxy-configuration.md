@@ -4,6 +4,8 @@
 
 [SFC Configuration](./sfc-configuration.md) > [AwsIotCredentialProviderClients](./sfc-configuration.md#awsiotcredentialproviderclients) > [Proxy](./aws-iot-credential-provider-configuration.md#proxy)
 
+[REST adapter](../adapters/rest.md) > [RestServers](../adapters/rest.md#restservers) > [Proxy](../adapters/rest.md#proxy)
+
 The ClientProxyConfiguration class defines settings for client-level proxy connections, including the proxy server URL, optional authentication credentials (username/password), and addresses that can bypass the proxy (NoProxyAddresses). It provides a structured way to configure how client connections are routed through a proxy server in the SFC system.
 
 - [Schema](#schema)
@@ -22,6 +24,8 @@ The ClientProxyConfiguration class defines settings for client-level proxy conne
 ### NoProxyAddresses
 The NoProxyAddresses property accepts a comma-separated list of addresses that should bypass the proxy server. These addresses will be accessed directly without going through the configured proxy. This optional string property allows you to specify exceptions to proxy routing, such as local or internal network addresses.
 
+The REST adapter ignores NoProxyAddresses, see [ProxyUrl](#proxyurl).
+
 **Type**: String
 
 ---
@@ -35,6 +39,8 @@ Optional
 ---
 ### ProxyUrl
 The ProxyUrl property specifies the URL address of the proxy server that will handle client connections. This required string property defines the endpoint where proxy requests should be directed.
+
+Format `http://host:port`, e.g. `http://proxy.example.com:8080`. The REST adapter uses it as an HTTP proxy, sends ProxyUsername and ProxyPassword as basic proxy authentication only when both are set, and ignores NoProxyAddresses. For [AwsIotCredentialProviderClients](./aws-iot-credential-provider-configuration.md#proxy) the proxy is currently not applied to the credentials-provider request.
 
 **Type**: String
 
@@ -55,26 +61,20 @@ The ProxyUsername property specifies the username for proxy server authenticatio
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
   "properties": {
-    "ProxyHost": {
+    "ProxyUrl": {
       "type": "string",
       "minLength": 1,
-      "description": "Proxy server hostname"
+      "description": "Proxy server URL, e.g. http://proxy.example.com:8080"
     },
-    "ProxyPort": {
-      "type": "integer",
-      "minimum": 1,
-      "maximum": 65535,
-      "description": "Proxy server port number"
-    },
-    "Username": {
+    "ProxyUsername": {
       "type": "string",
       "description": "Optional proxy authentication username"
     },
-    "Password": {
+    "ProxyPassword": {
       "type": "string",
       "description": "Optional proxy authentication password"
     },
-    "NonProxyAddresses": {
+    "NoProxyAddresses": {
       "type": "string",
       "description": "Optional comma-separated list of hosts that should bypass the proxy",
       "examples": [
@@ -84,32 +84,31 @@ The ProxyUsername property specifies the username for proxy server authenticatio
     }
   },
   "required": [
-    "ProxyHost",
-    "ProxyPort"
+    "ProxyUrl"
   ],
   "additionalProperties": false,
   "allOf": [
     {
       "if": {
         "required": [
-          "Username"
+          "ProxyUsername"
         ]
       },
       "then": {
         "required": [
-          "Password"
+          "ProxyPassword"
         ]
       }
     },
     {
       "if": {
         "required": [
-          "Password"
+          "ProxyPassword"
         ]
       },
       "then": {
         "required": [
-          "Username"
+          "ProxyUsername"
         ]
       }
     }
@@ -123,9 +122,7 @@ Basic configuration (only required fields):
 
 ```json
 {
-  "ProxyHost": "proxy.example.com",
-  "ProxyPort": 8080
-
+  "ProxyUrl": "http://proxy.example.com:8080"
 }
 ```
 
@@ -135,10 +132,9 @@ With authentication:
 
 ```json
 {
-  "ProxyHost": "proxy.example.com",
-  "ProxyPort": 8080,
-  "Username": "${proxyuser}",
-  "Password": "${proxypass}"
+  "ProxyUrl": "http://proxy.example.com:8080",
+  "ProxyUsername": "${proxyuser}",
+  "ProxyPassword": "${proxypass}"
 }
 ```
 
@@ -146,9 +142,8 @@ With non-proxy addresses:
 
 ```json
 {
-  "ProxyHost": "proxy.example.com",
-  "ProxyPort": 8080,
-  "NonProxyAddresses": "localhost,127.0.0.1,*.internal.example.com"
+  "ProxyUrl": "http://proxy.example.com:8080",
+  "NoProxyAddresses": "localhost,127.0.0.1,*.internal.example.com"
 }
 ```
 
@@ -158,11 +153,10 @@ Complete configuration, all fields:
 
 ```json
 {
-  "ProxyHost": "proxy.example.com",
-  "ProxyPort": 8080,
-  "Username": "${proxyuser}",
-  "Password": "${proxypass}"
-  "NonProxyAddresses": "localhost,127.0.0.1,*.internal.example.com,10.0.0.*"
+  "ProxyUrl": "http://proxy.example.com:8080",
+  "ProxyUsername": "${proxyuser}",
+  "ProxyPassword": "${proxypass}",
+  "NoProxyAddresses": "localhost,127.0.0.1,*.internal.example.com,10.0.0.*"
 }
 
 ```

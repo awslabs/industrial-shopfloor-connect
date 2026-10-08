@@ -11,7 +11,7 @@
         "AWSVersion": "2022-04-02",
         "Name": "MQTT writing to Debug",
         "Version": 1,
-        "LogLevel": "Debug",
+        "LogLevel": "Info",
         "Schedules": [
           {
             "Name": "DCSChangeSetpoint",
@@ -60,9 +60,10 @@
         "ProtocolAdapters": {
           "MQTT": {
             "AdapterType": "MQTT",
+            "ReadMode": "KeepAll",
             "Brokers": {
               "local-mqtt-broker": {
-                "EndPoint": "tcp://127.0.0.1",
+                "EndPoint": "tcp://127.0.0.1:1883",
                 "Port": 1883
               }
             }
@@ -80,7 +81,7 @@
       "Lifecycle": {
         "Run": {
           "RequiresPrivilege": true,
-          "Script": "java -jar {artifacts:path}/sfc-uberjar-1.11.0.jar -trace",
+          "Script": "java -jar \"{artifacts:path}/sfc-uberjar.jar\"",
           "Setenv": {
             "SFC_CONFIG": "{configuration:/SFC_CONFIG}"
           }
@@ -88,7 +89,7 @@
       },
       "Artifacts": [
         {
-          "Uri": "s3://[REPLACE WITH YOUR S3 BUCKET]/sfc-uberjar-1.11.0.jar"
+          "Uri": "s3://[REPLACE WITH YOUR S3 BUCKET]/sfc-uberjar.jar"
         }
       ]
     }

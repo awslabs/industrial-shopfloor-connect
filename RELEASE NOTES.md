@@ -1,8 +1,57 @@
 # Release Notes:
 
+## version 2.0.0
+
+**Breaking changes**
+
+- Java 17 is the minimum runtime (was Java 8).
+- Removed the targets `aws-timestream-target` and `aws-iot-analytics-target`.
+- Removed the examples `custom-adapter-csvfile` and `custom-api-ui-config-provider`.
+- The [OPC UA adapter](./docs/adapters/opcua.md), the [OPC UA target](./docs/targets/opcua.md) and the
+  [OPC UA writer target](./docs/targets/opcua-writer.md) use Eclipse Milo 1.1.7. The OPC UA adapter and the OPC UA
+  writer target now reject `"KeyUsageIssuer": false` in the `ValidationOptions` of a `CertificateValidation` section
+  with a configuration error, because Milo 1.1.7 always validates issuer key usage; omit the option or set it to
+  `true`.
+- [in-process-sim-s3tables](./examples/in-process-sim-s3tables/README.md): `run.sh` is now `run-inprocess.sh`.
+
+**New**
+
+- One-line install of the uberjar with `sfcup.sh` (Linux, macOS) or `sfcup.ps1` (Windows), see the
+  [Quickstart](./README.md#1-install). The command is `sfcx` on every OS; `sfcup` upgrades it.
+- New example [uberjar-plc-sim-s3tables](./examples/uberjar-plc-sim-s3tables/README.md).
+  [in-process-sim-s3tables](./examples/in-process-sim-s3tables/README.md) also runs from the uberjar
+  (`run-uberjar.sh` / `run-uberjar.bat`).
+- omni-plc-sim, one process that simulates Siemens S7, Beckhoff ADS, Allen-Bradley PCCC, Mitsubishi SLMP and
+  Modbus TCP PLCs. The [uberjar-plc-sim-s3tables](./examples/uberjar-plc-sim-s3tables/README.md) example reads it,
+  so no hardware is needed.
+- Windows (PowerShell) instructions next to the Linux / macOS ones across the docs.
+
+**Fixes**
+
+- Uberjar: the service files of all bundled libraries are merged, so all JDBC drivers load (as do Jackson YAML and
+  the slf4j binding); one log4j2 configuration, in which third-party libraries log at WARN (Eclipse Milo at INFO).
+- [Simulator adapter](./docs/adapters/simulator.md), `Double` and `Float` values: Square, Sawtooth and Triangle
+  simulations honour a `Min` of 0 or below, including their default of 0, and Counter and Sinus simulations a
+  negative `Min`, instead of bottoming out at the smallest positive value of the type (4.9E-324 for `Double`,
+  1.4E-45 for `Float`). Without `Min`, the lower bound of a Random simulation is now the lowest value of its type, as
+  documented.
+
+**Docs**
+
+- Static adapter and target types, factory classes and IPC service classes corrected, see
+  [Protocol adapter types and classes](./docs/sfc-running-adapters.md#protocol-adapter-types-and-classes) and
+  [Target types and classes](./docs/sfc-running-targets.md#target-types-and-classes).
+- The page of every adapter and target in this repository has a "Deploy this adapter" or "Deploy this target"
+  section that shows its configuration in the uberjar, in-process and IPC modes.
+- The OPC UA adapter, target and writer target pages use the key spellings the code reads: `HostOrIP` (not
+  `HostOrIp`), `Aes128Sha256RsaOaep` (not `Aes128ShaRsaOaep`) and, for the writer target, `Dimensions` (not
+  `ArrayDimensions`).
+
+---
+
 ## version 1.11.0, 21  Sept 2026
 
-- S3Tables adapter & core fixes by [mellerbeck](https://github.com/mellerbeck)
+- S3 Tables target & core fixes by [mellerbeck](https://github.com/mellerbeck)
 - New [S3Tables example](./examples/in-process-sim-s3tables/README.md) plus demo CDK stack featuring DuckDB Iceberg query layer
 
 ---
@@ -40,13 +89,13 @@
 ## version 1.9.4, 3 June 2025
 
 - [Specify the config via environment variables](./docs/sfc-running-core-process.md#additional-functionality-to-specify-the-config-via-environment-variables)
-- [Running the process from a single jar file](./docs/sfc-running-core-process.md#running-the-process-from-a-single-jar-file)
+- [Running the process from a single jar file](./docs/sfc-deployment.md#single-file-deployments)
 
 ---
 ## Version 1.9.3, 6 May 2025
 
 - Configuration reader bug fix
-`
+
 ---
 
 ## Version 1.9.2, 30 April 2025
@@ -54,12 +103,12 @@
 - New: [Custom formatters ](./docs/sfc-extending.md#custom-formatters) for targets adapters, enabling the implementation of custom formatting. These formatters are implemented as JVM classes and process target data written by the adapter.
 - New: [@include](./docs/sfc-configuration.md#including-configuration-sections) statement to include data from external files into configuration file
 - New: [ClientId](./docs/targets/mqtt.md#clientid) configuration property for [MQTT target](./docs/targets/mqtt.md).
-- New: Support for reading multiple can sockets for [J13939 adapter](./docs/adapters/j1939.md#j1939adapterconfiguration)
+- New: Support for reading multiple can sockets for [J1939 adapter](./docs/adapters/j1939.md#j1939adapterconfiguration)
 - New: Collecting data as [raw](./docs/adapters/j1939.md#rawformat) values for [J1939 adapter channels](./docs/adapters/j1939.md#j1939channelconfiguration)
 - New: [BufferCount](./docs/targets/file.md#buffercount) property for [File target](./docs/targets/file.md)
 
 ## Version 1.9.1, 10 April 2025
-`
+
 - Upgrade to AWS SDK 2.31.18
 - Fixed version dependency for running S3 target as an in-process target
 
@@ -89,15 +138,9 @@
 ## Version 1.8.7, 11 March 2025
 
 - Extended datatype and conversions for OPCUA and OPCUA-Writer targets
-- Documentation updates
-- Fixed serialization of structured datatypes in MQTT Adapter
-
----
-
-## Version 1.8.6, 10 March 2025
-
 - Added OPCUA Writer example
 - Documentation updates
+- Fixed serialization of structured datatypes in MQTT Adapter
 
 ---
 
@@ -126,12 +169,12 @@
 - Epoch [timestamp](./docs/core/target-configuration.md#templateepochtimestamp) data for target template transformations
 - Documentation updates
 
-  ---
+---
 ## Version 1.8.2, 21 February 2025
 
 - Fallback caching options for http calls executed to obtain [external configuration data](./docs/sfc-configuration.md#including-configuration-sections), [CacheUrlConfigResults](./docs/core/sfc-configuration.md#cacheurlconfigresults) and [CacheUrlConfigDirectory](./docs/core/sfc-configuration.md#cacheurlconfigdirectory) 
 
-  ---
+---
 
 ## Version 1.8.1, 14 February 2025
 
@@ -172,7 +215,7 @@ Cleanup logging output
 
 ## Version 1.7.2, 18 December 2024
 
-- S7 Protocol adapter Detecting
+- S7 Protocol adapter: detecting and acting on blocking reads that occur when the connection to the PLC is dropped
 
 ---
 

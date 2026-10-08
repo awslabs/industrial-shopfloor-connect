@@ -4,24 +4,68 @@
 
 The AWS [MSK](https://aws.amazon.com/msk/) (Amazon Managed Streaming for Apache Kafka) target adapter for Shop Floor Connectivity enables data streaming from industrial devices directly to Amazon MSK clusters. This adapter transforms collected device data into the required format and publishes it to specified Kafka topics in your MSK cluster. The adapter supports configurable batching, compression,data transformations using Apache Velocity templates and handles the authentication and connection management to your MSK clusters.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `AWS-MSK` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWS-MSK": {
-      "JarFiles" : ["<location of deployment>/aws-msk-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.msk.AwsMskTargetWriter"
-   }
+"TargetTypes": {
+  "AWS-MSK": { "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter" }
 }
 ```
 
+**In-process** - module bundle `aws-msk-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
 
+```json
+"TargetTypes": {
+  "AWS-MSK": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-msk-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter"
+  }
+}
+```
+
+> **Known limitation:** the in-process form does not deliver data today. `sfc-main` loads the target's IAM authentication classes from its own libraries instead of from the target's `JarFiles`. There they cannot find the Kafka client classes, so the first record fails with `NoClassDefFoundError`. Use the uberjar or IPC form for this target.
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "MskTarget": {
+    "TargetType": "AWS-MSK",
+    "TargetServer": "MskTargetServer"
+  }
+},
+"TargetServers": {
+  "MskTargetServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-msk-target/bin/aws-msk-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-msk-target\lib\*" com.amazonaws.sfc.awsmsk.AwsMskTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awsmsk.AwsMskTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awsmsk.AwsMskTargetService -port 50001`).
+
+**Examples:** in-process: [in-process-opcua-msk](../../examples/in-process-opcua-msk/README.md) (affected by the in-process limitation above) · IPC: [ipc-opcua-msk](../../examples/ipc-opcua-msk/README.md) · all: [examples catalog](../examples/README.md)
 
 ## AwsMskTargetConfiguration
 
 AwsMskTargetConfiguration extends the type  [TargetConfiguration](../core/target-configuration.md) with specific configuration data for connecting to and sending to an AWS MSK topic. The Targets configuration element can contain entries of this type, the TargetType of these entries must be set to **"AWS-MSK"**
 
-Required IAM permissions are `kafka-cluster:WriteDataIdempotently`, `kafka-cluster:CreateTopic`, `kafka-cluster:DescribeTopic` `,kafka-cluster:Connect`, `kafka-cluster:WriteData,`
+Required IAM permissions are `kafka-cluster:Connect`, `kafka-cluster:DescribeTopic` and `kafka-cluster:WriteData`. Add `kafka-cluster:WriteDataIdempotently` when [Acknowledgements](#acknowledgements) is `all`, and `kafka-cluster:CreateTopic` only if the cluster creates the topic automatically.
 
 - [Schema](#awsmsktargetconfiguration-schema)
 - [Examples](#awsmsktargetconfiguration-examples)
@@ -49,7 +93,7 @@ Acknowledgements (acks) controls the durability and reliability of message deliv
 
 **Type** : String
 
-- "None" = 0: No acknowledgement required - fastest but may lose data
+- "none" = 0: No acknowledgement required - fastest but may lose data
 - "leader" = 1 (default): Leader acknowledgement only - balanced between durability and performance
 - "all" = -1: All replicas must acknowledge - highest durability but slower performance
 
@@ -59,7 +103,7 @@ Acknowledgements (acks) controls the durability and reliability of message deliv
 ### BatchSize
 Batch size (batch.size)
 
-Number of records to accumulate before sending to MSK cluster. Larger batch sizes can improve throughput and reduce network overhead, but increase latency and memory usage.
+Maximum size in bytes of a per-partition batch (Kafka `batch.size`); it is not a number of records. If not set, the Kafka default (16384 bytes) applies. Larger batch sizes can improve throughput and reduce network overhead, but increase latency and memory usage.
 
 **Type**: Integer
 
@@ -69,11 +113,13 @@ Addresses with port number for bootstrap brokers for AWS MSK cluster. (bootstrap
 
 **Type**: List[String]
 
-To get the broker addresses for a cluster use the CLI command 
-```console
-aws kafka get-bootstrap-brokers --cluster-arn ClusterArn
+To get the broker addresses for a cluster use the AWS CLI command (the same in PowerShell):
+
+```shell
+aws kafka get-bootstrap-brokers --cluster-arn ClusterArn --query BootstrapBrokerStringPublicSaslIam --output text
 ```
-and use the addresses returned in "BootstrapBrokerStringPublicSaslIam".
+
+This prints the comma-separated IAM broker addresses for public access (port 9198); add each address to the list. For access from within AWS, for example from the cluster's VPC, query `BootstrapBrokerStringSaslIam` (port 9098) instead. The target connects with IAM authentication over TLS (`SASL_SSL`, `AWS_MSK_IAM`), so other broker addresses, such as the plaintext ones on port 9092, do not work.
 
 See also 
 [Getting the bootstrap brokers for an Amazon MSK cluster](https://docs.aws.amazon.com/msk/latest/developerguide/msk-get-bootstrap-brokers.html)
@@ -103,15 +149,15 @@ The CredentialProviderClient property specifies which AWS credential provider cl
 
 If no CredentialProviderClient is configured the [AWS Java SDK credential provider chain is used](https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials.html#credentials-chain)
 
+When a CredentialProviderClient is configured, this target passes the credentials to the MSK IAM authentication module as JVM system properties (`aws.accessKeyId`, `aws.secretAccessKey`, `aws.sessionToken`). These properties apply to the whole process, and the AWS SDK default credential provider chain checks Java system properties first, so other AWS targets in the same process that have no CredentialProviderClient can end up using these credentials; run this target as an IPC service if they need a different identity.
+
 **Type:** String
 
 ---
 
 ### Endpoint
 
-The EndPoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
-
-https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html
+Not used by this target; the Kafka producer finds the cluster through the [BootstrapBrokers](#bootstrapbrokers).
 
 **Type:** String
 
@@ -121,7 +167,7 @@ https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-supp
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
@@ -133,6 +179,8 @@ Map of headers set for written records.
 
 Allows setting custom key-value pairs as Kafka message headers. These headers are metadata that will be attached to each record written to the MSK cluster. Headers can be used for message filtering, routing, or carrying additional metadata alongside the message payload.
 
+Every record also gets a header named after the Serial entry of [ElementNames](../core/sfc-configuration.md#elementnames) (default `serial`) that holds the record serial.
+
 **Type**: Map[String,String]
 
 Default = empty map
@@ -142,6 +190,8 @@ Default = empty map
 Interval in milliseconds in which adapter will flush the producer even when the batch size is not reached.
 
 Controls how long the producer will wait to accumulate messages before sending them to MSK, even if the [batch size](#batchsize) has not been reached. This ensures messages are sent within a reasonable timeframe during periods of low message volume. A lower interval reduces latency but may decrease throughput.
+
+Set this property (for example `1000`). Without it, every successfully written record logs an error from the send callback, although the data is delivered.
 
 **Type**: Integer
 
@@ -176,7 +226,7 @@ A description af producer options can be found in the Kafka documentation
 The following properties are set by the adapter
 
 - bootstrap.servers from `BootstrapBrokers`
-- client.id = "sfc-msk-target_" + hostname
+- client.id = "sfc-msk-target-" + hostname
 - security.protocol = "SASL_SSL"
 - acks from `Acknowledgements`
 - compression.type from `Compression`
@@ -185,9 +235,9 @@ The following properties are set by the adapter
 - sasl.client.callback.handler.class = "software.amazon.msk.auth.iam.IAMClientCallbackHandler"
 - sasl.jaas.config =  "software.amazon.msk.auth.iam.IAMLoginModule required;"
 - sasl.mechanism = "AWS_MSK_IAM"
-- batch.size from `BatchSize`
+- batch.size from `BatchSize` (only when set)
 
-Any additional valid Kafka producer properties can be specified in this map to customize the producer behavior.
+Any additional valid Kafka producer properties can be specified in this map to customize the producer behavior. Entries in ProviderProperties are applied last and override the values above.
 
 
 
@@ -226,7 +276,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -236,7 +286,7 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
 
@@ -266,11 +316,12 @@ Specifies the name of the Kafka topic in the MSK cluster where messages will be 
         "Acknowledgements": {
           "type": "string",
           "description": "Acknowledgement level for messages",
-          "enum": ["all", "one", "leader"]
+          "enum": ["none", "leader", "all"],
+          "default": "leader"
         },
         "BatchSize": {
           "type": "integer",
-          "description": "Size of the batch for MSK messages"
+          "description": "Maximum batch size in bytes per partition (Kafka batch.size)"
         },
         "BootstrapBrokers": {
           "type": "array",
@@ -339,10 +390,11 @@ Specifies the name of the Kafka topic in the MSK cluster where messages will be 
 {
   "TargetType" : "AWS-MSK",    
   "TopicName": "data-topic",
-  "BootstrapBrokers": ["broker1.example.com:9092"],
+  "BootstrapBrokers": ["<broker-1-host>:9098", "<broker-2-host>:9098"],
   "Compression": "gzip",
   "Acknowledgements": "all",
   "Serialization": "json",
+  "Interval": 1000,
   "CredentialProviderClient": "aws-credentials-provider"
 }
 

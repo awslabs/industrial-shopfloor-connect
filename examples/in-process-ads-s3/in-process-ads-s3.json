@@ -14,7 +14,7 @@
         ]
       },
       "Targets": [
-        "DebugTarget",
+        "#DebugTarget",
         "S3Target"
       ]
     }
@@ -25,11 +25,15 @@
       "ProtocolAdapter":"ADS",
       "AdapterDevice":"CX8190",
       "SourceAmsNetId":"<SOURCE NET ID, e.g. 192.168.1.65.1.1>",
-      "SourceAmsPort":"SOURCE AMS PORT, 50099",
+      "SourceAmsPort":32905,
       "TargetAmsNetId":"<TARGET NET ID, e.g. 5.66.128.52.1.1>",
-      "TargetAmsPort":<TARGET PORT, e.g. 851>,
+      "TargetAmsPort":851,
       "Description":"Beckhoff device source",
       "Channels": {
+        "Bool": {
+          "SymbolName": "MAIN.varBOOL",
+          "Description": "Boolean"
+        },
         "Byte": {
           "SymbolName": "MAIN.varBYTE",
           "Description": "Single byte"

@@ -4,22 +4,66 @@
 
 The SFC File target adapter enables writing collected data to files in the local file system.
 
-In order to use this adapter as in [in-process](../sfc-running-targets.md#running-targets-in-process) type adapter the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+> **Windows:** the line breaks that the file target adds between and after records are CRLF (the pretty-printed JSON of a record uses LF). On Java 17 it also uses the Windows ANSI code page (for example windows-1252) instead of UTF-8, so characters outside that code page are written as `?`; Java 18 and later write UTF-8. On Java 17, set `$env:JAVA_TOOL_OPTIONS = "-Dfile.encoding=UTF-8"` in the terminal before you start SFC.
+
+## Deploy this target
+
+`TargetType` is `FILE-TARGET` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "FILE-TARGET": {
-      "JarFiles" : ["<location of deployment>/file-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
-   }
+"TargetTypes": {
+  "FILE-TARGET": { "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter" }
 }
 ```
 
+**In-process** - module bundle `file-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
 
+```json
+"TargetTypes": {
+  "FILE-TARGET": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/file-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "FileTarget": {
+    "TargetType": "FILE-TARGET",
+    "TargetServer": "FileTargetServer"
+  }
+},
+"TargetServers": {
+  "FileTargetServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+file-target/bin/file-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\file-target\lib\*" com.amazonaws.sfc.filetarget.FileTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.filetarget.FileTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.filetarget.FileTargetService -port 50001`).
+
+**Examples:** uberjar: [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md#4-look-at-the-data) (writes every record to `out/`) · all: [examples catalog](../examples/README.md)
 
 ## FileConfiguration
 
-FileConfiguration extends the type  TargetConfiguration with specific configuration data for writing data to the local file system. The Targets configuration element can contain entries of this type; the TargetType of these entries must be set to **"FILE_TARGET"**
+FileConfiguration extends the type  TargetConfiguration with specific configuration data for writing data to the local file system. The Targets configuration element can contain entries of this type; the TargetType of these entries must be set to **"FILE-TARGET"**
 
 - [Schema](#fileconfiguration-schema)
 - [Examples](#fileconfiguration-examples)
@@ -40,9 +84,13 @@ FileConfiguration extends the type  TargetConfiguration with specific configurat
 ---
 ### BufferCount
 
-The maximum number of messages to accumulate in the buffer before triggering a batch publish to the MQTT topic. When this count is reached, all buffered messages are written to a file.
+The maximum number of messages to accumulate in the buffer. When this count is reached, all buffered messages are written to a file.
 
 Batching is triggered when any configured threshold (BufferCount, [BufferSize](#buffersize), or [Interval](#interval)) is reached
+
+**Type**: Int
+
+Optional; when not set, only BufferSize and Interval apply.
 
 ---
 
@@ -66,17 +114,35 @@ Possible values are:
 - "GZip"
 - "Zip"
 
+The values are case-sensitive; an unknown value such as "gzip" silently writes uncompressed files.
+
 ---
 ### Directory
 The filesystem path where output files will be stored. Files are automatically organized in a hierarchical directory structure based on timestamp (year/month/day/hour/minute) with a unique UUID filename and appropriate extension.
 
 **Type**: String
 
-The name of the output files in the directory will be yyyy/mm/dd/hh/mn/uuid.[extension](#extension)
+Files are written as `<Directory>/<year>/<month>/<day>/<hour>/<minute>/<uuid><extension>` (see [Extension](#extension)), for example `out/2026/10/8/9/5/3f1c….json`. The date and time components are not zero-padded, and on Windows the separators are backslashes.
+
+The directory must exist before the target starts; a relative path resolves against the directory that the process running the target (SFC, or the file target service in IPC mode) is started from. Create it first:
+
+**Linux / macOS**
+
+```shell
+mkdir -p /data/logs
+```
+
+**Windows (PowerShell)**
+
+```powershell
+New-Item -ItemType Directory -Force C:\sfc\data | Out-Null
+```
+
+In the configuration write Windows paths with forward slashes, e.g. `"Directory": "C:/sfc/data"`.
 
 ---
 ### Extension
-The file extension to be used for output files. If no extension is specified, but the file is compressed, then the corresponding extension for the compression method is used. For compression types that support entry names (e.g., zip), the extension of the entry will be set to ".json" if the [Json](#json) field is true.
+The file extension to be used for output files. If no extension is specified, but the file is compressed, then the corresponding extension for the compression method is used (`.zip` for Zip, `.gzip` for GZip). For compression types that support entry names (e.g., zip), the extension of the entry will be set to ".json" if the [Json](#json) field is true.
 
 **Type**: String
 
@@ -86,7 +152,7 @@ The file extension to be used for output files. If no extension is specified, bu
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
@@ -100,7 +166,7 @@ Must be in range 60-900 seconds, default is 60 seconds
 
 ---
 ### Json
-Determines whether the output file should be formatted as a valid JSON array document. When enabled, the target wraps all output lines with square brackets and separates entries with commas. When disabled, the output can be processed as JSONP or plain text with individual JSON lines.
+Determines whether the output file should be formatted as a valid JSON array document. When enabled and no [Template](#template) is set, the target wraps all output lines with square brackets and separates entries with commas. When disabled, records are written back to back without separators (without a Template, each record is pretty-printed JSON). Use it with [BufferCount](#buffercount) 1 (one record per file) or with a [Template](#template) that writes its own line endings.
 
 **Type**: Boolean
 
@@ -124,7 +190,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -134,7 +200,7 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
 
@@ -162,9 +228,13 @@ Default is false
     {
       "type": "object",
       "properties": {
+        "BufferCount": {
+          "type": "integer",
+          "description": "Number of buffered messages that triggers writing a file"
+        },
         "BufferSize": {
           "type": "integer",
-          "description": "Buffer size in MB",
+          "description": "Buffer size in KB",
           "minimum": 1,
           "maximum": 1024,
           "default": 16
@@ -227,7 +297,6 @@ Default is false
 {
   "TargetType" : "FILE-TARGET",
   "Directory": "/var/log/sensors",
-  "Extension": ".json",
   "Compression": "GZip",
   "BufferSize": 64,
   "Interval": 600,

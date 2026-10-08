@@ -1,6 +1,7 @@
 # SFC Target data transformation templates
 
 - [Output Structure Transformation Examples](#output-structure-transformation)
+    - [Using a template](#using-a-template)
     - [CSV output](#csv-output)
     - [XML format](#xml-format)
     - [YAML format](#yaml-format)
@@ -10,7 +11,7 @@
 
 For situations where the structure of the data needs to be converted, this can be another JSON format, XML, CSV etc.,
 targets can have a configurable [template](./core/target-configuration.md#template). This template is the name of
-an [Apache Velocity template file](https://velocity.apache.org/engine/2.3/user-guide.html). Before the data is transmitted the actual destination of the target the template is applied to transform the data.
+an [Apache Velocity template file](https://velocity.apache.org/engine/2.4/user-guide.html). Before the data is sent to the target's destination, the template is applied.
 
 The context of the input data contains 5 variables:
 
@@ -18,17 +19,39 @@ The context of the input data contains 5 variables:
 - "$sources": Map with an element for each source containing all its values
 - "$metadata": Metadata at (schedule) top-level.
 - "$serial" : Output data message serial number
-- "$timestamp" : : Output data message serial timestamp
+- "$timestamp": Output data message timestamp
+
+The names follow [ElementNames](./core/sfc-configuration.md#elementnames). Numbers arrive as doubles; format integers with e.g. `$math.toInteger(...)`.
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
 - $number
+- $tab (a tab character)
+
+## Using a template
+
+Set the template file in the [Template](./core/target-configuration.md#template) property of a target:
+
+```json
+"Targets": {
+  "DebugTarget": {
+    "TargetType": "DEBUG-TARGET",
+    "Template": "templates/DataToCSV.vm"
+  }
+}
+```
+
+- Templates work with the AWS IoT Core, AWS Kinesis, AWS Kinesis Firehose, AWS Lambda, AWS MSK, AWS S3, AWS SNS, AWS SQS, Debug, File, MQTT and NATS targets.
+- A target can have a `Template` or a custom [Formatter](./core/target-configuration.md#formatter), not both; a configuration with both is rejected.
+- A relative path resolves against the directory SFC is started from. SFC checks at startup that the file exists, and the target reads it itself, so in IPC deployments the file must exist on the SFC core host and on the host of the target service.
+- [TemplateEpochTimestamp](./core/target-configuration.md#templateepochtimestamp) adds epoch fields next to the timestamps, see [SFC Output data formats](./sfc-data-format.md#output-data-format).
 
 Below are examples of templates that transform the data (not-aggregated) into different formats.
+Ready-to-use files: [examples/transformation-templates](../examples/transformation-templates/README.md).
 
 ## CSV output
 
@@ -39,10 +62,12 @@ the actual value and its timestamp.
 #foreach($sourceName in $sources.keySet())
 #foreach($valueName in $sources[$sourceName]["values"].keySet())
 #set( $value = $sources[$sourceName]["values"][$valueName])
-"$sourceName","$valueName",$value["value"],"$value["timestamp"]"
+"$sourceName","$valueName",$value["value"],"$!value["timestamp"]"
 #end
 #end
 ```
+
+The timestamp column is filled only when the schedule's `TimestampLevel` is `Channel` or `Both`; `$!` prints an empty string instead of the reference when it is missing.
 
 The template below flattens the values for the "`count`", "`avg`", "`min`", "`max`", "`stddev`" aggregations of a
 dataset into CSV format.
@@ -71,7 +96,7 @@ these are available
 <schedule id="$schedule" #metadata_attributes($metadata)>
     #foreach($sourceName in $sources.keySet())
         #set( $source = $sources[$sourceName])
-        <source name="sourceName" #metadata_attributes($source["metadata"]) #timestamp_attr($source)>
+        <source name="$sourceName" #metadata_attributes($source["metadata"]) #timestamp_attr($source)>
     #foreach($valueName in $source["values"].keySet())
     #set($value = $source["values"][$valueName])
              <value name="$valueName" #metadata_attributes($value["metadata"])#timestamp_attr($value)>$value["value"]</value>
@@ -103,7 +128,7 @@ these are available
 
 ```vtl
 ---
-    $schedule:
+schedule: $schedule
 sources:
 #foreach($sourceName in $sources.keySet())
 #set( $source = $sources[$sourceName])
@@ -133,7 +158,7 @@ sources:
 #set($src_metadata = $source["metadata"])
 #if( $src_metadata != "")
       metadata:
-#foreach($key in $src_metadata.keySet§())
+#foreach($key in $src_metadata.keySet())
         $key: $src_metadata[$key]
 #end
 #end

@@ -2,11 +2,17 @@
 
 Shop Floor Connectivity target connectors enable data transmission from industrial devices to various destinations. These connectors handle the delivery of collected data, applying optional transformations using Apache Velocity templates. The following list details the available target connectors that can be configured to send your industrial data to different services and endpoints.
 
+Each target page has a *Deploy this target* section for the [uberjar, in-process and IPC modes](../sfc-deployment.md#configure-a-component-in-each-mode); the fixed `TargetType` value (required in every mode), `FactoryClassName` and IPC service class of every target are listed in [Target types and classes](../sfc-running-targets.md#target-types-and-classes). Runnable configurations: [examples catalog](../examples/README.md#start-here).
+
 ## Service targets
 
 - **[AWS IoT Core Service](./aws-iot-core.md)**
 
   AWS IoT Core is a managed cloud service that enables connected devices to securely interact with cloud applications and other devices.
+
+- **[AWS Kinesis](./aws-kinesis.md)**
+
+  Amazon Kinesis Data Streams ingests and stores data streams for real-time processing.
 
 - **[AWS Kinesis Firehose](aws-kinesis-firehose.md)**
 
@@ -26,11 +32,15 @@ Shop Floor Connectivity target connectors enable data transmission from industri
 
 - **[AWS S3-Tables](./aws-s3-tables.md)**
 
-  AWS S3 Tables is a storage class optimized for analytics workloads that provides Apache Iceberg table format support.
+  Amazon S3 Tables stores tabular data as Apache Iceberg tables in table buckets.
 
 - **[AWS SiteWise](./aws-sitewise.md)**
 
   AWS IoT SiteWise is a managed service for collecting, organizing, and monitoring industrial equipment data at scale.
+
+- **[AWS SiteWise Edge](./aws-sitewiseedge.md)**
+
+  Sends data over MQTT to an on-premises AWS IoT SiteWise Edge gateway.
 
 - **[AWS SNS](./aws-sns.md)**
 
@@ -41,10 +51,6 @@ Shop Floor Connectivity target connectors enable data transmission from industri
   Amazon SQS is a managed message queuing service for decoupling distributed applications.
 
 ## Local targets
-
-- **[AWS SiteWise Edge](./aws-sitewiseedge.md)**
-
-  AWS IoT SiteWise Edge enables local data collection and processing for industrial equipment. 
 
 - **[Debug](./debug.md)**
 
@@ -64,14 +70,16 @@ Shop Floor Connectivity target connectors enable data transmission from industri
 
 - **[OPCUA](./opcua.md)**
 
-  OPC UA server target exposes collected industrial data through a target-hosted OPC UA server for client access.
+  OPC UA server target exposes collected industrial data through a target-hosted OPC UA server for client access. Examples: [Simulation to OPC UA](../adapters/simulator.md#simulation-to-opc-ua-example) (no hardware), [in-process-s7-opcua](../../examples/in-process-s7-opcua/README.md).
 
 - [**OPCUA Writer**](./opcua-writer.md)
 
-  OPCUA target writing data to nodes of an external OPCUA server.
+  OPCUA target writing data to nodes of an external OPCUA server. Example: [in-process-iot-core-opcua-write](../../examples/in-process-iot-core-opcua-write/README.md).
 
 
 ## Intermediate adapters
+
+These targets sit between the SFC core and other targets, see [target chaining](../sfc-targets-chaining.md).
 
 - **[Router](./router.md)**
 

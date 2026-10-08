@@ -5,18 +5,60 @@
 
 The Amazon [Kinesis Firehose](https://aws.amazon.com/firehose/) Target adapter for Shop Floor Connectivity facilitates data streaming from industrial devices to Amazon Kinesis Data Firehose. This adapter collects and transmits data to Kinesis Firehose delivery streams. The adapter supports batching and template-based transformations.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `AWS-FIREHOSE` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWS-FIREHOSE": {
-      "JarFiles" : ["<location of deployment>/aws-kinesis-firehose-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter"
-   }
+"TargetTypes": {
+  "AWS-FIREHOSE": { "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter" }
 }
 ```
 
+**In-process** - module bundle `aws-kinesis-firehose-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
 
+```json
+"TargetTypes": {
+  "AWS-FIREHOSE": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-kinesis-firehose-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "FirehoseTarget": {
+    "TargetType": "AWS-FIREHOSE",
+    "TargetServer": "FirehoseServer"
+  }
+},
+"TargetServers": {
+  "FirehoseServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-kinesis-firehose-target/bin/aws-kinesis-firehose-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-kinesis-firehose-target\lib\*" com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetService -port 50001`).
+
+**Examples:** none yet - start from [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) and swap in this component. All: [examples catalog](../examples/README.md)
 
 ## AwsKinesisFirehoseTargetConfiguration
 
@@ -40,9 +82,13 @@ Requires IAM permission `firehose:PutRecordBatch` for the delivery stream the da
 ### BatchSize
 The BatchSize property specifies the maximum number of messages to accumulate before sending them in a single putRecordBatch API call to Kinesis Firehose. The default value is 10 messages per batch. If adding another message would cause the batch to exceed Firehose's maximum request size limit, the adapter will automatically send the current batch before the BatchSize limit is reached. This batching mechanism helps optimize network usage and reduce API calls while ensuring compliance with Firehose's size constraints
 
+There is no Interval for this target: a partially filled batch is only sent when BatchSize records (or 4 MiB) are buffered, and in the uberjar and in-process modes records still in the buffer when SFC stops are not sent. Keep BatchSize small for low-rate data.
+
+Without a [Formatter](#formatter), each record is the message JSON (or [Template](#template) output) followed by a newline.
+
 **Type**: Integer
 
-Default is 10
+Default is 10, maximum is 500 (higher values are capped). A batch is also sent before it would exceed 4 MiB.
 
 ---
 ### CredentialProviderClient
@@ -57,7 +103,7 @@ If no CredentialProviderClient is configured the [AWS Java SDK credential provid
 
 ### Endpoint
 
-The EndPoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
+The Endpoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
 
 https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html
 
@@ -69,7 +115,7 @@ https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-supp
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
@@ -106,7 +152,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -116,7 +162,7 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
 
@@ -172,7 +218,7 @@ Configuration using CredentialProviderClient
   "TargetType" : "AWS-FIREHOSE",
   "StreamName": "data-delivery-stream",
   "Region": "us-east-1",
-  "BatchSize": 500,
+  "BatchSize": 10,
   "CredentialProviderClient": "aws-credentials-provider"
 }
 
@@ -185,12 +231,10 @@ Configuration using  default AWS SDK credential provider chain.
   "TargetType" : "AWS-FIREHOSE",
   "StreamName": "data-delivery-stream",
   "Region": "us-east-1",
-  "BatchSize": 500
+  "BatchSize": 10
 }
 
 ```
-
-[
 
 [^top](#aws-kinesis-firehose-target)
 

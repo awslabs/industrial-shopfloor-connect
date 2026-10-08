@@ -4,28 +4,66 @@
 
 The [AWS IoT Core](https://aws.amazon.com/iot-core/) target adapter facilitates secure transmission of industrial data to the AWS IoT Core service via service API calls. It obtains temporary credentials using X.509 certificates or configured AWS credentials for authenticating service publish calls. The adapter supports batching of messages for efficient transmission, data compression to reduce bandwidth, payload transformation using templates, and dynamic topic names generated from target configuration and source metadata.
 
+## Deploy this target
 
+`TargetType` is `AWS-IOT-CORE` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWS-IOT-CORE": {
-      "JarFiles" : ["<location of deployment>/aws-iot-core-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
-   }
+"TargetTypes": {
+  "AWS-IOT-CORE": { "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter" }
 }
 ```
 
+**In-process** - module bundle `aws-iot-core-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
 
+```json
+"TargetTypes": {
+  "AWS-IOT-CORE": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-iot-core-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetWriter"
+  }
+}
+```
 
-## 
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "IotCoreTarget": {
+    "TargetType": "AWS-IOT-CORE",
+    "TargetServer": "IotCoreServer"
+  }
+},
+"TargetServers": {
+  "IotCoreServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-iot-core-target/bin/aws-iot-core-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-iot-core-target\lib\*" com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetService -port 50001`).
+
+**Examples:** uberjar: [opcua-to-iot-using-filters](../../examples/opcua-to-iot-using-filters/README.md) · in-process: [yaml-custom-config-provider](../../examples/yaml-custom-config-provider/README.md) · all: [examples catalog](../examples/README.md)
 
 ## AwsIotCoreTargetConfiguration
 
 The AwsIotCoreTargetConfiguration class extends  [TargetConfiguration](../core/target-configuration.md) with specific settings for publishing data to AWS IoT Core topics using the HTTP dataplane API. When used in the [Targets](../core/sfc-configuration.md#targets) configuration, entries must specify the TargetType as **"AWS-IOT-CORE"**. 
 
-Requires IAM permissions `iot:Connect`, `iot:DescribeEndpoint`, `iot:Publish` for the topic the data is published to and `iot:RetainPublish` if the [Retain](#retain) option is used.
+Requires IAM permissions `iot:DescribeEndpoint` and `iot:Publish` for the topic the data is published to, and `iot:RetainPublish` if the [Retain](#retain) option is used.
 
 - [Schema](#awsiotcoretargetconfiguration-schema)
 - [Examples](#awsiotcoretargetconfiguration-examples)
@@ -70,17 +108,23 @@ The BatchInterval property defines the maximum time in milliseconds that message
 ### BatchSize
 The BatchSize property defines the maximum total payload size in kilobytes (KB) of buffered messages before triggering a batch publish to AWS IoT Core. This size is calculated based on the uncompressed message payloads. When the cumulative size of buffered messages reaches this limit, all messages are sent as a single batch. The property works alongside [BatchCount](#batchcount)  and [BatchInterval](#batchinterval)  - the first threshold reached (size, count, or time) triggers the batch transmission. 
 
+AWS IoT Core accepts at most 128 KB per publish. A batch is published before its uncompressed size would exceed 128 KB. A payload that is still larger than 128 KB, for example a single large uncompressed message, is not published: none of the messages in it are sent, and the publish is counted as a write error.
+
 **Type**: Int
 
 ---
 ### Compression
 The Compression property specifies the compression algorithm to be applied to message payloads before publishing to AWS IoT Core. Supported compression methods are "None" (default, no compression), "Zip", or "GZip". Compression can help reduce bandwidth usage and costs when transmitting large payloads.
 
+Compressed payloads are published as raw GZip or Zip bytes without a JSON envelope; subscribers must decompress them.
+
 **Values:**
 
 - "None" (Default)
 - "Zip"
 - "GZip"
+
+Use the values exactly as listed; an unrecognised value (for example "gzip") silently means no compression.
 
 **Type**: String
 
@@ -98,7 +142,9 @@ If no CredentialProviderClient is configured the [AWS Java SDK credential provid
 
 ### Endpoint
 
-The EndPoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
+The Endpoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
+
+This target uses the Endpoint for both of its calls, `DescribeEndpoint` and the publish.
 
 https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html
 
@@ -110,7 +156,7 @@ https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-supp
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
@@ -152,7 +198,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -162,7 +208,7 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
 
@@ -195,6 +241,7 @@ Important considerations:
 - If a placeholder cannot be resolved, the [AlternateTopicName](#alternatetopicname) will be used as fallback
 - Using dynamic topics may increase publish calls and risk throttling - consider using message buffering
 - AWS IoT Core has a limit of 8 topic levels (separated by forward slashes)
+- The topic name must not start with `$`; SFC rejects such a configuration at startup
 
 Name or name template of the topic
 
@@ -240,7 +287,7 @@ Default is true
         },
         "BatchSize": {
           "type": "integer",
-          "description": "Maximum size of batched messages in bytes"
+          "description": "Maximum size of batched messages in KB"
         },
         "Compression": {
           "type": "string",
@@ -285,10 +332,10 @@ Configuration using CredentialProviderClient
   "TargetType" : "AWS-IOT-CORE",
   "TopicName": "device/data",
   "Region": "us-east-1",
-  "BatchSize": 1024,
+  "BatchSize": 64,
   "BatchCount": 100,
   "BatchInterval": 5000,
-  "Compression": "GZIP",
+  "Compression": "GZip",
   "Retain": true,
   "CredentialProviderClient": "aws-credentials-provider"
 }
@@ -301,7 +348,7 @@ Configuration using dynamic topic name based on target- (%source%) and metadata 
   "TargetType" : "AWS-IOT-CORE",
   "TopicName": "sensordata/%plant%/%line%/%source%",
   "Region": "us-east-1",
-  "Compression": "ZIP",
+  "Compression": "Zip",
   "Retain": true,
   "CredentialProviderClient": "aws-credentials-provider"
 }
@@ -314,8 +361,8 @@ Configuration using  default AWS SDK credential provider chain.
   "TargetType" : "AWS-IOT-CORE",
   "TopicName": "device/data",
   "Region": "us-east-1",
-  "Compression": "GZIP",
-  "Retain": true,
+  "Compression": "GZip",
+  "Retain": true
 }
 ```
 

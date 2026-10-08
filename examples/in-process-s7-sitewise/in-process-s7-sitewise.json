@@ -2,7 +2,7 @@
   "AWSVersion": "2022-04-02",
   "Name": "S7 to Sitewise",
   "Version": 1,
-  "LogLevel": "Trace",
+  "LogLevel": "Info",
   "Schedules": [
     {
       "Name": "TestSchedule",
@@ -49,38 +49,38 @@
   "Targets": {
     "DebugTarget": {
       "Active": true,
-	  "LogLevel": "Trace",
+	  "LogLevel": "Info",
       "TargetType": "DEBUG-TARGET"
     },
     "SitewiseTarget": {
       "Active": true,
       "TargetType": "AWS-SITEWISE",
-      "Region": "<REGION>",
+      "Region": "<YOUR-REGION>",
       "CredentialProviderClient": "AwsIotClient",
       "Assets": [
         {
-          "AssetId": "ea79dd37-b5ac-4043-9fc9-XXXXXXXX",
+          "AssetId": "<SITEWISE-ASSET-ID>",
           "Properties": [
             {
-              "PropertyId":"83b6e976-ee28-4096-b422-XXXXXXXX",
+              "PropertyId":"<SITEWISE-PROPERTY-ID>",
               "DataType": "double",
               "DataPath": "sources.S7-SOURCE.values.Ln"
             }
           ]
         },{
-          "AssetId": "4a803a60-e3bd-4b4c-a52d-XXXXXXXX",
+          "AssetId": "<SITEWISE-ASSET-ID>",
           "Properties": [
             {
-              "PropertyId":"0e842706-4cfa-4cc5-9412-XXXXXXXX",
+              "PropertyId":"<SITEWISE-PROPERTY-ID>",
               "DataType": "double",
               "DataPath": "sources.S7-SOURCE.values.Exp"
             }
           ]
         },{
-          "AssetId": "ea79dd37-b5ac-4043-9fc9-XXXXXXXX",
+          "AssetId": "<SITEWISE-ASSET-ID>",
           "Properties": [
             {
-              "PropertyId":"c46fa59b-1bce-446f-8084-XXXXXXXX",
+              "PropertyId":"<SITEWISE-PROPERTY-ID>",
               "DataType": "double",
               "DataPath": "sources.S7-SOURCE.values.Sqrt"
             }
@@ -112,7 +112,7 @@
 	  "AdapterType": "S7",
       "Controllers": {
         "S7-PLC-1": {
-          "Address": "192.168.0.2",
+          "Address": "<CONTROLLER IP ADDRESS>",
 		  "ReadPerSingleField": false,
           "LocalRack": 0,
           "LocalSlot": 1,

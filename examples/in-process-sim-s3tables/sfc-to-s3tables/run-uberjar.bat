@@ -17,10 +17,11 @@ rem Running only ever needs java; curl is needed solely for that third case, so 
 rem point of download rather than up front. Windows 10 and later ship both curl and tar, so unlike
 rem run-uberjar.sh there is no wget or jq dependency.
 rem
-rem SFC is started with a direct `java -jar` rather than through bin\sfc-uberjar.bat. The generated
-rem launchers build the whole classpath into one `set CLASSPATH=` line, and cmd.exe caps a line at
-rem 8191 characters -- aws-s3-tables-target.bat is already 11798 and cannot run at all. Invoking the
-rem JVM ourselves keeps that limit out of the picture.
+rem SFC is started with a direct `java -jar`, the same way run-inprocess.bat starts `java -cp`.
+rem bin\sfc-uberjar.bat would also work: its classpath is the one jar, far below the 8191-character
+rem line limit of cmd.exe that the per-module launchers can exceed.
+rem
+rem java is the first one on PATH; JAVA_HOME is not consulted.
 
 setlocal enabledelayedexpansion
 

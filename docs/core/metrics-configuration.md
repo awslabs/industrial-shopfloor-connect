@@ -2,14 +2,10 @@
 
 [SFC Configuration](./sfc-configuration.md) > [Metrics](./sfc-configuration.md#metrics)
 
-[SFC Configuration](./sfc-configuration.md) > [ProtocolAdapters](./sfc-configuration.md#protocoladapters) > [ProtocolAdapter](./protocol-adapter-configuration.md) > [Metrics](./protocol-adapter-configuration.md#metrics) 
-
-[SFC Configuration](./sfc-configuration.md) > [Targets](./sfc-configuration.md#targets) > [TargetAdapter](./target-configuration.md) > [Metrics](./target-configuration.md#metrics) 
-
-Configuration section for metrics collection and management in SFC, controlling how operational metrics are gathered and output. Settings include collection intervals, core metrics toggle, custom dimensions, and namespace organization. Supports both IPC and in-process writer implementations through a required Writer configuration that determines how metrics data is processed and stored.
+Configuration section for metrics collection and management in SFC, controlling how operational metrics are gathered and output. Settings include collection intervals, core metrics toggle, custom dimensions, and namespace organization. Supports both IPC and in-process writer implementations through a required Writer configuration that determines how metrics data is processed and stored. Adapters and targets have their own `Metrics` section with only Enabled and CommonDimensions, see [MetricsSourceConfiguration](./metrics-source-configuration.md).
 
 - [Schema](#schema)
-- [Examples](#schema)
+- [Examples](#examples)
 
 **Properties:**
 
@@ -46,7 +42,7 @@ Default is true
 
 ---
 ### Interval
-Specifies how frequently (in seconds) the system collects metrics from all sources - adapters, targets, and core components. Default value is 10 seconds, with a minimum allowed value of 10 seconds to prevent excessive system load.
+Specifies how frequently (in seconds) the system collects metrics from all sources - adapters, targets, and core components. Default value is 10 seconds; must be at least 1 second.
 
 **Type**: Integer
 
@@ -65,6 +61,8 @@ Default is "SFC"
 Specifies the configuration for the component responsible for outputting collected metrics data. This required property determines how and where metrics are written, supporting both IPC and in-process implementations for metrics storage or transmission.
 
 **Type**: [MetricsWriterConfiguration](./metrics-writer-configuration.md)
+
+For the AWS CloudWatch writer add a `CloudWatch` object (`Region`, `CredentialProviderClient`, `Interval`, `BatchSize`) next to `Writer` in this Metrics section; see [AWS CloudWatch Metrics](../metrics/aws-cloudwatch.md) and [Metrics collection](../sfc-logging-metrics.md#metrics-collection).
 
 [^top](#metricsconfiguration)
 
@@ -97,8 +95,9 @@ Specifies the configuration for the component responsible for outputting collect
     },
     "Interval": {
       "type": "integer",
-      "description": "Interval in milliseconds for metrics collection",
-      "minimum": 10
+      "description": "Interval in seconds for metrics collection",
+      "minimum": 1,
+      "default": 10
     },
     "Namespace": {
       "type": "string",
@@ -120,27 +119,9 @@ Specifies the configuration for the component responsible for outputting collect
 
 ## Examples
 
-IPC metrics writer
+The examples use the AWS CloudWatch metrics writer. How the deployment modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode).
 
-```json
-{
-  "Writer": {
-    "CommonDimensions": {
-      "Environment": "Production",
-      "Plant": "us-west"
-    },
-    "Interval": 60,
-    "MetricsServer": {
-      "Address": "localhost",
-      "Port": 50000
-    }
-  }
-}
-```
-
-
-
-In-process writer configuration:
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
 {
@@ -152,15 +133,62 @@ In-process writer configuration:
   },
   "Writer": {
     "MetricsWriter": {
-      "FactoryClassName": "com.amazonaws.sfc.metrics.CloudWatchMetricsWriter",
-      "JarFiles": [
-        "./aws-cloudwatch-metrics/libs"
-      ]
+      "FactoryClassName": "com.amazonaws.sfc.cloudwatch.AwsCloudWatchMetricsWriter"
     }
+  },
+  "CloudWatch": {
+    "Region": "eu-west-1"
   }
 }
 ```
 
-[^top](#metricsconfiguration)
 
-## 
+
+**In-process** - module bundle `aws-cloudwatch-metrics` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+{
+  "Enabled": true,
+  "Interval": 60,
+  "CommonDimensions": {
+    "Environment": "Production",
+    "Plant": "us-west"
+  },
+  "Writer": {
+    "MetricsWriter": {
+      "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-cloudwatch-metrics/lib"],
+      "FactoryClassName": "com.amazonaws.sfc.cloudwatch.AwsCloudWatchMetricsWriter"
+    }
+  },
+  "CloudWatch": {
+    "Region": "eu-west-1"
+  }
+}
+```
+
+
+
+**IPC** - `MetricsServer` instead of `MetricsWriter`; the writer runs as its own service:
+
+```json
+{
+  "Interval": 60,
+  "CommonDimensions": {
+    "Environment": "Production",
+    "Plant": "us-west"
+  },
+  "Writer": {
+    "MetricsServer": {
+      "Address": "localhost",
+      "Port": 50050
+    }
+  },
+  "CloudWatch": {
+    "Region": "eu-west-1"
+  }
+}
+```
+
+Start the service before SFC, on the port of its `MetricsServer` entry: see [MetricsWriterConfiguration examples](./metrics-writer-configuration.md#examples).
+
+[^top](#metricsconfiguration)

@@ -4,26 +4,69 @@
 
 The AWS [Lambda](https://aws.amazon.com/lambda/) target adapter for Shop Floor Connectivity  enables direct integration with AWS Lambda functions from industrial data sources. This adapter receives collected data from the SFC Core component and invokes specified Lambda functions, allowing for serverless processing of industrial device data. The adapter supports batching, compression and data transformations using Apache Velocity templates to format the payload before invoking the Lambda functions.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `AWS-LAMBDA` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWSLAMBDA": {
-      "JarFiles" : ["<location of deployment>/aws-lambda-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter"
-   }
+"TargetTypes": {
+  "AWS-LAMBDA": { "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter" }
 }
 ```
 
+**In-process** - module bundle `aws-lambda-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
 
+```json
+"TargetTypes": {
+  "AWS-LAMBDA": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-lambda-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter"
+  }
+}
+```
 
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "LambdaTarget": {
+    "TargetType": "AWS-LAMBDA",
+    "TargetServer": "LambdaServer"
+  }
+},
+"TargetServers": {
+  "LambdaServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-lambda-target/bin/aws-lambda-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-lambda-target\lib\*" com.amazonaws.sfc.awslambda.AwsLambdaTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awslambda.AwsLambdaTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awslambda.AwsLambdaTargetService -port 50001`).
+
+**Examples:** none yet - start from [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) and swap in this component. All: [examples catalog](../examples/README.md)
 
 ## AwsLambdaTargetConfiguration
 
-AwsLambdaFunctionConfiguration extends the type  [TargetConfiguration](../core/target-configuration.md) with specific configuration data for calling an AWS lambda function. The Targets configuration element can contain entries of this type, the TargetType of these entries must be set to **"AWS-LAMBDA"**
+AwsLambdaTargetConfiguration extends the type  [TargetConfiguration](../core/target-configuration.md) with specific configuration data for calling an AWS lambda function. The Targets configuration element can contain entries of this type, the TargetType of these entries must be set to **"AWS-LAMBDA"**
 
 
 Requires IAM permission `lambda:InvokeFunction` for the lambda function that is called.
+
+The function is invoked asynchronously (InvocationType `Event`): a write counts as successful when Lambda accepts the event, not when the function has processed it. SFC puts at most 256 KB of uncompressed record data into one invocation; a single record that is larger is dropped with an error.
 
 - [Schema](#awslambdatargetconfiguration-schema)
 - [Examples](#awslambdatargetconfiguration-examples)
@@ -56,7 +99,7 @@ This configuration property controls payload compression for Lambda function inv
 As this payload needs to be valid JSON.
 The data is wrapped in structure with the following fields:
 
-- "compression" : Used compression
+- "compression" : Used compression, "GZIP" or "ZIP"
 - "payload": Compressed data as a base64 encoded string.
 When using compression for the lambda payload verify if actual compression out weights the overhead of the base64 encoded of the compressed data.
 
@@ -68,6 +111,8 @@ When using compression for the lambda payload verify if actual compression out w
 
 - "GZip"
 - "Zip"
+
+Use the values exactly as listed; an unrecognised value (for example "gzip") silently means no compression.
 
 ---
 
@@ -85,7 +130,7 @@ If no CredentialProviderClient is configured the [AWS Java SDK credential provid
 
 ### Endpoint
 
-The EndPoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
+The Endpoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
 
 https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html
 
@@ -97,42 +142,27 @@ https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-supp
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
+
+The AWS Lambda target does not apply a formatter; a configured Formatter is not used.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
 ---
 ### FunctionName
-Name of the Lambda function
+Name of the Lambda function, or its full or partial ARN.
 
-The function name must comply to the following constraints:
-
-- Minimum length: 1 character
-
-- Maximum length: 64 characters
-
-- Allowed characters:
-
-  - Letters (a-z, A-Z)
-
-  - Numbers (0-9)
-
-  - Hyphens (-)
-
-  - Underscores (_)
-
-- Must start with a letter or number
-- Cannot end with a hyphen
+SFC does not validate the name at startup; an invalid name shows up as `Error invoking function` lines in the log when data is sent.
 
 **Type**: String
 
 ---
 ### Interval
-Interval in milliseconds after which data is sent to stream even if the buffer is not full
+Time in milliseconds without new data after which a partially filled buffer is sent to the function even if the [BatchSize](#batchsize) hasn't been reached. The timer restarts with every record.
 
 **Type** : Integer
 
-Optional, if not set only [BatchSize](#batchsize) is used, minimum value is 10
+Optional, if not set only [BatchSize](#batchsize) is used. Must be greater than 10.
 
 ---
 ### Qualifier
@@ -140,7 +170,7 @@ Version or alias of the Lambda function to invoke
 
 **Type** : String
 
-Default is "latest"
+Optional. If not set, the function is invoked without a qualifier.
 
 ---
 ### Template
@@ -159,7 +189,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -169,7 +199,7 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
 
@@ -218,7 +248,7 @@ AWS Region for Lambda service
         },
         "Interval": {
           "type": "integer",
-          "description": "Interval in milliseconds between batch invocations"
+          "description": "Time in milliseconds without new data after which a partial batch is sent"
         },
         "Qualifier": {
           "type": "string",
@@ -254,7 +284,7 @@ Configuration using CredentialProviderClient,
 
 ```
 
-
+Configuration using default AWS SDK credential provider chain.
 
 ```json
 {

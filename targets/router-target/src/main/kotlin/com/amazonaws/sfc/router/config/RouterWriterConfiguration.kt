@@ -103,7 +103,7 @@ class RouterWriterConfiguration : BaseConfigurationWithMetrics() {
         )
 
         ConfigurationException.check(
-            validSecondaryTargetKeys.contains(secondaryTargetID),
+            secondaryTargetID.isNullOrEmpty() || validSecondaryTargetKeys.contains(secondaryTargetID),
             "Target \"$routerTargetID\",target \"$primaryTarget\", $targetType route target \"$secondaryTargetID\" " +
             "can not be used as it is already used as a router target ID or a primary target which can cause routing loops, " +
             "valid targets are $validSecondaryTargetsStr",
@@ -124,7 +124,7 @@ class RouterWriterConfiguration : BaseConfigurationWithMetrics() {
         )
 
         ConfigurationException.check(
-            routerTargets.contains(primaryTarget),
+            !routerTargets.contains(primaryTarget),
             "Target \"$routerTargetID\", primary target \"$primaryTarget\" is already used as a target ID for a router target which can cause routing loops, " +
             "valid primary targets are $validPrimaryRoutingTargetsStr",
             CONFIG_ROUTES,

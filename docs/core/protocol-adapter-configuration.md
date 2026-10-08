@@ -1,8 +1,10 @@
 ## ProtocolAdapterConfiguration
 
-[SFC Configuration](./sfc-configuration.md#metrics) > [ProtocolAdapters](./sfc-configuration.md#protocoladapters) 
+[SFC Configuration](./sfc-configuration.md) > [ProtocolAdapters](./sfc-configuration.md#protocoladapters) 
 
-Defines the base configuration structure for protocol adapters in SFC, specifying how adapters operate either in-process or as separate services. Includes essential settings for adapter type, server configuration, metrics collection, and custom descriptions. Serves as the foundation for protocol-specific adapter implementations.
+Defines the base configuration structure for protocol adapters in SFC, specifying how adapters operate either in-process or as separate services. Includes essential settings for adapter type, server configuration, metrics collection, and custom descriptions. Serves as the foundation for protocol-specific adapter implementations: each adapter type extends it with its own properties (for example `OpcuaServers` for OPCUA), see [Protocol adapters](../adapters/README.md).
+
+How an adapter is configured in the uberjar, in-process and IPC modes: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode).
 
 - [Schema](#schema)
 - [Examples](#examples)
@@ -16,13 +18,13 @@ Defines the base configuration structure for protocol adapters in SFC, specifyin
 
 ---
 ### AdapterServer
-Specifies the server reference for running the protocol adapter as a separate service. When set, it must match an entry in the [AdapterServers](./sfc-configuration.md#adapterservers)  section, enabling IPC-based communication between the SFC core and the adapter service. If not set, the adapter runs in-process within the SFC core. This property is mutually exclusive with [AdapterType](#adaptertype).
+Specifies the server reference for running the protocol adapter as a separate service. When set, it must match an entry in the [AdapterServers](./sfc-configuration.md#adapterservers)  section, enabling IPC-based communication between the SFC core and the adapter service; no [AdapterTypes](./sfc-configuration.md#adaptertypes) entry is needed then. If not set, the adapter runs within the SFC core process (uberjar or in-process mode). [AdapterType](#adaptertype) is required in both cases.
 
 **Type**: String
 
 ---
 ### AdapterType
-Defines the protocol adapter type for in-process execution, referencing a predefined type (like OPCUA, MQTT, MODBUS-TCP, SNMP, S7, ADS) from the [AdapterTypes](./sfc-configuration#adaptertypes) section. This property is used when the adapter runs within the SFC core process and is mutually exclusive with AdapterServer
+Defines the protocol adapter type. The value must be the type code of the adapter; the adapters in this repository use ADS, J1939, MODBUS-TCP, MQTT, NATS, OPCUA, PCCC, REST, S7, SIMULATOR, SLMP, SNMP and SQL. An adapter only serves the adapter entries that carry its own type code. This property is required in every deployment mode. When the adapter runs within the SFC core process (uberjar or in-process), the key of its entry in the [AdapterTypes](./sfc-configuration.md#adaptertypes) section is the same value; when [AdapterServer](#adapterserver) is set (IPC), no AdapterTypes entry is needed. All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
 
 **Type**: String
 
@@ -58,11 +60,11 @@ Type: [MetricsSourceConfiguration](./metrics-source-configuration.md)
   "properties": {
     "AdapterServer": {
       "type": "string",
-      "description": "Reference to an adapter server defined in the AdapterServers Section in SFC top level config"
+      "description": "Reference to an adapter server defined in the AdapterServers Section in SFC top level config, runs the adapter as an IPC service"
     },
     "AdapterType": {
       "type": "string",
-      "description": "Reference to an adapter type defined in the AdapterTypess Section in SFC top level config"
+      "description": "Type code of the adapter (e.g. OPCUA, MODBUS-TCP), in uberjar and in-process mode also the key of the AdapterTypes entry in SFC top level config"
     },
     "Description": {
       "type": "string",
@@ -73,20 +75,7 @@ Type: [MetricsSourceConfiguration](./metrics-source-configuration.md)
       "description": "Configuration for metrics collection"
     }
   },
-  "oneOf": [
-    {
-      "required": ["AdapterServer"],
-      "not": {
-        "required": ["AdapterType"]
-      }
-    },
-    {
-      "required": ["AdapterType"],
-      "not": {
-        "required": ["AdapterServer"]
-      }
-    }
-  ]
+  "required": ["AdapterType"]
 }
 ```
 
@@ -96,21 +85,22 @@ Type: [MetricsSourceConfiguration](./metrics-source-configuration.md)
 
 
 
-Example with AdapterType:
+Example with AdapterType, adapter running in the SFC core process (uberjar or in-process):
 
 ```json
 {
-  "AdapterType": "ModbusTCP",
+  "AdapterType": "MODBUS-TCP",
   "Description": "Modbus connection to PLC using in-process adapter"
 }
 ```
 
 
 
-Example with just AdapterServer:
+Example with AdapterServer, adapter running as an IPC service (AdapterType is still required):
 
 ```json
 {
+  "AdapterType": "S7",
   "AdapterServer": "S7AdapterServer"
 }
 ```

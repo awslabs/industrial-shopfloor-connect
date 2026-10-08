@@ -3,9 +3,17 @@
 - [PlainText](#plaintext)
 - [ServerSideTLS](#serversidetls)
 - [MutualTLS](#mutualtls)
+- [Example](#example)
 - [Generating keys and certificates](#generating-keys-and-certificates)
 
-All network traffic between SFC components can be secured using encryption. The following options can be used
+In IPC deployments the gRPC traffic between the SFC core and protocol adapter services can be secured using encryption
+(when adapters and targets run in-process, as with the uberjar, there is no network traffic between components). The
+following options can be used:
+
+> **Known limitation:** target services and the metrics writer service currently accept PlainText connections only. They
+> accept the `-connection`, `-cert`, `-key` and `-ca` parameters but do not use them, so only protocol adapter services
+> support ServerSideTLS and MutualTLS. Keep PlainText for `TargetServers` entries and the `MetricsServer` (see
+> [Running targets as an IPC service](./sfc-running-targets.md#running-targets-as-an-ipc-service)).
 
 ## PlainText
 
@@ -13,107 +21,132 @@ The network traffic between SFC components is not encrypted.
 
 ## ServerSideTLS
 
-The network traffic is encrypted using the private key of the service, the service is providing its X.509 server
-certificate to the client to decrypt the traffic. The service process needs to be started using the -key and -cert
-parameters specifying the files containing servers private key and server certificate. The -connection type parameter
-must be set to ServerSideTLS. In the SFC configuration the [ConnectionType](../docs/core/server-configuration.md#connectiontype) in the [ServiceConfiguration](../docs/core/server-configuration.md) for the server
-must be set to ServerSideTLS.
+The network traffic is encrypted with TLS; the service proves its identity with its X.509 server certificate. The
+service process needs to be started using the -key and -cert parameters specifying the files containing servers private
+key and server certificate. The -connection type parameter must be set to ServerSideTLS. In the SFC configuration the
+[ConnectionType](./core/server-configuration.md#connectiontype) of the [server entry](./core/server-configuration.md)
+in `AdapterServers` must be set to ServerSideTLS.
 
 The value used for the connection type parameter used for the service and the configured ConnectionType must match.
+
+Set [ServerCertificate](./core/server-configuration.md#servercertificate) in the server entry to the file containing the
+server certificate. Without it, the SFC core trusts whatever certificate the service presents.
 
 Note that the address which is configured to communicate with the service must be present as DNS name or IP address as
 one of the Alternative Subject Names in the server certificate.
 
 ## MutualTLS
 
-The network traffic is encrypted using the private key of the service and the private key of the client, the service and
-service provide their X.509 certificates to each other to decrypt the traffic. The service process needs to be started
-using the -key, -cert and -ca parameters specifying the files containing servers private key and server and CA
-certificates. The -connection type parameter must be set to MutualTLS. In the SFC configuration the ConnectionType in
-the ServiceConfiguration for the server must be set to MutualTLS. The ClientPrivateKey, ClientCertificate and
-CaCertificate must be set to the files containing the clients private key, client certificate and CA certificate.
+The network traffic is encrypted with TLS, and the service and the client are meant to prove their identity to each
+other with their X.509 certificates. The service process needs to be started using the -key, -cert and -ca parameters
+specifying the files containing servers private key and server and CA certificates. The -connection type parameter must
+be set to MutualTLS. In the SFC configuration the ConnectionType in the server entry for the server must be set to
+MutualTLS. The ClientPrivateKey, ClientCertificate and CaCertificate must be set to the files containing the clients
+private key, client certificate and CA certificate.
 
 The value used for the connection type parameter used for the service and the configured ConnectionType must match.
 
 The address which is configured to communicate with the service must be present as DNS name or IP address as one of the
 Alternative Subject Names in the server certificate.
 
-The address of the client must be present as DNS name or IP address as one of the Alternative Subject Names in the
-client certificate.
+> **Known limitation:** the service currently does not request or verify the client certificate, so MutualTLS
+> authenticates the server only, and the Alternative Subject Names of the client certificate are not checked.
+
+## Example
+
+The OPC UA adapter as an IPC service with ServerSideTLS, using the certificates from
+[Generating keys and certificates](#generating-keys-and-certificates) in a `certs` folder of the directory the service
+and SFC are started from. In the SFC configuration, the adapter's `AdapterServer` refers to this server entry:
+
+```json
+"AdapterServers": {
+  "OpcuaServer": {
+    "Address": "10.0.0.5",
+    "Port": 50000,
+    "ConnectionType": "ServerSideTLS",
+    "ServerCertificate": "certs/server-cert.pem"
+  }
+}
+```
+
+Set `Address` to the address the service listens on, which it logs when it starts (`listening on <address>:<port>`);
+the server certificate must contain that address. Relative paths are resolved against the directory SFC is started
+from; on Windows write absolute paths with forward slashes (`"C:/sfc/certs/server-cert.pem"`).
+
+Start the service before SFC:
+
+**Linux / macOS**
+
+```shell
+opcua/bin/opcua -port 50000 -connection ServerSideTLS -cert certs/server-cert.pem -key certs/server-key.pem
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\opcua\lib\*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000 -connection ServerSideTLS -cert certs\server-cert.pem -key certs\server-key.pem
+```
+
+From an sfcup install, start the same service from the uberjar with the same options:
+`java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.opcua.OpcuaProtocolService` (Windows:
+`java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.opcua.OpcuaProtocolService`).
+Why Windows uses `java -cp` instead of `bin\opcua.bat`: [Platform support](./README.md#platform-support).
+
+For MutualTLS, start the service with `-connection MutualTLS` and add `-ca certs/ca-cert.pem` (Windows:
+`-ca certs\ca-cert.pem`). In the server entry set `"ConnectionType": "MutualTLS"` and replace `ServerCertificate` with
+the client files:
+
+```json
+"ClientCertificate": "certs/client-cert.pem",
+"ClientPrivateKey": "certs/client-key.pem",
+"CaCertificate": "certs/ca-cert.pem"
+```
+
+Check the service log after starting it. Its start message reports `connection type is ServerSideTLS` (or `MutualTLS`)
+even when TLS could not be set up: an `Error setting up TLS for ServerSideTLS` message before it means that the service
+could not use its certificate or key and accepts PlainText connections instead.
 
 ## Generating keys and certificates
 
-The script below can be used to create the required keys and certificates to which can be used for ServerSideTLS and
-MutualTLS connections in test environments
+For test environments, the scripts in [examples/test-certificates](../examples/test-certificates/README.md) create the
+keys and certificates for ServerSideTLS and MutualTLS connections: `ca-cert.pem`, `server-cert.pem`/`server-key.pem`
+and `client-cert.pem`/`client-key.pem`. Run them in an empty directory: they first delete the `*.pem`, `*.srl` and
+`*.cnf` files in the current directory.
 
 *NOTE*:
 
 - The script is provided to generate self-signed certificates for test purposed only and should not be used in
   production environments.
-- For convenience the script includes the IP addresses of all available network interfaces as IP addresses, and the
-  hostname (plus localhost) of the system on which the script is executed, in the as IP addresses of the sand DNS names
-  as alternative subject names of the generated certificates. This assumes a test setup where both the SFC core and
-  service are executed on the same system. When the SFC core and SFC services run on different systems the script must
-  be executed on both of the systems and the relevant certificates must be used on that system as key and certificate
-  parameters for the server, or configuration values used by the SFC core.
+- For convenience the script includes the IP addresses of all available network interfaces, and the hostname (plus
+  localhost) of the system on which the script is executed, as subject alternative names (IP addresses and DNS names)
+  of the generated certificates. This assumes a test setup where both the SFC core and service are executed on the
+  same system. When the SFC core and SFC services run on different systems the script must be executed on both of the
+  systems and the relevant certificates must be used on that system as key and certificate parameters for the server,
+  or configuration values used by the SFC core.
 - In production environments the IP addresses and DNS names should be included in the certificate to the expected client
   and service addresses for that environment.
 
-```sh
-rrm *.pem
-rm *.srl
-rm *.cnf
+From the root of a source checkout of this repository:
 
-C="NL"
-ST="NH"
-L="AMS"
-O="MYORG"
-OU="MYOU"
+**Linux / macOS**
 
-for i in $(ifconfig | sed -En 's/127.0.0.1//;s/.*inet (addr:)?(([0-9]*\.){3}[0-9]*).*/\2/p')
-do
- IP_LIST+="IP:$i,"
-done
-IP_LIST+="IP:127.0.0.1,"
-IP_LIST+="IP:0.0.0.0"
+The script needs `openssl`, and `ifconfig` for the IP addresses:
 
-HOST=$(hostname -s)
-DNS_NAMES="DNS:$HOST,DNS:localhost"
-CN="/C=$C/ST=$ST/L=$L/O=$O/OU=$OU/CN=$HOST"
+```shell
+mkdir -p certs
+cd certs
+bash ../examples/test-certificates/generate-test-certififcates.sh
+```
 
-# CA
-# Private key and self-signed certificate
-openssl req -x509 -newkey rsa:4096 -days 365 -nodes -keyout ca-key.pem -out ca-cert.pem -subj "$CN"-CA""
+**Windows (PowerShell)**
 
-echo "CA's self-signed certificate"
-openssl x509 -in ca-cert.pem -noout -text
+The script needs `openssl.exe` on the `PATH`; Git for Windows includes one in `C:\Program Files\Git\usr\bin`, which the
+first line adds to the `PATH` of the current session. `-ExecutionPolicy Bypass` is needed because the default execution
+policy of Windows 10 and 11 blocks `.ps1` files:
 
-
-
-# SERVER
-# Private key and certificate signing request
-openssl req -newkey rsa:4096 -nodes -keyout server-key.pem -out server-req.pem -subj "$CN"-SERVER""
-
-echo "subjectAltName=$DNS_NAMES,$IP_LIST" > server-ext.cnf
-
-# Create certificate
-openssl x509 -req -in server-req.pem -days 365 -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial -out server-cert.pem -extfile server-ext.cnf
-
-echo "Server's signed certificate"
-openssl x509 -in server-cert.pem -noout -text
-
-
-
-# CLIENT
-# Private key and certificate signing request
-openssl req -newkey rsa:4096 -nodes -keyout client-key.pem -out client-req.pem -subj "$CN"-CLIENT""
-
-echo "subjectAltName=$DNS_NAMES,$IP_LIST" > client-ext.cnf
-
-# Create certificate
-openssl x509 -req -in client-req.pem -days 365 -CA ca-cert.pem -CAkey ca-key.pem -CAcreateserial -out client-cert.pem -extfile client-ext.cnf
-
-echo "Client's signed certificate"
-openssl x509 -in client-cert.pem -noout -text
-
+```powershell
+$env:Path += ";C:\Program Files\Git\usr\bin"
+New-Item -ItemType Directory -Force certs | Out-Null
+Set-Location certs
+powershell -NoProfile -ExecutionPolicy Bypass -File ..\examples\test-certificates\generate-test-certificates.ps1
 ```

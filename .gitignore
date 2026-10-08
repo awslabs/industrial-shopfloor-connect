@@ -23,3 +23,6 @@ ci/cdk/outputs.json
 .kotlin
 .DS_Store
 *.pyc
+
+# Local agent rules; not part of the product.
+CLAUDE.md

@@ -1,5 +1,7 @@
 # SelfSignedCertificateConfiguration
 
+[CertificateConfiguration](./certificate-configuration.md) > [SelfSignedCertificate](./certificate-configuration.md#selfsignedcertificate)
+
 Configuration for generating self-signed SSL/TLS certificates with customizable properties like common name, organization details, and validity period. Supports multiple DNS names and IP addresses in the certificate's Subject Alternative Names (SAN). Includes options for application URI and organizational identifiers. Requires at minimum a common name, with other fields being optional.
 
 - [Schema](#schema)
@@ -14,9 +16,9 @@ Configuration for generating self-signed SSL/TLS certificates with customizable 
 - [IpAddresses](#ipaddresses)
 - [LocalityName](#localityname)
 - [Organization](#organization)
-- [OrganizationUnit](#organizationunit)
+- [OrganizationalUnit](#organizationalunit)
 - [StateName](#statename)
-- [ValidityPeriodDays](#validityperioddays)
+- [ValidPeriodDays](#validperioddays)
 
 ---
 
@@ -25,6 +27,8 @@ Configuration for generating self-signed SSL/TLS certificates with customizable 
 Specifies the URI that uniquely identifies the application using this certificate. This field is used in the certificate's Subject Alternative Name (SAN) extension to associate the certificate with a specific application.
 
 **Type**: String
+
+Default is `urn:aws-sfc-opcua@<hostname>` (the OPC UA target uses `urn:amazonaws:sfc:opcua-target`)
 
 ---
 ### CommonName
@@ -46,12 +50,16 @@ Specifies an array of additional domain names or hostnames to be included in the
 
 **Type**:  [String]
 
+Default: the host names of all IPv4 addresses of the host; use [] for none.
+
 ---
 ### IpAddresses
 
 Specifies an array of IP addresses to be included in the certificate's Subject Alternative Name (SAN) extension. While it's generally recommended to use DNS names instead, this allows the certificate to be valid when accessing services via specific IP addresses.
 
 **Type**: [String]
+
+Default: all IPv4 addresses of the host; use [] for none.
 
 ---
 ### LocalityName
@@ -68,7 +76,7 @@ Specifies the legal name of the organization that owns the certificate. This sho
 **Type:**   String
 
 ---
-### **OrganizationUnit**
+### OrganizationalUnit
 
 Specifies the division or department within the organization that manages or owns the certificate (e.g., "IT Department", "Web Services", "Security Team"). This appears in the certificate's Distinguished Name (DN) as the Organizational Unit (OU).
 
@@ -82,8 +90,8 @@ Specifies the state or province where the certificate holder is located. This fo
 **Type:**   String
 
 ---
-### ValidityPeriodDays
-Specifies the duration in days for which the self-signed certificate will remain valid from its issue date. If not explicitly set, the certificate will be valid for 1000 days. After this period expires, the certificate will need to be renewed. The value must be a positive integer
+### ValidPeriodDays
+Specifies the duration in days for which the self-signed certificate will remain valid from its issue date. If not explicitly set, the certificate will be valid for 1000 days. After this period expires, the certificate will need to be renewed. The value must be greater than 1.
 
 **Type**: Integer
 
@@ -101,27 +109,27 @@ Specifies the duration in days for which the self-signed certificate will remain
   "type": "object",
   "properties": {
     "CommonName": {
-      "type": "String",
+      "type": "string",
       "description": "Common name for the certificate"
     },
     "Organization": {
-      "type":   "String",
+      "type":   "string",
       "description": "Organization name for the certificate"
     },
     "OrganizationalUnit": {
-      "type":   "String",
+      "type":   "string",
       "description": "Organizational unit for the certificate"
     },
     "LocalityName": {
-      "type":   "String",
+      "type":   "string",
       "description": "Locality (city) for the certificate"
     },
     "StateName": {
-      "type":   "String",
+      "type":   "string",
       "description": "State/province for the certificate"
     },
     "CountryCode": {
-      "type":   "String",
+      "type":   "string",
       "description": "Two-letter country code",
       "minLength": 2,
       "maxLength": 2
@@ -133,26 +141,27 @@ Specifies the duration in days for which the self-signed certificate will remain
       },
       "description": "List of DNS names for the certificate"
     },
-    "IpAddress": {
+    "IpAddresses": {
       "type": "array",
       "items": {
-        "type": String
+        "type": "string",
         "format": "ipv4"
       },
       "description": "List of IP addresses for the certificate"
     },
     "ApplicationUri": {
-      "type":   "String",
+      "type":   "string",
       "description": "Application URI for the certificate"
     },
-    "ValidityPeriodDays": {
+    "ValidPeriodDays": {
       "type": "integer",
       "description": "Number of days the certificate will be valid",
-      "minimum": 1
+      "minimum": 2,
+      "default": 1000
     }
   },
   "required": [
-    "commonName"
+    "CommonName"
   ]
 }
 
@@ -188,13 +197,13 @@ Complete configuration
     "api.example.com",
     "web.example.com"
   ],
-  "IpAddress": [
+  "IpAddresses": [
     "192.168.1.1",
     "10.0.0.1",
     "172.16.0.1"
   ],
   "ApplicationUri": "urn:example:application:cert",
-  "ValidityPeriodDays": 365
+  "ValidPeriodDays": 365
 }
 ```
 
@@ -211,6 +220,6 @@ Partial configuration
     "api.company.com",
     "*.api.company.com"
   ],
-  "ValidityPeriodDays": 730
+  "ValidPeriodDays": 730
 }
 ```

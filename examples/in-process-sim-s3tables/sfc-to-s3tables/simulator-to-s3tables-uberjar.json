@@ -7,7 +7,7 @@
     {
       "Name": "SimSchedule",
       "Interval": 50,
-      "Active": "true",
+      "Active": true,
       "TimestampLevel": "Both",
       "Sources": {
         "Simulator": [
@@ -54,7 +54,7 @@
   },
   "Targets": {
     "S3TablesTarget": {
-      "Active": "True",
+      "Active": true,
       "TargetType": "AWS-S3-TABLES",
       "Region": "${AWS_REGION}",
       "TableBucket": "sfc-industrial-data-bucket",
@@ -132,7 +132,7 @@
       ]
     },
     "DEBUGTarget": {
-      "Active": "true",
+      "Active": true,
       "TargetType": "DEBUG-TARGET"
     }
   },

@@ -4,6 +4,12 @@
 
 The documentation provides a comprehensive overview of SFC's architecture, capabilities, and deployment options for industrial data collection and ingestion to AWS.
 
+## Start here
+
+- [Quickstart](../README.md#quickstart): install SFC with sfcup, print simulated data with no hardware and no cloud, then write a real OPC-UA server's data to an Apache Iceberg table in Amazon S3 Tables.
+- [Examples catalog](./examples/README.md#start-here): runnable configurations, starting with the ones that need the least.
+- [Choose a deployment mode](./sfc-deployment.md#choose-a-deployment-mode): uberjar, in-process or IPC, and [how a component is configured in each](./sfc-deployment.md#configure-a-component-in-each-mode).
+
 ## **Summary**
 
 Shop Floor Connectivity (SFC) is a data ingestion technology for collecting industrial data and delivering it to AWS services.
@@ -50,6 +56,7 @@ Shop Floor Connectivity (SFC) is a data ingestion technology for collecting indu
 - [High level design overview and tenets](#high-level-design-overview-and-tenets)
   
   - [Execution environment and platform dependencies](#execution-environment-and-platform-dependencies)
+    - [Platform support](#platform-support)
   - [Extensibility](#extensibility)
   - [Networking](#networking)
   - [Scalability](#scalability)
@@ -60,9 +67,11 @@ Shop Floor Connectivity (SFC) is a data ingestion technology for collecting indu
   
 - [Deployment](sfc-deployment.md)
 
-- [Configuration](./sfc-configuration.md)
+- [Configuration guide: placeholders, secrets, templates, includes, providers](./sfc-configuration.md)
 
-- [SFC configuration file](./core/sfc-configuration.md)
+- [Configuration file reference](./core/sfc-configuration.md)
+
+  - [Index of the core configuration types](./core/README.md)
 
 - [Running the SFC core process](./sfc-running-core-process.md)
 
@@ -78,6 +87,8 @@ Shop Floor Connectivity (SFC) is a data ingestion technology for collecting indu
 
 - [Logging and Metrics collection](./sfc-logging-metrics.md)
 
+  - [AWS CloudWatch metrics writer](./metrics/aws-cloudwatch.md)
+
 - [Securing Network Traffic between SFC components](./sfc-securing-component-traffic.md)
 
 - [AWS Service access credentials](sfc-aws-service-credentials.md)
@@ -88,7 +99,9 @@ Shop Floor Connectivity (SFC) is a data ingestion technology for collecting indu
 
 - [SFC tuning](./sfc-tuning.md)
 
-- [.NET Core based protocol adapters](./sfc-dotnet.md)
+- [Extending SFC: custom adapters, targets, configuration providers, log and metrics writers, formatters](./sfc-extending.md)
+
+- [.NET Core based protocol adapters](./sfc-dotnet.md) (not shipped in this repository)
 
   
 
@@ -104,6 +117,8 @@ Shop Floor Connectivity (SFC) is a data ingestion technology for collecting indu
 
 - [SFC Configuration File](./core/sfc-configuration.md)
 
+- [Core configuration types](./core/README.md)
+
   
 
 - [Protocol Adapters](./adapters/README.md)
@@ -116,8 +131,8 @@ Shop Floor Connectivity (SFC) is a data ingestion technology for collecting indu
 
 - [Deployment models](sfc-deployment.md) — in-process, IPC, mixed, and the
   [single-jar uberjar](sfc-deployment.md#single-file-deployments)
-- [Greengrass Lab](../examples/greengrass-in-process/README.md)
-- [Greengrass uberjar component](../examples/greengrass-uberjar/README.md)
+- [Greengrass uberjar component](../examples/greengrass-uberjar/README.md): one artifact, for Linux and Windows core devices
+- Greengrass per-module labs for Linux core devices: [in-process](../examples/greengrass-in-process/README.md), [IPC](../examples/greengrass-ipc/README.md)
 
 
 
@@ -139,7 +154,7 @@ on licenses for additional connectivity products.
 
 ## SFC Components
 
-There are three main type of components that make up SFC.
+There are three main types of components that make up SFC.
 
 - [SFC Core](#sfc-core)
 - [Protocol Adapters](./adapters/README.md)
@@ -173,9 +188,10 @@ flowchart LR
 
 The SFC-Core component is the controller of the SFC Framework. It handles configuration and scheduling of the data
 collection through the protocol adapters. It can optionally transform each received data value using a combination of
-one or more of the 90+ transformation functions available functions, which can address complex data transformations
-requirements. The core has end-to-end datatype fidelity, the data can be sent to the targets in the data format it was
-read from the source, including complex structured datatypes and multidimensional arrays.
+one or more of the 85 [transformation operators](./core/transformation-operator-configuration.md), which can address
+complex data transformation requirements. The core has end-to-end datatype fidelity, the data can be sent to the
+targets in the data format it was read from the source, including complex structured datatypes and multidimensional
+arrays.
 
 Optionally the data can be buffered and aggregated at the edge to reduce network traffic, by using one or more
 available aggregation functions. After the aggregation has taken place, an additional transformation step can be
@@ -200,11 +216,12 @@ modifications to the rest of the framework.
 [SFC target adapters](./targets/README.md) are components that receive the data from the SFC Core and send it to their specific AWS or local
 services. Components can optionally apply data transformations using an Apache Velocity template, to deliver the data in
 the required format for the receiving service. At the moment of writing there are adapters for the following AWS
-Services: IoT Core, Kinesis Streams, Kinesis Firehose, Lambda functions, IoT Core, S3, SiteWise,
-MKS, SNS, and SQS, with additional targets for the local filesystem, terminal output, OPCUA, NATS and MQTT clients.
+services: IoT Core, Kinesis Data Streams, Kinesis Data Firehose, Lambda, MSK, S3, S3 Tables, IoT SiteWise, SiteWise
+Edge, SNS and SQS, plus edge targets for files, the console, an OPC UA server, OPC UA writes, MQTT and NATS, and the
+Router and Store and Forward targets; see [Target Adapters](./targets/README.md).
 
 Target buffering can be applied to reduce the number of required service API calls. All this is part of the SFC
-infrastructure and makes it easier to develop new target types for additional AWS services Targets can be daisy-chained
+infrastructure and makes it easier to develop new target types for additional AWS services. Targets can be daisy-chained
 in order to provide additional functionality which is discussed in this document.
 
 
@@ -218,12 +235,12 @@ SFC data collection is based on the following concepts
 - A schedule defines from which **sources** the data is read, to **targets** the data is sent and the **interval** at
   which this happens.
 
-- A [**source**](./core/source-configuration.md) defines from which protocol adapter the data is read and defines the 
-- [**channels**](./core/target-configuration.md), which represent the
+- A [**source**](./core/source-configuration.md) defines from which protocol adapter the data is read and defines the
+  [**channels**](./core/channel-configuration.md), which represent the
   actual values in a protocol agnostic way. A schedule can read from multiple sources which can read from different
   protocol adapters.
 
-- A [**channel**](./core/target-configuration.md) defines the protocol specific details, like node id's, addresses etc., which are used by the adapter to
+- A [**channel**](./core/channel-configuration.md) defines the protocol specific details, like node id's, addresses etc., which are used by the adapter to
   read the values for that channel. Channels also can specify a **transformation** which will be applied to the read
   values, [**filters**](./sfc-data-processing-filtering.md#data-filtering) and **selectors**.
 
@@ -231,11 +248,11 @@ SFC data collection is based on the following concepts
   individual value read from a **source**.
 
 - A [**filter**](./sfc-data-processing-filtering.md#data-filtering) is a configured set of conditions to filter values based on 
-relative or absolute values changes since the last time a value was read, of based on the actual value, defining a combination of boundaries and ranges.
+relative or absolute values changes since the last time a value was read, or based on the actual value, defining a combination of boundaries and ranges.
 
 - In order to reduce the amount of data written, or number of write actions to the [**targets, aggregation**](./core/aggregation-configuration.md) can be
   applied for a schedule. An aggregation defines the number of values to combine per batch, the aggregation functions
-  that are applies to the aggregated data and the [**transformation**](./sfc-data-processing-filtering.md#transformations) for these values.
+  that are applied to the aggregated data and the [**transformation**](./sfc-data-processing-filtering.md#transformations) for these values.
 
 - A [**target**](./core/target-configuration.md) defines which target adapter is used to send the data to. It does contain target specific configuration
   for the specific adapter as well as common configuration items as buffer size, compression, applied transformation
@@ -256,8 +273,8 @@ additional coding.
 
 Shop Floor Connectivity  is a versatile data ingestion solution that can be deployed in a variety of environments,
 including standalone applications, Docker containers, and Kubernetes pods. With no additional requirements beyond a Java
-JVM 17 runtime, SFC can be deployed on Linux and Windows systems. To optimize hardware utilization, SFC uses parallel
-and non-blocking async patterns in its software.
+17 (or newer) runtime, SFC can be deployed on Linux, macOS and Windows systems (see [Platform support](#platform-support)).
+To optimize hardware utilization, SFC uses parallel and non-blocking async patterns in its software.
 
 SFC protocol and target adapters can be implemented as a JVM component or as an external microservices using the gRPC
 protocol for communication. When running as [stand-alone services](./sfc-deployment.md#deployment-options), protocol adapters can be 
@@ -284,14 +301,57 @@ is operated and integrated.
 ## Execution environment and platform dependencies
 
 Edge software in industrial environments is typically running on a mix of different hardware architectures, operating
-systems and runtimes. SFC can be deployed on platforms supporting a JVM and does not have platform or OS specific
-requirements. SFC protocol and targets adapters can be implemented and executed in other runtimes, e.g., .NET, as well.
+systems and runtimes. SFC can be deployed on platforms supporting a Java 17 (or newer) JVM and has no OS-specific
+requirements apart from those under [Platform support](#platform-support). SFC protocol and targets adapters can be
+implemented and executed in other runtimes, e.g., .NET, as well.
 
 SFC components can be deployed and executed as:
 
 - Standalone applications
 - Containers in Docker or Kubernetes
 - Greengrass components
+
+### Platform support
+
+SFC is a Java 17+ application and runs on Linux, macOS and Windows, with these exceptions:
+
+| | Linux | macOS | Windows |
+|---|---|---|---|
+| SFC core, uberjar, adapters and targets | yes | yes, except J1939 | yes, except J1939 |
+| Install with [sfcup](../README.md#1-install) | `sfcup.sh`, command `sfcx` | `sfcup.sh`, command `sfcx` | `sfcup.ps1`, command `sfcx` |
+| [J1939 adapter](./adapters/j1939.md) (SocketCAN) | yes | no | no |
+| [OPC DA adapter](./adapters/opcda.md) ([.NET](./sfc-dotnet.md), DCOM) | no | no | Windows only; not part of this repository |
+| Greengrass examples | in-process, IPC, uberjar | n/a | [uberjar component](../examples/greengrass-uberjar/README.md) only |
+| Example run scripts | `.sh` | `.sh` | `.bat` twins |
+
+The J1939 adapter needs Linux SocketCAN, which macOS and Windows lack. On Windows it stops the process it runs in, which
+with the uberjar or in-process is the SFC core itself. To read J1939 data with a core on macOS or Windows, run the
+adapter as an [IPC service](./sfc-deployment.md#ipc) on a Linux host.
+
+Known limits on Windows:
+
+- Start per-module bundles and IPC services with `java -cp "C:\sfc\<module>\lib\*" <main class>`, not with
+  `bin\<module>.bat`. Those launchers put every jar on one command line, which cmd.exe rejects beyond 8,191 characters
+  once the install folder is expanded for each jar: `sfc-main.bat` only works from a folder path of at most about 23
+  characters, the adapter and target launchers from about 27 to 32 (for example `C:\sfc\opcua`), and
+  `aws-s3-tables-target.bat` never. From an sfcup install, start a service from the uberjar instead:
+  `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" <main class>`. `sfcx`, `sfcup` and the
+  uberjar bundle's `bin\sfc-uberjar.bat` are not affected.
+- In JSON and YAML configurations write Windows paths with forward slashes (`"C:/sfc/opcua/lib"`); a single backslash
+  starts a JSON escape sequence. Set placeholder variables the same way, e.g. `$env:SFC_DEPLOYMENT_DIR = "C:/sfc"`.
+  Relative paths resolve against the directory SFC is started from. Save configurations as UTF-8; in Windows
+  PowerShell 5.1, `>` and `Out-File` write UTF-16.
+- Start SFC from a writable folder: files SFC creates in its working directory (the OPC UA target's certificate folders
+  and self-signed certificate, the URL include cache) otherwise land in `C:\Windows\System32`, where an elevated
+  PowerShell starts.
+- An environment variable holds at most 32,767 characters; pass larger configurations with `-config` instead of
+  `SFC_CONFIG`.
+- Services that accept connections from other machines (IPC adapter and target services, the OPC UA target's server)
+  need an inbound Windows Defender Firewall rule for their port.
+- Console output is never colour-coded. The line breaks the [file target](./targets/file.md) adds between and after
+  records are CRLF (the pretty-printed JSON of a record uses LF), and on Java 17 it uses the ANSI code page (Java 18 and
+  later write UTF-8). The [SQL adapter](./adapters/sql.md) supports SQL Server authentication only, not Windows
+  integrated authentication.
 
 ## Extensibility
 
@@ -307,16 +367,21 @@ It is also possible to build and configure the following extensions to the SFC C
 
 - *Logging*: the standard logging, which writes the output to the process console, can be replaced by a custom logger.
   The SFC configuration allows a [custom logger](./sfc-extending.md#custom-logging) to be configured by adding the library which implements it to the
-  configuration.
+  configuration. Example: [custom log writer](../examples/custom-log-writer/README.md).
 
 - *Configuration*: the default configuration is using a JSON file, which is monitored for updates to the actual file, or
   updates to environment variables used for which the configuration file can contain placeholders. As configuration
   data, in customer environments, may be managed and stored in external systems, it is possible to implement and
   configure a [custom configuration provider](./sfc-extending.md#custom-configuration-handlers), that can actively and periodically call out to external systems, or wait
-  for incoming calls, to obtain the configuration data to build or extend the SFC configuration dynamically.
+  for incoming calls, to obtain the configuration data to build or extend the SFC configuration dynamically. Examples:
+  [YAML](../examples/yaml-custom-config-provider/README.md) and [MQTT](../examples/mqtt-config-provider/README.md)
+  configuration providers.
 
-- *Metrics*: SFC comes with a metrics collector for to the AWS CloudWatch Metrics service, which can be optionally added
+- *Metrics*: SFC comes with a [metrics collector for the AWS CloudWatch Metrics service](./metrics/aws-cloudwatch.md), which can be optionally added
   to the SFC configuration. [Custom metrics collectors](./sfc-extending.md#custom-metric-writers) can be implemented and configured.
+
+- *Output formatting*: a [custom formatter](./sfc-extending.md#custom-formatters) controls how a target serialises its
+  data. Example: [custom target formatter](../examples/custom-target-formatter/README.md).
 
 
 
@@ -432,7 +497,7 @@ approach also enables better resource utilization and fault tolerance.
 For targets that require network access to send the collected data to their destinations, it is possible to use
 intermediate [store and forward targets](sfc-targets-chaining.md#store-and-forward). Intermediate targets can be
 configured in between the SFC Core and one or more target adapters by using target daisy-chaining. If the end target loses 
-connectivity the intermediate target will store the data, optionally encrypted, for a [configured](./targets/store-and-forward-target.md) amount of time, data 
+connectivity the intermediate target will store the data for a [configured](./targets/store-and-forward-target.md) amount of time, data 
 volume or number of messages, and will resubmit the data when the target regains network connectivity, in either FIFO or LIFO mode.
 
 [Target chaining](./sfc-targets-chaining.md) is generic mechanism in SFC for adding additional processing steps, like store and forwarding as

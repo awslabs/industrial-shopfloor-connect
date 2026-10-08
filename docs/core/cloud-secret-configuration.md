@@ -4,6 +4,8 @@
 
 The CloudSecretConfiguration class defines how to retrieve and reference secrets from AWS Secrets Manager. It specifies the secret's identifier (name or ARN), an optional alias for local reference, and version labels for accessing specific secret values. This configuration enables secure access to sensitive information stored in AWS Secrets Manager.
 
+Use a secret as `${<SecretId, name or Alias>}` anywhere in the configuration; an environment variable with the same name takes precedence. See [Configuration secrets](../sfc-configuration.md#configuration-secrets). The full SecretString is inserted, so store the value as plaintext, not as JSON key/value pairs. Use an Alias if the name contains characters other than letters, digits, `-`, `_`, `:` and `/`.
+
 - [Schema](#schema)
 - [Examples](#examples)
 
@@ -23,9 +25,9 @@ The Alias property provides an alternative local name for referencing the secret
 
 ---
 ### Labels
-The Labels property specifies which version of the secret to retrieve using AWS Secrets Manager staging labels. This string property defaults to "AWSCURRENT" to fetch the current version of the secret, but can be set to other staging labels to access different versions.
+The Labels property lists extra AWS Secrets Manager staging labels to download and cache. AWSCURRENT is always retrieved and is the version used by `${...}` placeholders.
 
-**Type**: String
+**Type**: [String]
 
 ---
 ### SecretId

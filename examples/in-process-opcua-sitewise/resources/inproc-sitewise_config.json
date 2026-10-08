@@ -50,27 +50,27 @@
         },
         "Machine1AbsoluteErrorTime": {
           "Name": "AbsoluteErrorTime",
-          "NodeId": "ns=21;i=59048"
+          "NodeId": "ns=20;i=59217"
         },
         "Machine1AbsoluteLength": {
           "Name": "AbsoluteLength",
-          "NodeId": "ns=21;i=59066"
+          "NodeId": "ns=20;i=59235"
         },
         "Machine1AbsoluteMachineOffTime": {
           "Name": "AbsoluteMachineOffTime",
-          "NodeId": "ns=21;i=59041"
+          "NodeId": "ns=20;i=59210"
         },
         "Machine1AbsoluteMachineOnTime": {
           "Name": "AbsoluteMachineOnTime",
-          "NodeId": "ns=21;i=59050"
+          "NodeId": "ns=20;i=59219"
         },
         "Machine1AbsolutePiecesIn": {
           "Name": "AbsolutePiecesIn",
-          "NodeId": "ns=21;i=59068"
+          "NodeId": "ns=20;i=59237"
         },
         "Machine1FeedSpeed": {
           "Name": "FeedSpeed",
-          "NodeId": "ns=21;i=59039"
+          "NodeId": "ns=20;i=59208"
         }
       }
     }
@@ -140,13 +140,13 @@
   "TargetTypes": {
     "DEBUG-TARGET": {
       "JarFiles": [
-        "sfc/debug-target/lib"
+        "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
       ],
       "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
     },
     "AWS-SITEWISE": {
       "JarFiles": [
-        "sfc/aws-sitewise-target/lib"
+        "${SFC_DEPLOYMENT_DIR}/aws-sitewise-target/lib"
       ],
       "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
     }
@@ -154,7 +154,7 @@
   "AdapterTypes": {
     "OPCUA": {
       "JarFiles": [
-        "sfc/opcua/lib"
+        "${SFC_DEPLOYMENT_DIR}/opcua/lib"
       ],
       "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter"
     }

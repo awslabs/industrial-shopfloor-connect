@@ -6,37 +6,64 @@ sending the data to AWS IoT Sitewise.
 
 A second configuration file [`in-process-s7-sitewise-autocreate-assets.json`](in-process-s7-sitewise-autocreate-assets.json) is using the option of the sitewise target adapter
 to automatically create the required sitewise asset models and assets to store the data from the S7 controller.
+With its [AssetCreation](../../docs/targets/aws-sitewise.md#assetcreation) settings the target creates the asset model
+`SitewiseTarget-TestSchedule-S7-SOURCE-Model` and the asset `SitewiseTarget-TestSchedule-S7-SOURCE`, with one
+measurement per channel. This needs the additional IAM permissions marked (*) in the
+[SiteWise target](../../docs/targets/aws-sitewise.md#awssitewisetargetconfiguration) documentation. The created asset
+and asset model stay in your account; when you no longer need them, delete the asset first, then the asset model.
 
 In order to use the configuration, make the changes described below, and
-use it as the value of the --config parameter when starting sfc-main.
+use it as the value of the `-config` parameter when starting sfc-main, as
+shown under [Deployment directory](#deployment-directory).
 
 A debug target is included in the example to optionally write the output
 to the console.
 &nbsp;  
 &nbsp;  
 
-<p align="center">
-  <img src="img/opcua-sitewise.png" width="75%"/>
-</p>
-<p align="center">
-    <em>Fig. 1. SFC (running in cloud9) sending data to an AWS IoT Sitewise Portal</em>
-</p>
-
 ## Deployment directory
 
-A Placeholder ${SFC_DEPLOYMENT_DIR} is used in the configuration. SFC
-dynamically replaces these placeholders with the value of the
-environment variable from the placeholder. In this example it should
-have the value of the pathname of the directory where sfc-main, the used
-adapters and targets are deployed with the following directory
-structure. (This structure can be changed by setting the pathnames in
-the AdapterTypes and TargetTypes sections)
+The `JarFiles` entries of both configurations use the placeholder
+`${SFC_DEPLOYMENT_DIR}`, which SFC replaces with the value of the
+environment variable `SFC_DEPLOYMENT_DIR`. Point it at the directory into
+which you unpack the module bundles `sfc-main`, `debug-target`,
+`aws-sitewise-target` and `s7` of the
+[latest release](https://github.com/awslabs/industrial-shopfloor-connect/releases/latest)
+(for another layout, change the `JarFiles` paths). `sfc-main` needs a
+Java 17 (or newer) runtime (Windows: `winget install EclipseAdoptium.Temurin.17.JDK`).
+More about this mode: [In-process](../../docs/sfc-deployment.md#in-process).
 
-${SFC_DEPLOYMENT_DIR}  
-&nbsp;&nbsp;&nbsp;|-sfc-main  
-&nbsp;&nbsp;&nbsp;|-debug-target    
-&nbsp;&nbsp;&nbsp;|-aws-sitewise-target   
-&nbsp;&nbsp;&nbsp;|-s7  
+Unpack the bundles, set the variable and, once you have made the changes
+described below, start `sfc-main` from this example's folder (use
+`in-process-s7-sitewise-autocreate-assets.json` for the auto-create variant):
+
+**Linux / macOS**
+
+```shell
+export SFC_DEPLOYMENT_DIR="$HOME/sfc"
+mkdir -p "$SFC_DEPLOYMENT_DIR"
+for m in sfc-main debug-target aws-sitewise-target s7; do
+  curl -fsSL "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz" | tar -xzf - -C "$SFC_DEPLOYMENT_DIR"
+done
+"$SFC_DEPLOYMENT_DIR/sfc-main/bin/sfc-main" -config in-process-s7-sitewise.json
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$env:SFC_DEPLOYMENT_DIR = "C:/sfc"
+New-Item -ItemType Directory -Force C:\sfc | Out-Null
+foreach ($m in "sfc-main", "debug-target", "aws-sitewise-target", "s7") {
+    curl.exe -fsSL -o "C:\sfc\$m.tar.gz" "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz"
+    tar -xf "C:\sfc\$m.tar.gz" -C C:\sfc
+}
+java -cp "C:\sfc\sfc-main\lib\*" com.amazonaws.sfc.MainController -config in-process-s7-sitewise.json
+```
+
+On Windows start `sfc-main` with `java -cp` as shown, not with
+`bin\sfc-main.bat` ([Platform support](../../docs/README.md#platform-support)).
+With the uberjar from [sfcup](../../README.md#1-install), remove the
+`JarFiles` entries and run `sfcx -config in-process-s7-sitewise.json`.
 &nbsp;  
 &nbsp;
 
@@ -103,6 +130,9 @@ uncomment the DebugTarget by deleting the '#'.
 
 -  \<SITEWISE-PROPERTY-ID\>, id of the Sitewise attribute or measurement
 
+The assets and their three measurements of data type Double must exist in
+AWS IoT SiteWise before you start SFC (or use the auto-create variant).
+Writing to them needs the IAM permission `iotsitewise:BatchPutAssetPropertyValue`.
 
 `CredentialProviderClient` specifies the credentials provider which is
 used to give access to the used AWS service. For more information see
@@ -148,7 +178,7 @@ include a setting "Name" for the channel.
   <img src="img/TIAPortal-DataBlock.png" width="75%"/>
 </p>
 <p align="center">
-    <em>Fig. 2. Screenshot of Siemens TIA Portal (non-optimized) Datablock DB1; Offset column details refer to the above json config.</em>
+    <em>Fig. 1. Screenshot of Siemens TIA Portal (non-optimized) Datablock DB1; Offset column details refer to the above json config.</em>
 </p>
 
 &nbsp;  
@@ -185,65 +215,39 @@ include a setting "Name" for the channel.
 -   \<CONTROLLER IP ADDRESS\>, IP address of the controller
 
 This section configures the controller from which the data is read. The
-default port 102 is used which can be changed by Including a Port
-setting specifying that value.
+S7 default port 102 is used; to use another port, append it to the
+address, e.g. `"Address": "192.168.0.2:10102"`.
+
+DB1 must be a non-optimized data block, and PUT/GET access must be enabled
+in the PLC; see the [S7 adapter](../../docs/adapters/s7.md). This
+configuration needs a real S7-1200 that holds REAL values at offsets 52, 56
+and 60 of DB1. omni-plc-sim, the PLC simulator that
+[uberjar-plc-sim-s3tables](../uberjar-plc-sim-s3tables/README.md) uses,
+holds other data types there; that example reads a simulated S7-1500, so it
+shows the S7 adapter without hardware.
 &nbsp;  
 &nbsp;  
 
 
 ## AwsIotCredentialProviderClients
 
-This section configures one or more clients which can be referred to by
-targets which need access to AWS services.
+The client `AwsIotClient` in this section obtains temporary credentials for
+the SiteWise target from the AWS IoT credentials provider, using the
+certificate of a Thing in AWS IoT. Fill in `IotCredentialEndpoint`,
+`RoleAlias`, `ThingName`, `CertificateFile`, `PrivateKeyFile` and `RootCa`.
+On a Greengrass V2 core device you can instead remove the `#` from
+`GreenGrassDeploymentPath`, set it to the Greengrass root folder, e.g.
+`/greengrass/v2`, and delete the other settings. The role that
+`RoleAlias` points to must allow the SiteWise permissions named above. On
+Windows write the file paths with forward slashes, e.g.
+`"C:/sfc/certs/device.crt"`.
 
-A credential provider will make use of the AWS IoT Credentials service
-to obtain temporary credentials. This process is described at
-<https://aws.amazon.com/blogs/security/how-to-eliminate-the-need-for-hardcoded-aws-credentials-in-devices-by-using-the-aws-iot-credentials-provider/>
+All settings:
+[AwsIotCredentialProviderClients](../../docs/core/aws-iot-credential-provider-configuration.md).
+To use the AWS SDK default credentials chain instead, delete this section
+and the target's `CredentialProviderClient`; see
+[AWS service credentials](../../docs/sfc-aws-service-credentials.md). For
+production environments the temporary credentials of a credential provider
+client are strongly recommended.
 
-The resources used in the configuration can easily be setup by creating
-a Thing in the AWS IoT service. The role that `RoleAlias` points to, must
-give access to the services used by the target which uses the client.
-
-```json
-"AwsIotCredentialProviderClients": {
-  "AwsIotClient": {
-    "IotCredentialEndpoint": "<ID>.credentials.iot.<YOUR REGION>.amazonaws.com",
-    "RoleAlias": "< ROLE EXCHANGE ALIAS >”,
-    "ThingName": "< THING NAME > ",
-    "Certificate": "< PATH TO DEVICE CERTIFICATE .crt FILE >",
-    "PrivateKey": "< PATH TO PRIVATE KEY .key FILE >",
-    "RootCa": "< PATH TO ROOT CERTIFICATE .pem FILE >",
-  }
-}
-```
-
-
-If there is a GreenGrass V2 deployment on the same machine, instead of
-all settings a setting named GreenGrassDeploymentPath can be used to
-point to that deployment. SFC will use the GreenGrass V2 configurations
-setting. Specific setting can be overridden by setting a value for that
-setting, which will replace the value from the GreenGrass V2
-Configuration. Note that although SFC can be deployed as a GreenGrass
-component, it can also run as a standalone process or in a docker
-container and still use a GreenGrass configuration.
-&nbsp;  
-&nbsp;  
-
-
-```json
-"AwsIotCredentialProviderClients": {
-  "AwsIotClient": {
-    "GreenGrassDeploymentPath": "<GREENGRASS DEPLOYMENT DIR>/v2"
-  }
-}
-```
-
-When the AWS service credentials are provided using one of the options
-in the AWS SDK credentials provider chain
-(<https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html>)
-AwsIotCredentialProviderClients and any references in the targets can be
-deleted. Using the temporary credentials provided through a configured
-AwsIotCredentialProviderClient for production environment is strongly
-recommended.
-
-[Examples](../../docs/examples/README.md)
+Docs used: [S7 adapter](../../docs/adapters/s7.md) · [SiteWise target](../../docs/targets/aws-sitewise.md) · [asset creation](../../docs/targets/aws-sitewise.md#assetcreation) · [Debug target](../../docs/targets/debug.md) · [AWS service credentials](../../docs/sfc-aws-service-credentials.md) · [In-process mode](../../docs/sfc-deployment.md#in-process) · [All examples](../../docs/examples/README.md)
