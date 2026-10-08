@@ -22,18 +22,23 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-// Milo 1.1.7 is compiled for Java 17 (bytecode major 61), so the whole
-// product targets 17. The toolchain drives both the Java and Kotlin
-// compilers; do not also set source/target compatibility or -source/-target
-// compiler args, which would double-specify it.
-kotlin {
-    jvmToolchain(17)
+// The product targets Java 17 and is built by whatever JDK runs Gradle, 17 or newer. --release and
+// -Xjdk-release compile against the Java 17 API, so a newer JDK cannot leak newer API calls into the
+// product. No toolchain is requested, so nothing is downloaded.
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17 // must match Kotlin's jvmTarget
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(17)
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
-        freeCompilerArgs.set(listOf("-opt-in=kotlin.time.ExperimentalTime", "-opt-in=kotlin.ExperimentalUnsignedTypes"))
+        freeCompilerArgs.set(listOf("-Xjdk-release=17",
+            "-opt-in=kotlin.time.ExperimentalTime", "-opt-in=kotlin.ExperimentalUnsignedTypes"))
     }
 }
 

@@ -66,10 +66,6 @@ pluginManagement {
 
 //-----------------//
 
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "0.7.0"
-}
-
 // "ci" holds support code for the end-to-end suite (ci/e2e-support). Those modules use
 // sfc.kotlin-library-conventions, not sfc.module-conventions, so they build a plain jar and add
 // nothing to build/distribution - the release globs build/distribution/*.tar.gz and the tarball set
