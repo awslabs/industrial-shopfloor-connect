@@ -48,29 +48,24 @@ SFC extends and unifies data collection capabilities additionally to our existin
 - [MQTT](./docs/targets/mqtt.md)
 - [NATS](./docs/targets/nats.md)
 
-[**Supported intermediate targets:**](./docs/targets/README.md#intermediate-adapters)
-
-- [Router](./docs/targets/router.md)
-- [Store and Forward](./docs/targets/store-and-forward-target.md)
+&nbsp;
 
 **SFC Docs:** [`docs/README.md`](./docs/README.md)
 
 **SFC Examples:** [`docs/examples/README.md`](./docs/examples/README.md)
 
-**Release notes:** [`RELEASE NOTES.md`](./RELEASE%20NOTES.md) · **Contributing:** [`CONTRIBUTING.md`](./CONTRIBUTING.md)
-
 &nbsp;
 
 ### SFC Components
 
-There are three main types of components that make up SFC:
+A SFC pipeline has three parts, all set up in the same configuration:
 
-- `Protocol Adapters`
-- `SFC Core`
-- `Target Adapters`
-
-SFC needs only a Java 17 runtime ([platform support](./docs/README.md#platform-support)); its adapters and targets run inside the SFC Core process (from the uberjar, or in-process from per-module bundles) or as separate gRPC services (IPC), for example with the protocol adapters in a segregated OT network: see [Choose a deployment mode](./docs/sfc-deployment.md#choose-a-deployment-mode).
-
+- **Protocol adapters** read from the shop floor. Each adapter speaks one industrial protocol and turns
+  device values into SFC's common data format.
+- **SFC Core** runs your schedules: it reads the sources, applies transformations, filters and aggregations,
+  adds metadata, and hands the result to the targets.
+- **Target adapters** deliver the data to AWS services, to systems on your network, or to an intermediate
+  target that buffers or reroutes it.
 
 
 ```mermaid
@@ -98,25 +93,21 @@ flowchart LR
 ```
 
 
-## Documentation
-
-Read more in the [SFC documentation](./docs/README.md)
-
-
 ## Quickstart
 
-After a one-line install, two steps: the first needs **nothing but a JVM** and puts live data on your
-screen in under a minute; the second connects a real OPC-UA server and writes its data to an Apache
-Iceberg table in Amazon S3 Tables.
+Three steps take you from nothing to machine data in the cloud:
 
-Both run from **one install**. The uberjar bundle ships the SFC core with every adapter and target
-included, so a component is named by its `FactoryClassName` alone — there are no `JarFiles` paths to
-wire up. *SFC speaks many more industrial protocols — [see the adapter docs](docs/adapters/README.md).*
+1. **Install** SFC with one command, on Linux, macOS or Windows.
+2. **See data right away:** the built-in simulator prints live values to your console. No hardware, no
+   cloud account.
+3. **Connect a real OPC UA server**, the umati sample server in Docker, and write its values to an Apache
+   Iceberg table in Amazon S3 Tables.
+
+Everything runs from that one install. It contains the SFC core with every adapter and target, so a
+configuration names each component by its `FactoryClassName` alone, with no `JarFiles` paths to set up.
+SFC speaks many more industrial protocols; see the [adapter docs](docs/adapters/README.md).
 
 ### 1. Install
-
->**Requirements**: a Java 17 (or newer) runtime, with `java` on your `PATH` (check with `java -version`).
->On Windows: `winget install EclipseAdoptium.Temurin.17.JDK`, then open a new terminal.
 
 **Linux / macOS**
 
@@ -124,25 +115,13 @@ wire up. *SFC speaks many more industrial protocols — [see the adapter docs](d
 curl -fsSL https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.sh | bash
 ```
 
-That installs the latest release into `~/.sfc` and puts `sfcx` on your `PATH` — start a new shell, or
-`. "$HOME/.sfc/env"` to use it right away. Run `sfcup` any time to upgrade, `sfcup --uninstall` to
-remove it, and `sfcup --help` for all options. To install a specific
-[release](https://github.com/awslabs/industrial-shopfloor-connect/releases), put `SFC_VERSION=vX.Y.Z` in
-front of `bash` in the command above.
-
 **Windows (PowerShell)**
 
 ```powershell
 irm https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.ps1 | iex
 ```
 
-That installs the latest release into `%USERPROFILE%\.sfc` and puts `sfcx` on your user `PATH`. It
-works right away in the terminal you installed from; open a new terminal everywhere else.
-Run `sfcup` any time to upgrade, `sfcup -Uninstall` to remove it, and `sfcup -Help` for all options. To
-install a specific [release](https://github.com/awslabs/industrial-shopfloor-connect/releases), run
-`$env:SFC_VERSION = "vX.Y.Z"` before the `irm … | iex` line.
-
-### 2. First data — no hardware, no cloud
+### 2. HelloWorld Simulator Example
 
 The **simulator adapter** generates signals in-process, so you can watch SFC work before connecting
 anything. Save this as `simulator.json`:
@@ -211,20 +190,17 @@ INFO  - {
         ...
         "counter": { "value": 12, "timestamp": "..." }
 ```
-
-`Ctrl-C` to stop (on Windows, answer `Y` to `Terminate batch job (Y/N)?`). That is the whole loop — read a
-source, run a schedule, write a target — and everything below just swaps the source and the target.
 Every simulation type (counters, waves, random values, ranges and more) is described in the
 [Simulator adapter](./docs/adapters/simulator.md) docs.
 
-### 3. Real OPC-UA to S3 Tables
+### 3. A more serious Example - Ingest OPC-UA to Iceberg (AWS S3 Tables)
 
 <p align="center">
   <img src="./examples/uberjar-plc-sim-s3tables/plcsim-iceberg-explorer.png" alt="The Iceberg timeseries explorer charting the six signals of sfc.plc_signals, the table of the PLC simulator example" height="300">
   <img src="./examples/in-process-sim-s3tables/docs/ux2.png" alt="The Iceberg timeseries explorer charting sfc.sim, the table of the simulator example, with its rows below" height="300">
 </p>
 
-*Optional: the Iceberg timeseries explorer charting S3 Tables tables written by SFC (left: the PLC simulator example, right: the simulator example).*
+*Reference: the [Iceberg timeseries explorer](./examples/in-process-sim-s3tables/cdk/README.md) charting S3 Tables (using DuckDB) tables written by SFC (left: the PLC simulator example, right: the simulator example).*
 
 Now the same pipeline against a real OPC-UA server, writing to an Apache Iceberg table in
 [Amazon S3 Tables](./docs/targets/aws-s3-tables.md) in your account.
