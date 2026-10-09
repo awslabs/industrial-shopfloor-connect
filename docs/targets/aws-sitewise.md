@@ -55,7 +55,7 @@ java -cp "C:\sfc\aws-sitewise-target\lib\*" com.amazonaws.sfc.awssitewise.AwsSit
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awssitewise.AwsSitewiseTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awssitewise.AwsSitewiseTargetService -port 50001`).
 
-**Examples:** in-process: [in-process-s7-sitewise](../../examples/in-process-s7-sitewise/README.md), [in-process-opcua-sitewise](../../examples/in-process-opcua-sitewise/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-sim-sitewise](../../examples/uberjar-sim-sitewise/README.md) · in-process: [in-process-s7-sitewise](../../examples/in-process-s7-sitewise/README.md), [in-process-opcua-sitewise](../../examples/in-process-opcua-sitewise/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 

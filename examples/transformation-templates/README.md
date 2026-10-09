@@ -13,7 +13,7 @@ Example target templates for transforming SFC target data to CSV, XML and YAML f
 ## Use it
 
 Name a template file in the [Template](../../docs/core/target-configuration.md#template) property of a target, for
-example the `DebugTarget` of the [Quickstart `simulator.json`](../../README.md#2-first-data--no-hardware-no-cloud),
+example the `DebugTarget` of the [Quickstart `simulator.json`](../../README.md#2-helloworld-simulator-example),
 which prints the result to the console:
 
 ```json

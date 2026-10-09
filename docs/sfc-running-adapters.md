@@ -129,8 +129,7 @@ taken from `ServerCertificate`, `ServerPrivateKey` and `CaCertificate` of the ad
   do not reach the core.
 
 **Examples:** [OPC-UA to MSK](../examples/ipc-opcua-msk/README.md), [ADS to S3](../examples/ipc-ads-s3/README.md) and
-[SLMP to S3](../examples/ipc-slmp-s3/README.md) run the adapter and the targets as IPC services; the
-[Greengrass IPC lab](../examples/greengrass-ipc/README.md) runs them as Greengrass components. All examples:
+[SLMP to S3](../examples/ipc-slmp-s3/README.md) run the adapter and the targets as IPC services. All examples:
 [examples catalog](./examples/README.md).
 
 
@@ -194,6 +193,6 @@ Each adapter is in a subdirectory of the deployment directory, named after its m
 The uberjar already contains every adapter, so when SFC runs from the uberjar the same entries name only the
 `FactoryClassName`; see [Configure a component in each mode](./sfc-deployment.md#configure-a-component-in-each-mode).
 
-**Examples:** [Simulator to S3 Tables](../examples/in-process-sim-s3tables/README.md),
-[ADS to S3](../examples/in-process-ads-s3/README.md), [Greengrass in-process lab](../examples/greengrass-in-process/README.md).
+**Examples:** [Simulator to S3 Tables](../examples/in-process-sim-s3tables/README.md) and
+[ADS to S3](../examples/in-process-ads-s3/README.md).
 All examples: [examples catalog](./examples/README.md).

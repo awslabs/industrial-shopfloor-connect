@@ -57,7 +57,7 @@ java -cp "C:\sfc\aws-s3-target\lib\*" com.amazonaws.sfc.awss3.AwsS3TargetService
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awss3.AwsS3TargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awss3.AwsS3TargetService -port 50001`).
 
-**Examples:** in-process: [in-process-ads-s3](../../examples/in-process-ads-s3/README.md), [in-process-pccc-s3](../../examples/in-process-pccc-s3/README.md), [in-process-slmp-s3](../../examples/in-process-slmp-s3/README.md), [greengrass-in-process](../../examples/greengrass-in-process/README.md) · IPC: [ipc-ads-s3](../../examples/ipc-ads-s3/README.md), [ipc-slmp-s3](../../examples/ipc-slmp-s3/README.md), [greengrass-ipc](../../examples/greengrass-ipc/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-sim-s3](../../examples/uberjar-sim-s3/README.md) · in-process: [in-process-ads-s3](../../examples/in-process-ads-s3/README.md), [in-process-pccc-s3](../../examples/in-process-pccc-s3/README.md), [in-process-slmp-s3](../../examples/in-process-slmp-s3/README.md) · IPC: [ipc-ads-s3](../../examples/ipc-ads-s3/README.md), [ipc-slmp-s3](../../examples/ipc-slmp-s3/README.md) · all: [examples catalog](../examples/README.md)
 
 ## AwsS3TargetConfiguration
 

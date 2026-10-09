@@ -131,8 +131,6 @@ Shop Floor Connectivity (SFC) is a data ingestion technology for collecting indu
 
 - [Deployment models](sfc-deployment.md) — in-process, IPC, mixed, and the
   [single-jar uberjar](sfc-deployment.md#single-file-deployments)
-- [Greengrass uberjar component](../examples/greengrass-uberjar/README.md): one artifact, for Linux and Windows core devices
-- Greengrass per-module labs for Linux core devices: [in-process](../examples/greengrass-in-process/README.md), [IPC](../examples/greengrass-ipc/README.md)
 
 
 
@@ -321,7 +319,6 @@ SFC is a Java 17+ application and runs on Linux, macOS and Windows, with these e
 | Install with [sfcup](../README.md#1-install) | `sfcup.sh`, command `sfcx` | `sfcup.sh`, command `sfcx` | `sfcup.ps1`, command `sfcx` |
 | [J1939 adapter](./adapters/j1939.md) (SocketCAN) | yes | no | no |
 | [OPC DA adapter](./adapters/opcda.md) ([.NET](./sfc-dotnet.md), DCOM) | no | no | Windows only; not part of this repository |
-| Greengrass examples | in-process, IPC, uberjar | n/a | [uberjar component](../examples/greengrass-uberjar/README.md) only |
 | Example run scripts | `.sh` | `.sh` | `.bat` twins |
 
 The J1939 adapter needs Linux SocketCAN, which macOS and Windows lack. On Windows it stops the process it runs in, which

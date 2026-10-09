@@ -57,7 +57,7 @@ java -cp "C:\sfc\nats-target\lib\*" com.amazonaws.sfc.natstarget.NatsTargetServi
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.natstarget.NatsTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.natstarget.NatsTargetService -port 50001`).
 
-**Examples:** none yet - start from [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) and swap in this component. All: [examples catalog](../examples/README.md)
+**Examples:** none yet - start from [Quickstart step 2](../../README.md#2-helloworld-simulator-example) and swap in this component. All: [examples catalog](../examples/README.md)
 
 
 
@@ -318,7 +318,7 @@ Default is true
 
 ### NatsTargetConfiguration Examples
 
-To try the target, replace the `DebugTarget` of [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) with this entry (also in the schedule's `Targets`) and add the uberjar `TargetTypes` entry from [Deploy this target](#deploy-this-target). It publishes every record to the subject `sfc.demo` of a NATS server on the same host, for example `nats-server` on port 4222:
+To try the target, replace the `DebugTarget` of [Quickstart step 2](../../README.md#2-helloworld-simulator-example) with this entry (also in the schedule's `Targets`) and add the uberjar `TargetTypes` entry from [Deploy this target](#deploy-this-target). It publishes every record to the subject `sfc.demo` of a NATS server on the same host, for example `nats-server` on port 4222:
 
 ```json
 "Targets": {

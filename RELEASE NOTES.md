@@ -6,7 +6,8 @@
 
 - Java 17 is the minimum runtime (was Java 8).
 - Removed the targets `aws-timestream-target` and `aws-iot-analytics-target`.
-- Removed the examples `custom-adapter-csvfile` and `custom-api-ui-config-provider`.
+- Removed the examples `custom-adapter-csvfile`, `custom-api-ui-config-provider`, `greengrass-in-process`,
+  `greengrass-ipc` and `greengrass-uberjar`.
 - The [OPC UA adapter](./docs/adapters/opcua.md), the [OPC UA target](./docs/targets/opcua.md) and the
   [OPC UA writer target](./docs/targets/opcua-writer.md) use Eclipse Milo 1.1.7. The OPC UA adapter and the OPC UA
   writer target now reject `"KeyUsageIssuer": false` in the `ValidationOptions` of a `CertificateValidation` section
@@ -25,6 +26,8 @@
   Modbus TCP PLCs. The [uberjar-plc-sim-s3tables](./examples/uberjar-plc-sim-s3tables/README.md) example reads it,
   so no hardware is needed.
 - Windows (PowerShell) instructions next to the Linux / macOS ones across the docs.
+- 22 new uberjar examples, one per protocol adapter and AWS target, each running the configuration of an
+  integration-test case: see [One example per adapter and AWS target](./docs/examples/README.md#one-example-per-adapter-and-aws-target).
 
 **Fixes**
 

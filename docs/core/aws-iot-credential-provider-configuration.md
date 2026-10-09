@@ -6,7 +6,7 @@ An AWS IoT Credentials Provider Client configuration is used  to obtain temporar
 
 For more info see [Session credentials for targets accessing AWS Service](../sfc-aws-service-credentials.md)
 
-**Examples:** [in-process-slmp-s3](../../examples/in-process-slmp-s3/README.md) defines its client in [credential-providers.json](../../examples/in-process-slmp-s3/credential-providers.json) · [greengrass-in-process](../../examples/greengrass-in-process/README.md) and [greengrass-ipc](../../examples/greengrass-ipc/README.md) use [GreenGrassDeploymentPath](#greengrassdeploymentpath) · all: [examples catalog](../examples/README.md)
+**Examples:** [in-process-slmp-s3](../../examples/in-process-slmp-s3/README.md) defines its client in [credential-providers.json](../../examples/in-process-slmp-s3/credential-providers.json) · all: [examples catalog](../examples/README.md)
 
 - [Schema](#schema)
 - [Examples](#examples)

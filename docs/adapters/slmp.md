@@ -61,7 +61,7 @@ java -cp "C:\sfc\slmp\lib\*" com.amazonaws.sfc.slmp.SlmpProtocolService -port 50
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.slmp.SlmpProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.slmp.SlmpProtocolService -port 50000`).
 
-**Examples:** in-process: [in-process-slmp-s3](../../examples/in-process-slmp-s3/README.md) · IPC: [ipc-slmp-s3](../../examples/ipc-slmp-s3/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-slmp-file](../../examples/uberjar-slmp-file/README.md) · in-process: [in-process-slmp-s3](../../examples/in-process-slmp-s3/README.md) · IPC: [ipc-slmp-s3](../../examples/ipc-slmp-s3/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 

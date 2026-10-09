@@ -59,7 +59,7 @@ java -cp "C:\sfc\opcua-target\lib\*" com.amazonaws.sfc.opcuatarget.OpcuaTargetSe
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.opcuatarget.OpcuaTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.opcuatarget.OpcuaTargetService -port 50001`).
 
-**Examples:** uberjar: [Simulation to OPC UA](../adapters/simulator.md#simulation-to-opc-ua-example) (no hardware) · in-process: [in-process-s7-opcua](../../examples/in-process-s7-opcua/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [Simulation to OPC UA](../adapters/simulator.md#simulation-to-opc-ua-example) (no hardware), [uberjar-opcua-file](../../examples/uberjar-opcua-file/README.md) · in-process: [in-process-s7-opcua](../../examples/in-process-s7-opcua/README.md) · all: [examples catalog](../examples/README.md)
 
 
 

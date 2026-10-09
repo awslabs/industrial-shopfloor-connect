@@ -101,7 +101,7 @@ earlier program execution, if there is any, and subscribe to the configured topi
 configuration. It logs `Connected to <EndPoint>, subscribing to topic <TopicName>`; for each message on the topic it
 logs `Received configuration from topic <TopicName>` and, for a valid configuration, `Sending configuration to
 SFC-Core`, after which SFC restarts with that configuration. To try it with the uberjar, publish the
-[Quickstart `simulator.json`](../../README.md#2-first-data--no-hardware-no-cloud) to the topic with any MQTT client.
+[Quickstart `simulator.json`](../../README.md#2-helloworld-simulator-example) to the topic with any MQTT client.
 
 ### MQTT configuration provider configuration
 

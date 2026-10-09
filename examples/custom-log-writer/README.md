@@ -7,7 +7,7 @@ Template for a [custom log writer](../../docs/sfc-extending.md#custom-logging).
 ## Use it
 
 The class is part of the uberjar installed by [sfcup](../../README.md#1-install). Add this section at the top level of
-a configuration, for example the [Quickstart `simulator.json`](../../README.md#2-first-data--no-hardware-no-cloud):
+a configuration, for example the [Quickstart `simulator.json`](../../README.md#2-helloworld-simulator-example):
 
 ```json
 "LogWriter": {

@@ -65,9 +65,6 @@ $env:SFC_CONFIG = Get-Content -Raw example.json
 sfcx -info
 ```
 
-The [Greengrass uberjar example](../examples/greengrass-uberjar/README.md) passes its whole configuration this way
-(`Setenv` `SFC_CONFIG` in the component recipe).
-
 ## Running the process from a single jar file
 
 The uberjar, its launchers and how its configuration differs are described in

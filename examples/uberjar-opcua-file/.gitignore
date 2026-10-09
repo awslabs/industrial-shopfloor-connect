@@ -1,0 +1,6 @@
+# Written by create.sh / create.ps1 and by the run
+opcua-to-file.json
+out/
+issuers/
+rejected/
+trusted/

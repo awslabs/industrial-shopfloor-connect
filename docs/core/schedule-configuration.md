@@ -100,7 +100,7 @@ Default is "None"
 
 [^top](#scheduleconfiguration)
 
-See it running: [Quickstart simulator.json](../../README.md#2-first-data--no-hardware-no-cloud) (one schedule, one source) and [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md) (three simulated PLCs as sources in one schedule, no hardware).
+See it running: [Quickstart simulator.json](../../README.md#2-helloworld-simulator-example) (one schedule, one source) and [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md) (three simulated PLCs as sources in one schedule, no hardware).
 
 
 

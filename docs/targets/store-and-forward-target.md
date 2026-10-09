@@ -109,7 +109,7 @@ java -cp "C:\sfc\store-forward-target\lib\*" com.amazonaws.sfc.storeforward.AwsS
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.storeforward.AwsStoreForwardTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.storeforward.AwsStoreForwardTargetService -port 50001`).
 
-**Examples:** none yet - start from [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) and swap in this component. All: [examples catalog](../examples/README.md)
+**Examples:** none yet - start from [Quickstart step 2](../../README.md#2-helloworld-simulator-example) and swap in this component. All: [examples catalog](../examples/README.md)
 
 **Configuration:**
 
@@ -249,7 +249,7 @@ The WriteTimeout property specifies the maximum time (in seconds) allowed for wr
 
 ### StoreForwardTargetConfiguration Examples
 
-A store and forward target in front of a [File target](./file.md), in the uberjar style. To try it, use these sections in place of the `Targets` and `TargetTypes` of [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud), set the schedule's `Targets` to `["StoreForward"]`, and create the `store` and `out` directories in the directory you start SFC from:
+A store and forward target in front of a [File target](./file.md), in the uberjar style. To try it, use these sections in place of the `Targets` and `TargetTypes` of [Quickstart step 2](../../README.md#2-helloworld-simulator-example), set the schedule's `Targets` to `["StoreForward"]`, and create the `store` and `out` directories in the directory you start SFC from:
 
 **Linux / macOS**
 

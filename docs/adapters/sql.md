@@ -55,7 +55,7 @@ java -cp "C:\sfc\sql\lib\*" com.amazonaws.sfc.sql.SqlProtocolService -port 50000
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.sql.SqlProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.sql.SqlProtocolService -port 50000`).
 
-**Examples:** none yet - start from [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) and swap in this component. All: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-sql-file](../../examples/uberjar-sql-file/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 

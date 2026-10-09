@@ -18,7 +18,7 @@ The framework contains classes that speed up the development of JVM protocol and
 The components don't have any runtime environment-specific dependencies (the few OS limits are listed under [Platform support](./README.md#platform-support)). They can be deployed as:
 
 - *Standalone applications* on target platforms supporting the JVM or runtimes used to implement additional adapters and targets.
-- *AWS IoT Greengrass v2 components* or containers: see the [uberjar](../examples/greengrass-uberjar/README.md), [in-process](../examples/greengrass-in-process/README.md) and [IPC](../examples/greengrass-ipc/README.md) Greengrass examples
+- *AWS IoT Greengrass v2 components*
 - *Docker* or *Kubernetes* containers
 
 ## Choose a deployment mode
@@ -42,7 +42,7 @@ New to SFC? Start with the uberjar: the [Quickstart](../README.md#1-install) ins
 
 Every adapter and target has a type code, listed in [Protocol adapter types and classes](./sfc-running-adapters.md#protocol-adapter-types-and-classes) and [Target types and classes](./sfc-running-targets.md#target-types-and-classes). `AdapterType` and `TargetType` are mandatory in every mode and must equal that code, and in the uberjar and in-process modes the `AdapterTypes` and `TargetTypes` keys are the same code. Instance names, the keys under `ProtocolAdapters`, `Targets`, `Sources`, `AdapterServers` and `TargetServers`, are free.
 
-Each mode is shown below with the [Quickstart `simulator.json`](../README.md#2-first-data--no-hardware-no-cloud). Only the sections that differ are listed; the rest of the file stays as it is. All modes need a Java 17 (or newer) runtime (Windows: `winget install EclipseAdoptium.Temurin.17.JDK`).
+Each mode is shown below with the [Quickstart `simulator.json`](../README.md#2-helloworld-simulator-example). Only the sections that differ are listed; the rest of the file stays as it is. All modes need a Java 17 (or newer) runtime (Windows: `winget install EclipseAdoptium.Temurin.17.JDK`).
 
 ### Uberjar
 
@@ -239,8 +239,6 @@ See Also
 
 - IPC examples: [OPC-UA to MSK](../examples/ipc-opcua-msk/README.md), [ADS to S3](../examples/ipc-ads-s3/README.md), [SLMP to S3](../examples/ipc-slmp-s3/README.md)
 
-- [Greengrass in-process](../examples/greengrass-in-process/README.md) and [Greengrass IPC](../examples/greengrass-ipc/README.md) labs: the same OPC-UA pipeline in both models
-
 - All examples: [examples catalog](./examples/README.md)
 
 
@@ -363,5 +361,4 @@ See Also
 
 - [Running the SFC core process](./sfc-running-core-process.md) — the command-line options of `sfcx` and `sfc-main`
 - [Uberjar PLC simulator example](../examples/uberjar-plc-sim-s3tables/README.md) — S7, ADS and PCCC from `omni-plc-sim` to a file and S3 Tables
-- [Greengrass uberjar example](../examples/greengrass-uberjar/README.md) — the uberjar as a Greengrass V2 component
 

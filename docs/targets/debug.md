@@ -57,13 +57,13 @@ java -cp "C:\sfc\debug-target\lib\*" com.amazonaws.sfc.debugtarget.DebugTargetSe
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.debugtarget.DebugTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.debugtarget.DebugTargetService -port 50001`).
 
-**Examples:** uberjar: [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud), [greengrass-uberjar](../../examples/greengrass-uberjar/README.md), [opcua-to-iot-using-filters](../../examples/opcua-to-iot-using-filters/README.md) · in-process: [greengrass-in-process](../../examples/greengrass-in-process/README.md), [in-process-sim-s3tables](../../examples/in-process-sim-s3tables/README.md), [in-process-opcua-sitewise](../../examples/in-process-opcua-sitewise/README.md), [in-process-opcua-sitewiseedge](../../examples/in-process-opcua-sitewiseedge/README.md) · IPC: [ipc-opcua-msk](../../examples/ipc-opcua-msk/README.md), [greengrass-ipc](../../examples/greengrass-ipc/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [Quickstart step 2](../../README.md#2-helloworld-simulator-example), [opcua-to-iot-using-filters](../../examples/opcua-to-iot-using-filters/README.md) · in-process: [in-process-sim-s3tables](../../examples/in-process-sim-s3tables/README.md), [in-process-opcua-sitewise](../../examples/in-process-opcua-sitewise/README.md), [in-process-opcua-sitewiseedge](../../examples/in-process-opcua-sitewiseedge/README.md) · IPC: [ipc-opcua-msk](../../examples/ipc-opcua-msk/README.md) · all: [examples catalog](../examples/README.md)
 
 ## Configuration
 
 A debug target is a plain [TargetConfiguration](../core/target-configuration.md) entry; it has no additional elements. The Targets configuration element can contain entries of this type, the TargetType of these entries must be set to **"DEBUG-TARGET"**.
 
-Each record is printed as pretty-printed JSON (or as the output of its [Template](#template) or [Formatter](#formatter)), as an Info message on the console of the process that runs the target: SFC itself, or the debug target service in IPC mode. With the log level of that process set to Warning or Error (`LogLevel` in its configuration, or the `-warning` and `-error` options) nothing is printed. [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) shows the output.
+Each record is printed as pretty-printed JSON (or as the output of its [Template](#template) or [Formatter](#formatter)), as an Info message on the console of the process that runs the target: SFC itself, or the debug target service in IPC mode. With the log level of that process set to Warning or Error (`LogLevel` in its configuration, or the `-warning` and `-error` options) nothing is printed. [Quickstart step 2](../../README.md#2-helloworld-simulator-example) shows the output.
 
 - [Schema](#schema)
 - [Example](#example)

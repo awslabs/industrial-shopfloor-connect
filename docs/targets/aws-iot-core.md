@@ -57,7 +57,7 @@ java -cp "C:\sfc\aws-iot-core-target\lib\*" com.amazonaws.sfc.awsiotcore.AwsIotC
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awsiotcore.AwsIotCoreTargetService -port 50001`).
 
-**Examples:** uberjar: [opcua-to-iot-using-filters](../../examples/opcua-to-iot-using-filters/README.md) · in-process: [yaml-custom-config-provider](../../examples/yaml-custom-config-provider/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [opcua-to-iot-using-filters](../../examples/opcua-to-iot-using-filters/README.md), [uberjar-sim-iot-core](../../examples/uberjar-sim-iot-core/README.md) · in-process: [yaml-custom-config-provider](../../examples/yaml-custom-config-provider/README.md) · all: [examples catalog](../examples/README.md)
 
 ## AwsIotCoreTargetConfiguration
 

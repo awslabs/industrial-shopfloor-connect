@@ -60,7 +60,7 @@ java -cp "C:\sfc\opcua\lib\*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000`).
 
-**Examples:** uberjar: [Quickstart step 3](../../README.md#3-real-opc-ua-to-s3-tables) · in-process: [in-process-opcua-msk](../../examples/in-process-opcua-msk/README.md), [in-process-opcua-sitewise](../../examples/in-process-opcua-sitewise/README.md), [in-process-opcua-sitewiseedge](../../examples/in-process-opcua-sitewiseedge/README.md), [greengrass-in-process](../../examples/greengrass-in-process/README.md) · IPC: [ipc-opcua-msk](../../examples/ipc-opcua-msk/README.md), [greengrass-ipc](../../examples/greengrass-ipc/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [Quickstart step 3](../../README.md#3-a-more-serious-example---ingest-opc-ua-to-iceberg-aws-s3-tables), [uberjar-opcua-file](../../examples/uberjar-opcua-file/README.md) · in-process: [in-process-opcua-msk](../../examples/in-process-opcua-msk/README.md), [in-process-opcua-sitewise](../../examples/in-process-opcua-sitewise/README.md), [in-process-opcua-sitewiseedge](../../examples/in-process-opcua-sitewiseedge/README.md) · IPC: [ipc-opcua-msk](../../examples/ipc-opcua-msk/README.md) · all: [examples catalog](../examples/README.md)
 
 
 
@@ -1262,7 +1262,7 @@ The Port property specifies the OPCUA server port.
 
 **Type** : Integer
 
-Default value is 53530. The umati sample server used in [Quickstart step 3](../../README.md#3-real-opc-ua-to-s3-tables) listens on 4840; set Port to the port of your server.
+Default value is 53530. The umati sample server used in [Quickstart step 3](../../README.md#3-a-more-serious-example---ingest-opc-ua-to-iceberg-aws-s3-tables) listens on 4840; set Port to the port of your server.
 
 ---
 ### ReadBatchSize

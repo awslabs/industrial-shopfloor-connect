@@ -57,7 +57,7 @@ java -cp "C:\sfc\aws-sqs-target\lib\*" com.amazonaws.sfc.awssqs.AwsSqsTargetServ
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awssqs.AwsSqsTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awssqs.AwsSqsTargetService -port 50001`).
 
-**Examples:** none yet - start from [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) and swap in this component. All: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-sim-sqs](../../examples/uberjar-sim-sqs/README.md) · all: [examples catalog](../examples/README.md)
 
 ## AwsSqsTargetConfiguration
 

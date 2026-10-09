@@ -59,7 +59,7 @@ java -cp "C:\sfc\aws-s3-tables-target\lib\*" com.amazonaws.sfc.awss3tables.AwsS3
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awss3tables.AwsS3TablesTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awss3tables.AwsS3TablesTargetService -port 50001`).
 
-**Examples:** uberjar: [Quickstart step 3](../../README.md#3-real-opc-ua-to-s3-tables), [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md), [simulator-to-s3tables-uberjar.json](../../examples/in-process-sim-s3tables/sfc-to-s3tables/simulator-to-s3tables-uberjar.json) · in-process: [in-process-sim-s3tables](../../examples/in-process-sim-s3tables/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [Quickstart step 3](../../README.md#3-a-more-serious-example---ingest-opc-ua-to-iceberg-aws-s3-tables), [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md), [simulator-to-s3tables-uberjar.json](../../examples/in-process-sim-s3tables/sfc-to-s3tables/simulator-to-s3tables-uberjar.json), [uberjar-sim-s3tables](../../examples/uberjar-sim-s3tables/README.md) · in-process: [in-process-sim-s3tables](../../examples/in-process-sim-s3tables/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 

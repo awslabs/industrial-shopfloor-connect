@@ -59,7 +59,7 @@ java -cp "C:\sfc\aws-msk-target\lib\*" com.amazonaws.sfc.awsmsk.AwsMskTargetServ
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awsmsk.AwsMskTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awsmsk.AwsMskTargetService -port 50001`).
 
-**Examples:** in-process: [in-process-opcua-msk](../../examples/in-process-opcua-msk/README.md) (affected by the in-process limitation above) · IPC: [ipc-opcua-msk](../../examples/ipc-opcua-msk/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-sim-msk](../../examples/uberjar-sim-msk/README.md) · in-process: [in-process-opcua-msk](../../examples/in-process-opcua-msk/README.md) (affected by the in-process limitation above) · IPC: [ipc-opcua-msk](../../examples/ipc-opcua-msk/README.md) · all: [examples catalog](../examples/README.md)
 
 ## AwsMskTargetConfiguration
 

@@ -57,7 +57,7 @@ java -cp "C:\sfc\mqtt-target\lib\*" com.amazonaws.sfc.mqtt.MqttTargetService -po
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.mqtt.MqttTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.mqtt.MqttTargetService -port 50001`).
 
-**Examples:** in-process: [greengrass-in-process](../../examples/greengrass-in-process/README.md) · IPC: [greengrass-ipc](../../examples/greengrass-ipc/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-mqtt-file](../../examples/uberjar-mqtt-file/README.md) · all: [examples catalog](../examples/README.md)
 
 ## MqttTargetConfiguration
 
@@ -490,7 +490,7 @@ Default is true
 
 ### MqttTargetConfiguration Examples
 
-To try the target, replace the `DebugTarget` of [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) with this entry (also in the schedule's `Targets`) and add the uberjar `TargetTypes` entry from [Deploy this target](#deploy-this-target). It publishes every record to the topic `sfc/demo` of a broker on the same host, for example Mosquitto on port 1883:
+To try the target, replace the `DebugTarget` of [Quickstart step 2](../../README.md#2-helloworld-simulator-example) with this entry (also in the schedule's `Targets`) and add the uberjar `TargetTypes` entry from [Deploy this target](#deploy-this-target). It publishes every record to the topic `sfc/demo` of a broker on the same host, for example Mosquitto on port 1883:
 
 ```json
 "Targets": {

@@ -59,7 +59,7 @@ java -cp "C:\sfc\file-target\lib\*" com.amazonaws.sfc.filetarget.FileTargetServi
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.filetarget.FileTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.filetarget.FileTargetService -port 50001`).
 
-**Examples:** uberjar: [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md#4-look-at-the-data) (writes every record to `out/`) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md#4-look-at-the-data) (writes every record to `out/`), every `uberjar-*-file` example in [one example per adapter and AWS target](../examples/README.md#one-example-per-adapter-and-aws-target) · all: [examples catalog](../examples/README.md)
 
 ## FileConfiguration
 

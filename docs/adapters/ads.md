@@ -68,7 +68,7 @@ java -cp "C:\sfc\ads\lib\*" com.amazonaws.sfc.ads.AdsProtocolService -port 50000
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.ads.AdsProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.ads.AdsProtocolService -port 50000`).
 
-**Examples:** uberjar: [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md) · in-process: [in-process-ads-s3](../../examples/in-process-ads-s3/README.md) · IPC: [ipc-ads-s3](../../examples/ipc-ads-s3/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md), [uberjar-ads-file](../../examples/uberjar-ads-file/README.md) · in-process: [in-process-ads-s3](../../examples/in-process-ads-s3/README.md) · IPC: [ipc-ads-s3](../../examples/ipc-ads-s3/README.md) · all: [examples catalog](../examples/README.md)
 
 
 

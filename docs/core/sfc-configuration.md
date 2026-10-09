@@ -4,7 +4,7 @@
 
 The Shop Floor Connectivity (SFC) top-level configuration defines the core structure and behavior of a system designed for industrial data collection and connectivity. It provides a framework for connecting manufacturing shopfloor devices and systems to AWS services, with features for protocol adaptation, data filtering, scheduling, and secure data transmission. The configuration manages everything from source connections to target destinations, including security credentials, health monitoring, logging, and data transformation capabilities, enabling consistent data collection from diverse industrial equipment.
 
-A minimal working configuration (simulator to console, uberjar) is the [Quickstart simulator.json](../../README.md#2-first-data--no-hardware-no-cloud). All configuration types: [core configuration types](./README.md).
+A minimal working configuration (simulator to console, uberjar) is the [Quickstart simulator.json](../../README.md#2-helloworld-simulator-example). All configuration types: [core configuration types](./README.md).
 
 How the sections connect:
 
@@ -706,7 +706,7 @@ Optional
 
 ## Examples
 
-A minimal uberjar configuration is the [Quickstart simulator.json](../../README.md#2-first-data--no-hardware-no-cloud).
+A minimal uberjar configuration is the [Quickstart simulator.json](../../README.md#2-helloworld-simulator-example).
 
 The first two examples below are in-process configurations. They load the module bundles from the directory in `SFC_DEPLOYMENT_DIR`; set it in the terminal that starts `sfc-main` (see [In-process](../sfc-deployment.md#in-process)):
 

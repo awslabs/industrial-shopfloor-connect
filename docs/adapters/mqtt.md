@@ -59,7 +59,7 @@ java -cp "C:\sfc\mqtt\lib\*" com.amazonaws.sfc.mqtt.MqttProtocolService -port 50
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.mqtt.MqttProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.mqtt.MqttProtocolService -port 50000`).
 
-**Examples:** uberjar: [greengrass-uberjar](../../examples/greengrass-uberjar/README.md) · in-process: [in-process-iot-core-opcua-write](../../examples/in-process-iot-core-opcua-write/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-mqtt-file](../../examples/uberjar-mqtt-file/README.md) · in-process: [in-process-iot-core-opcua-write](../../examples/in-process-iot-core-opcua-write/README.md) · all: [examples catalog](../examples/README.md)
 
 ## Known limitations
 

@@ -8,7 +8,7 @@ the record, `<yyyy-MM-dd HH:mm:ss.SSS> TargetData(...)`; the records of a batch 
 
 The class is part of the uberjar installed by [sfcup](../../README.md#1-install), so `FactoryClassName` is all the
 [Formatter](../../docs/core/target-configuration.md#formatter) of a target needs. For example, in the `Targets`
-section of the [Quickstart `simulator.json`](../../README.md#2-first-data--no-hardware-no-cloud):
+section of the [Quickstart `simulator.json`](../../README.md#2-helloworld-simulator-example):
 
 ```json
 "Targets": {

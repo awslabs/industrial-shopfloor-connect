@@ -64,7 +64,7 @@ From an sfcup install, start the same service from the uberjar: `java -cp "$HOME
 
 The process that runs the writer needs `cloudwatch:PutMetricData`.
 
-**Examples:** none yet - add the uberjar `Metrics` section above to [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud). All: [examples catalog](../examples/README.md)
+**Examples:** none yet - add the uberjar `Metrics` section above to [Quickstart step 2](../../README.md#2-helloworld-simulator-example). All: [examples catalog](../examples/README.md)
 
 ## AwsCloudWatchConfiguration
 

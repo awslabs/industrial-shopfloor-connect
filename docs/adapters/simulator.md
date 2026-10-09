@@ -59,7 +59,7 @@ java -cp "C:\sfc\simulator\lib\*" com.amazonaws.sfc.simulator.SimulatorService -
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.simulator.SimulatorService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.simulator.SimulatorService -port 50000`).
 
-**Examples:** uberjar: [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud), [simulator-to-s3tables-uberjar.json](../../examples/in-process-sim-s3tables/sfc-to-s3tables/simulator-to-s3tables-uberjar.json) · in-process: [in-process-sim-s3tables](../../examples/in-process-sim-s3tables/README.md) · all: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [Quickstart step 2](../../README.md#2-helloworld-simulator-example), [simulator-to-s3tables-uberjar.json](../../examples/in-process-sim-s3tables/sfc-to-s3tables/simulator-to-s3tables-uberjar.json), [uberjar-sim-file](../../examples/uberjar-sim-file/README.md) · in-process: [in-process-sim-s3tables](../../examples/in-process-sim-s3tables/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 

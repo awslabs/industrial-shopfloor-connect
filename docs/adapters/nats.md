@@ -57,7 +57,7 @@ java -cp "C:\sfc\nats\lib\*" com.amazonaws.sfc.nats.NatsProtocolService -port 50
 
 From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.nats.NatsProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.nats.NatsProtocolService -port 50000`).
 
-**Examples:** none yet - start from [Quickstart step 2](../../README.md#2-first-data--no-hardware-no-cloud) and swap in this component. All: [examples catalog](../examples/README.md)
+**Examples:** uberjar: [uberjar-nats-file](../../examples/uberjar-nats-file/README.md) · all: [examples catalog](../examples/README.md)
 
 ## Known limitations
 
