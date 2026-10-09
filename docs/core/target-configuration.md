@@ -4,7 +4,7 @@
 
 Defines core configuration settings for [SFC target adapters](./sfc-configuration.md#targets) that specify how data should be published or written to destinations. Target adapters extend this base configuration with protocol-specific properties to handle different output requirements and destinations.
 
-How a target is configured in the uberjar, in-process and IPC modes: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode).
+How a target is configured in the uberjar, in-process and IPC modes: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode).
 
 - [Schema](#schema)
 - [Examples](#examples)

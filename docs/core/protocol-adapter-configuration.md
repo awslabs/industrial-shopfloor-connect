@@ -4,7 +4,7 @@
 
 Defines the base configuration structure for protocol adapters in SFC, specifying how adapters operate either in-process or as separate services. Includes essential settings for adapter type, server configuration, metrics collection, and custom descriptions. Serves as the foundation for protocol-specific adapter implementations: each adapter type extends it with its own properties (for example `OpcuaServers` for OPCUA), see [Protocol adapters](../adapters/README.md).
 
-How an adapter is configured in the uberjar, in-process and IPC modes: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode).
+How an adapter is configured in the uberjar, in-process and IPC modes: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode).
 
 - [Schema](#schema)
 - [Examples](#examples)

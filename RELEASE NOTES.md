@@ -49,6 +49,9 @@
 - The OPC UA adapter, target and writer target pages use the key spellings the code reads: `HostOrIP` (not
   `HostOrIp`), `Aes128Sha256RsaOaep` (not `Aes128ShaRsaOaep`) and, for the writer target, `Dimensions` (not
   `ArrayDimensions`).
+- New chapter [SFC Control Plane](./docs/sfc-deployment.md#sfc-control-plane): the SFC team's
+  [sample-sfc-agentic-control-plane](https://github.com/aws-samples/sample-sfc-agentic-control-plane) manages the
+  full lifecycle of SFC deployments.
 
 ---
 
@@ -92,7 +95,7 @@
 ## version 1.9.4, 3 June 2025
 
 - [Specify the config via environment variables](./docs/sfc-running-core-process.md#additional-functionality-to-specify-the-config-via-environment-variables)
-- [Running the process from a single jar file](./docs/sfc-deployment.md#single-file-deployments)
+- [Running the process from a single jar file](./docs/sfc-deployment.md#uberjar)
 
 ---
 ## Version 1.9.3, 6 May 2025

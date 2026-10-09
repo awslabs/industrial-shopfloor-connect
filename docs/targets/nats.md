@@ -6,7 +6,7 @@ The NATS target adapter enables Shop Floor Connectivity (SFC) to publish data to
 
 ## Deploy this target
 
-`TargetType` is `NATS-TARGET` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+`TargetType` is `NATS-TARGET` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
 
 **Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 

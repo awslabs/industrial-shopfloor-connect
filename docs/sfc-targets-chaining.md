@@ -80,7 +80,7 @@ Reference only the intermediate target in the schedule; the targets behind it ar
 }
 ```
 
-The `Directory` must exist before SFC starts (on Windows write it with forward slashes, e.g. `"C:/sfc/buffer"`). In the in-process mode the `TargetTypes` entries add `JarFiles`, and a next target with a `TargetServer` runs as an IPC service, see [Configure a component in each mode](./sfc-deployment.md#configure-a-component-in-each-mode).
+The `Directory` must exist before SFC starts (on Windows write it with forward slashes, e.g. `"C:/sfc/buffer"`). In the in-process mode the `TargetTypes` entries add `JarFiles`, and a next target with a `TargetServer` runs as an IPC service, see [Configure a component in each mode](./sfc-deployment.md#configuration-in-each-mode).
 
 ## Store and forward
 

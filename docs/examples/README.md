@@ -32,7 +32,7 @@ Every step needs Java 17+; **Needs** lists what else it takes.
 | 2 | [Quickstart step 3](../../README.md#3-a-more-serious-example---ingest-opc-ua-to-iceberg-aws-s3-tables): a real OPC-UA server into S3 Tables (Apache Iceberg) | Docker, an AWS account and the AWS CLI |
 | 3 | [PLC simulator to file and S3 Tables][ex-plc-sim-s3tables]: S7, ADS and PCCC without hardware | A clone of this repository and Rust 1.98+ to build the simulator; AWS credentials only for the S3 Tables part |
 | 4 | [Simulator to S3 Tables][ex-sim-s3tables]: one pipeline run in-process and from the uberjar | A clone of this repository and AWS credentials for S3 Tables |
-| 5 | [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode): the same adapter and target as uberjar, in-process and IPC | SFC installed with [sfcup](../../README.md#1-install); the in-process part also downloads three release bundles |
+| 5 | [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode): the same adapter and target as uberjar, in-process and IPC | SFC installed with [sfcup](../../README.md#1-install); the in-process part also downloads three release bundles |
 
 ## Protocol to AWS pipelines
 

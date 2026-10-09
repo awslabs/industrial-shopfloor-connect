@@ -8,7 +8,7 @@ The [Amazon CloudWatch Metrics](https://docs.aws.amazon.com/AmazonCloudWatch/lat
 
 ## Deploy this metrics writer
 
-The writer has no type code: it is set in the `Writer` of the top-level `Metrics` section, and its own settings go in `Metrics.CloudWatch` ([AwsCloudWatchConfiguration](#awscloudwatchconfiguration)). How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All metrics settings: [MetricsConfiguration](../core/metrics-configuration.md).
+The writer has no type code: it is set in the `Writer` of the top-level `Metrics` section, and its own settings go in `Metrics.CloudWatch` ([AwsCloudWatchConfiguration](#awscloudwatchconfiguration)). How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All metrics settings: [MetricsConfiguration](../core/metrics-configuration.md).
 
 **Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 

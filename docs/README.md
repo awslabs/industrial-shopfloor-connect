@@ -8,7 +8,7 @@ The documentation provides a comprehensive overview of SFC's architecture, capab
 
 - [Quickstart](../README.md#quickstart): install SFC with sfcup, print simulated data with no hardware and no cloud, then write a real OPC-UA server's data to an Apache Iceberg table in Amazon S3 Tables.
 - [Examples catalog](./examples/README.md#start-here): runnable configurations, starting with the ones that need the least.
-- [Choose a deployment mode](./sfc-deployment.md#choose-a-deployment-mode): uberjar, in-process or IPC, and [how a component is configured in each](./sfc-deployment.md#configure-a-component-in-each-mode).
+- [Choose a deployment mode](./sfc-deployment.md#choose-a-deployment-mode): uberjar, in-process or IPC, and [how a component is configured in each](./sfc-deployment.md#configuration-in-each-mode).
 
 ## **Summary**
 
@@ -21,7 +21,7 @@ Shop Floor Connectivity (SFC) is a data ingestion technology for collecting indu
 
 - Key features:
   - [Extensible](#extensibility) . SFC  can be extended to include new protocol and target adapters.
-  - [Flexible deployment options](./sfc-deployment.md), include standalone, containers, and Greengrass.
+  - [Flexible deployment options](./sfc-deployment.md), include standalone, containers, and Greengrass, or managed end to end by the [SFC Control Plane](./sfc-deployment.md#sfc-control-plane).
   - [Data transformations and filtering](./sfc-data-processing-filtering.md), processes, transforms, and filters data between sources and targets using configurable operators and rules
   - [Secure communication](./sfc-securing-component-traffic.md) between components
   - [Integration](./sfc-configuration.md#configuration-secrets) with AWS Secrets Manager
@@ -130,7 +130,9 @@ Shop Floor Connectivity (SFC) is a data ingestion technology for collecting indu
 **SFC Deployment**
 
 - [Deployment models](sfc-deployment.md) — in-process, IPC, mixed, and the
-  [single-jar uberjar](sfc-deployment.md#single-file-deployments)
+  [single-jar uberjar](sfc-deployment.md#uberjar)
+- [SFC Control Plane](sfc-deployment.md#sfc-control-plane) — manage SFC configurations and edge hosts over their
+  full lifecycle, from the SFC team's [sample-sfc-agentic-control-plane](https://github.com/aws-samples/sample-sfc-agentic-control-plane)
 
 
 
@@ -278,8 +280,8 @@ SFC protocol and target adapters can be implemented as a JVM component or as an 
 protocol for communication. When running as [stand-alone services](./sfc-deployment.md#deployment-options), protocol adapters can be 
 deployed on separate machines from the SFC Core process, with [secure communication](./sfc-securing-component-traffic.md) 
 facilitated by gRPC. The SFC Core provides a consistent infrastructure allowing all JVM based protocol and target adapters 
-to run in the [same process](sfc-deployment.md#in-process-and-ipc-deployment-models) as the SFC Core or as 
-a [stand-alone microservice](./sfc-deployment.md#in-process-and-ipc-deployment-models).
+to run in the [same process](sfc-deployment.md#details-wrt-in-process-and-ipc-deployment-models) as the SFC Core or as 
+a [stand-alone microservice](./sfc-deployment.md#details-wrt-in-process-and-ipc-deployment-models).
 
 Distributed deployment using microservices is required to deploy in environments that use segregated OT and IT networks,
 with components connected to devices, protocol adapters, deployed in the OT network and components requiring internet

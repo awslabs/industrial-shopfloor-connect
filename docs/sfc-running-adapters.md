@@ -12,7 +12,7 @@ Every protocol adapter has a fixed type code. `AdapterType` must be set to that 
 the uberjar and in-process modes the `AdapterTypes` key is the same code. The module is the name of the adapter's release
 bundle (`<module>.tar.gz`), of its `JarFiles` directory (`${SFC_DEPLOYMENT_DIR}/<module>/lib`) and of its IPC launcher
 (`<module>/bin/<module>`). How the three modes use these values:
-[Configure a component in each mode](./sfc-deployment.md#configure-a-component-in-each-mode).
+[Configure a component in each mode](./sfc-deployment.md#configuration-in-each-mode).
 
 | Protocol                                  | AdapterType  | Module       | FactoryClassName                                | IPC service class                                       |
 |-------------------------------------------|--------------|--------------|-------------------------------------------------|---------------------------------------------------------|
@@ -191,7 +191,7 @@ Each adapter is in a subdirectory of the deployment directory, named after its m
 ```
 
 The uberjar already contains every adapter, so when SFC runs from the uberjar the same entries name only the
-`FactoryClassName`; see [Configure a component in each mode](./sfc-deployment.md#configure-a-component-in-each-mode).
+`FactoryClassName`; see [Configure a component in each mode](./sfc-deployment.md#configuration-in-each-mode).
 
 **Examples:** [Simulator to S3 Tables](../examples/in-process-sim-s3tables/README.md) and
 [ADS to S3](../examples/in-process-ads-s3/README.md).

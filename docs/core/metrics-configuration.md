@@ -119,7 +119,7 @@ For the AWS CloudWatch writer add a `CloudWatch` object (`Region`, `CredentialPr
 
 ## Examples
 
-The examples use the AWS CloudWatch metrics writer. How the deployment modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode).
+The examples use the AWS CloudWatch metrics writer. How the deployment modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode).
 
 **Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 

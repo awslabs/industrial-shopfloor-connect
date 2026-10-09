@@ -4,7 +4,7 @@ The main class for running the SFC core process is `com.amazonaws.sfc.MainContro
 launchers, which take the same command-line arguments:
 
 - `sfcx`, the uberjar launcher installed by [sfcup](../README.md#1-install). The uberjar is described in
-  [Single file deployments](./sfc-deployment.md#single-file-deployments).
+  [Single file deployments](./sfc-deployment.md#uberjar).
 - `sfc-main/bin/sfc-main`, from the per-module bundle `sfc-main.tar.gz`, a release asset. A source build
   (`./gradlew build`) collects it, with all other bundles, in `build/distribution/`. The sfc-main.tar.gz file contains
   script files (**bin/sfc-main** and **bin/sfc-main.bat**) to launch the application, and all required libraries
@@ -68,5 +68,5 @@ sfcx -info
 ## Running the process from a single jar file
 
 The uberjar, its launchers and how its configuration differs are described in
-[Single file deployments](./sfc-deployment.md#single-file-deployments): components inside the uberjar are named by their
+[Single file deployments](./sfc-deployment.md#uberjar): components inside the uberjar are named by their
 `FactoryClassName` alone, and only `ConfigProvider` and `LogWriter` sections keep an empty `"JarFiles": []`.

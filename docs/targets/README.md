@@ -2,7 +2,7 @@
 
 Shop Floor Connectivity target connectors enable data transmission from industrial devices to various destinations. These connectors handle the delivery of collected data, applying optional transformations using Apache Velocity templates. The following list details the available target connectors that can be configured to send your industrial data to different services and endpoints.
 
-Each target page has a *Deploy this target* section for the [uberjar, in-process and IPC modes](../sfc-deployment.md#configure-a-component-in-each-mode); the fixed `TargetType` value (required in every mode), `FactoryClassName` and IPC service class of every target are listed in [Target types and classes](../sfc-running-targets.md#target-types-and-classes). Runnable configurations: [examples catalog](../examples/README.md#start-here).
+Each target page has a *Deploy this target* section for the [uberjar, in-process and IPC modes](../sfc-deployment.md#configuration-in-each-mode); the fixed `TargetType` value (required in every mode), `FactoryClassName` and IPC service class of every target are listed in [Target types and classes](../sfc-running-targets.md#target-types-and-classes). Runnable configurations: [examples catalog](../examples/README.md#start-here).
 
 ## Service targets
 

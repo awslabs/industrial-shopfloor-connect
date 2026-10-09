@@ -4,7 +4,7 @@ The SQL adapter for Shop Floor Connectivity (SFC) enables data ingestion from SQ
 
 ## Deploy this adapter
 
-`AdapterType` is `SQL` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+`AdapterType` is `SQL` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
 
 **Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 

@@ -2,10 +2,12 @@
 
 - [Deployment options](#deployment-options)
 - [Choose a deployment mode](#choose-a-deployment-mode)
-- [Configure a component in each mode](#configure-a-component-in-each-mode)
-- [In-process and IPC deployment models](#in-process-and-ipc-deployment-models)
-- [Mixed models](#mixed-models)
-- [Single file deployments](#single-file-deployments) — the uberjar
+- [Configuration in each mode](#configuration-in-each-mode)
+- [Publish to AWS with sfcup](#publish-to-aws-with-sfcup)
+  - [Container image in Amazon ECR](#container-image-in-amazon-ecr)
+  - [AWS IoT Greengrass v2 component](#aws-iot-greengrass-v2-component)
+- [SFC Control Plane](#sfc-control-plane)
+- [Details wrt. In-process and IPC deployment models](#details-wrt-in-process-and-ipc-deployment-models)
 
 ## Deployment options
 
@@ -18,12 +20,17 @@ The framework contains classes that speed up the development of JVM protocol and
 The components don't have any runtime environment-specific dependencies (the few OS limits are listed under [Platform support](./README.md#platform-support)). They can be deployed as:
 
 - *Standalone applications* on target platforms supporting the JVM or runtimes used to implement additional adapters and targets.
-- *AWS IoT Greengrass v2 components*
-- *Docker* or *Kubernetes* containers
+  sfcup installs the uberjar and the `sfcx` command ([Quickstart](../README.md#1-install)).
+- *AWS IoT Greengrass v2 components*. `sfcup.sh --aws-greengrass` (Windows: `sfcup.ps1 -AwsGreengrass`)
+  creates one from the uberjar, for Linux and Windows core devices: [AWS IoT Greengrass v2 component](#aws-iot-greengrass-v2-component).
+- *Docker* or *Kubernetes* containers. `sfcup.sh --aws-ecr` (Windows: `sfcup.ps1 -AwsEcr`) builds the `sfcx`
+  image, which runs the core or any IPC service, and pushes it to Amazon ECR: [Container image in Amazon ECR](#container-image-in-amazon-ecr).
+- *Launch packages* of the SFC Control Plane, which configures, runs and monitors SFC on Linux, macOS and
+  Windows hosts from a web app in your AWS account: [SFC Control Plane](#sfc-control-plane).
 
 ## Choose a deployment mode
 
-SFC runs its adapters and targets in one of three modes. The mode decides where their code comes from and in which process it runs; schedules, sources, channels and transformations are configured the same way in all three, and the modes can be [mixed](#mixed-models) in one configuration.
+SFC runs its adapters and targets in one of three modes (`Uberjar`, `In-Process` or `IPC`). The mode decides where their code comes from and in which process it runs; schedules, sources, channels and transformations are configured the same way in all three, and the modes can be mixed in one configuration.
 
 | | Uberjar | In-process | IPC |
 |---|---|---|---|
@@ -38,7 +45,7 @@ SFC runs its adapters and targets in one of three modes. The mode decides where 
 
 New to SFC? Start with the uberjar: the [Quickstart](../README.md#1-install) installs it and shows first data in a minute, and the [examples catalog](./examples/README.md#start-here) lists the next steps.
 
-## Configure a component in each mode
+## Configuration in each mode
 
 Every adapter and target has a type code, listed in [Protocol adapter types and classes](./sfc-running-adapters.md#protocol-adapter-types-and-classes) and [Target types and classes](./sfc-running-targets.md#target-types-and-classes). `AdapterType` and `TargetType` are mandatory in every mode and must equal that code, and in the uberjar and in-process modes the `AdapterTypes` and `TargetTypes` keys are the same code. Instance names, the keys under `ProtocolAdapters`, `Targets`, `Sources`, `AdapterServers` and `TargetServers`, are free.
 
@@ -46,7 +53,7 @@ Each mode is shown below with the [Quickstart `simulator.json`](../README.md#2-h
 
 ### Uberjar
 
-This is the Quickstart as shipped. Every component is on the uberjar's classpath, so the type entries name `FactoryClassName` only:
+This is the default as shipped using sfcup. Every component is on the uberjar's classpath, so the type entries name `FactoryClassName` only:
 
 ```json
 "Targets": {
@@ -67,14 +74,7 @@ This is the Quickstart as shipped. Every component is on the uberjar's classpath
 sfcx -config simulator.json -info
 ```
 
-The one exception is a `ConfigProvider` or `LogWriter` section: SFC ignores it unless it has a `JarFiles` key, so in the uberjar give it an empty list:
 
-```json
-"LogWriter": {
-  "JarFiles": [],
-  "FactoryClassName": "com.amazonaws.sfc.log.CustomLogWriter"
-}
-```
 
 Example: [PLC simulator to file and S3 Tables](../examples/uberjar-plc-sim-s3tables/README.md).
 
@@ -185,7 +185,101 @@ The records now print in the terminal of the debug target service. The first val
 
 Example: [OPC-UA to MSK over IPC](../examples/ipc-opcua-msk/README.md).
 
-## In-process and IPC deployment models
+## Publish to AWS with sfcup
+
+sfcup can publish the uberjar to your AWS account instead of installing it. Both modes use the same
+`sfc-uberjar.tar.gz` as the installer (the release, or `--local` / `-Local` for a source build), unpack it
+into a scratch directory and install nothing locally. Both need the AWS CLI v2 with credentials;
+`--dry-run` / `-DryRun` only prints the generated Dockerfile or recipe.
+
+### Container image in Amazon ECR
+
+Builds the `sfcx` image (Amazon Corretto 21, the uberjar in `/opt/sfc`) and pushes it to the ECR
+repository `sfcx` (created if missing), tagged with the SFC version. Needs docker, podman or finch;
+on Windows with Linux containers.
+
+**Linux / macOS**
+
+```shell
+./sfcup.sh --aws-ecr --region eu-central-1
+```
+
+**Windows (PowerShell)**
+
+```powershell
+.\sfcup.ps1 -AwsEcr -Region eu-central-1
+```
+
+Options: `--repo` / `-Repo`, `--tag` / `-Tag`, `--platform` / `-Platform` (for example `linux/amd64`).
+One image runs every variant:
+
+| Run | Command |
+|---|---|
+| sfc-main (the default) | `docker run --rm -v "$PWD:/cfg" IMAGE -config /cfg/sfc-config.json -info` |
+| sfc-main, configuration from `SFC_CONFIG` | `docker run --rm -e SFC_CONFIG="$(cat sfc-config.json)" IMAGE` |
+| one IPC service | `docker run --rm -p 50000:50000 IMAGE ipc opcua -port 50000` |
+| list the IPC services | `docker run --rm IMAGE ipc list` |
+| usage | `docker run --rm IMAGE help` |
+
+`ipc <service>` takes the module name (`simulator`, `opcua`, `s7`, `aws-s3-target`, `debug-target`, ...)
+and starts its service class from the uberjar; `JAVA_OPTS` passes JVM options.
+
+### AWS IoT Greengrass v2 component
+
+Uploads the jar to S3 (bucket `sfcx-greengrass-<account>-<region>`, created if missing) and creates the
+component `com.amazonaws.sfc.Sfcx`, version = the release version, for Linux and Windows core devices.
+Its default configuration (`SfcConfig`) is the simulator to the debug target from the
+[quickstart](../README.md#2-helloworld-simulator-example); the debug target writes to the component
+log.
+
+**Linux / macOS**
+
+```shell
+./sfcup.sh --aws-greengrass --region eu-central-1
+```
+
+**Windows (PowerShell)**
+
+```powershell
+.\sfcup.ps1 -AwsGreengrass -Region eu-central-1
+```
+
+Options: `--bucket` / `-Bucket`, `--component` / `-Component`, `--component-version` /
+`-ComponentVersion` (`x.y.z`, each part at most 999999; a `--local` build gets
+`0.<days since 1970>.<second of the day>`, because a component version can be created only once).
+
+- The core device needs Java 17 or newer on the PATH of the Greengrass user; the install step checks it.
+- Each time the component starts, the run step writes the configuration to `{work:path}/sfc-config.json`
+  from the `SFC_CONFIG_JSON` environment variable (`printf` on Linux, `[IO.File]::WriteAllText` on
+  Windows) and then starts sfc-main, so no shell ever parses the JSON.
+- The token exchange role of the core device needs `s3:GetObject` on the bucket.
+- Another SFC configuration: deploy the component with a configuration update that resets
+  `/SfcConfig` and merges `{"SfcConfig": {...}}`.
+
+## SFC Control Plane
+
+The [SFC Agentic Control Plane](https://github.com/aws-samples/sample-sfc-agentic-control-plane), built by the
+SFC team, manages the full lifecycle of SFC deployments from a serverless web app in your AWS account:
+
+- **Configure:** edit SFC configurations in a JSON editor, or have an AI agent on Amazon Bedrock AgentCore
+  generate them; the agent validates each configuration against the SFC specification it reads from this
+  repository. Configurations are versioned, and one version is pinned for packaging.
+- **Package:** a launch package is a zip with the configuration, an AWS IoT device certificate and role alias
+  for short-lived AWS credentials, the runtime agent `aws-sfc-runtime-agent`, and launchers for Linux
+  (`run.sh`), macOS (`run.command`) and Windows (`run.bat`). A package can also be registered as an AWS IoT
+  Greengrass component for Linux core devices.
+- **Run:** the launchers offer to install Amazon Corretto 21 and uv if they are missing. The runtime agent downloads
+  `sfc-main` and the module bundles that the configuration names from this repository's GitHub releases, and
+  runs SFC in [in-process](#in-process) mode.
+- **Operate:** heartbeats, logs in Amazon CloudWatch and live channel values show up in the web app. From
+  there you push a new configuration version, restart SFC or switch it to trace logging, without logging in
+  to the host.
+- **Fix:** from the error lines in the logs, the AI agent proposes a corrected configuration, shown as a diff.
+
+It is deployed with the AWS CDK, see its
+[Deployment & Quickstart](https://github.com/aws-samples/sample-sfc-agentic-control-plane#deployment--quickstart).
+
+## Details wrt. In-process and IPC deployment models
 
 Protocols, adapters, and targets can be implemented as jar files containing Java bytecode. These can be configured to be loaded and executed in the SFC core process. The configuration for each adapter or target type includes:
 
@@ -201,7 +295,7 @@ This approach allows for flexible and modular implementation of protocols, adapt
 
 
 <p align="center">
-    <em>Fig. 7. SFC In-process deployment (e.g. in a single host context)</em>
+    <em>SFC In-process deployment (e.g. in a single host context)</em>
 
 
 As an alternative, components can be deployed to run in their own processes and communicate with the core using gRPC. This deployment model allows for the following scenarios:
@@ -226,139 +320,18 @@ As the SFC core acts as the provider for configuration data to the servers, thes
 
 
 <p align="center">
-    <em>Fig. 8. SFC IPC deployment (e.g. in a distributed OT/IT context)</em>
+    <em>SFC IPC deployment (e.g. in a distributed OT/IT context)</em>
 
 
-See Also
-
-- [Running SFC protocol adapters](./sfc-running-adapters.md)
-
-- [Running SFC targets](./sfc-running-targets.md)
-
-- In-process example: [Simulator to S3 Tables](../examples/in-process-sim-s3tables/README.md), in-process and from the uberjar
-
-- IPC examples: [OPC-UA to MSK](../examples/ipc-opcua-msk/README.md), [ADS to S3](../examples/ipc-ads-s3/README.md), [SLMP to S3](../examples/ipc-slmp-s3/README.md)
-
-- All examples: [examples catalog](./examples/README.md)
-
-
-
-## Mixed models
-
-It is possible to mix instances of in-process and IPC adapters and targets in a single configuration.
-
-<p align="center">
-<img src="img/fig09.png" width="50%"/>
-
-
-<p align="center">
-    <em>Fig. 9. SFC Mixed deployment options</em>
-
-## Single file deployments
-
-SFC is also published as a single **uberjar** containing the core, every protocol adapter, every
-target, the metrics writers and seven example extensions (the custom config provider, log writer and
-target formatter, the MQTT, YAML and OPC UA auto-discovery config providers, and the config signing
-tool) — all with their dependencies included. It works for both of the models above, and removes the
-step of deciding which module bundles a host needs and unpacking them side by side.
-
-The release asset is `sfc-uberjar.tar.gz`. It unpacks to a launcher and one jar:
-
-```
-sfc-uberjar/
-├── bin/sfc-uberjar        # and sfc-uberjar.bat on Windows
-└── lib/sfc-uberjar-<version>.jar
-```
-
-### Running it
-
-[sfcup](../README.md#1-install) installs it and puts it on your `PATH` as `sfcx`:
-
-```shell
-sfcx -config example.json
-```
-
-sfcup unpacks the bundle into `~/.sfc/versions/<version>/` (Windows: `$HOME\.sfc\versions\<version>\`), and
-`~/.sfc/current` points at the active version (Windows: `current.txt` names it). Re-run `sfcup` to upgrade;
-`sfcup --uninstall` (Windows: `sfcup -Uninstall`) removes it, and `sfcup --help` (Windows: `sfcup -Help`) lists the
-options for pinning a version or choosing another directory.
-
-From an unpacked `sfc-uberjar.tar.gz`, run it either through the launcher or by calling the jar directly — it is
-executable, with `com.amazonaws.sfc.MainController` as its `Main-Class`:
-
-**Linux / macOS**
-
-```shell
-tar -xzf sfc-uberjar.tar.gz
-sfc-uberjar/bin/sfc-uberjar -config example.json
-java -jar sfc-uberjar/lib/sfc-uberjar-<version>.jar -config example.json
-```
-
-**Windows (PowerShell)**
-
-```powershell
-tar -xf sfc-uberjar.tar.gz
-.\sfc-uberjar\bin\sfc-uberjar.bat -config example.json
-java -jar sfc-uberjar\lib\sfc-uberjar-<version>.jar -config example.json
-```
-
-`tar` ships with Windows 10 and later.
-
-For IPC, the same jar carries every adapter and target service, so a service is started by naming its
-class instead (all classes: [Protocol adapter types and classes](./sfc-running-adapters.md#protocol-adapter-types-and-classes)
-and [Target types and classes](./sfc-running-targets.md#target-types-and-classes)):
-
-**Linux / macOS**
-
-```shell
-java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000
-# from an unpacked sfc-uberjar.tar.gz
-java -cp "sfc-uberjar/lib/*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000
-```
-
-**Windows (PowerShell)**
-
-```powershell
-java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000
-# from an unpacked sfc-uberjar.tar.gz
-java -cp "sfc-uberjar\lib\*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000
-```
-
-### Configuration differences
-
-Because every component is already on the jar's own classpath, an `AdapterTypes` or `TargetTypes`
-entry needs **no `JarFiles`** — the `FactoryClassName` is enough to locate it:
-
-```json
-"TargetTypes": {
-  "DEBUG-TARGET": {
-    "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
-  }
-}
-```
-
-Compared with a per-module in-process configuration, that is the only change, with one exception: a
-`ConfigProvider` or `LogWriter` section is ignored unless it has a `JarFiles` key, so in the uberjar it
-keeps `"JarFiles": []`. Components that are not in the uberjar, such as your own, keep their `JarFiles`.
-IPC configurations need no change. Everything else — schedules, sources, channels, transformations
-— is identical to the per-module deployments.
-
-### The trade-off
-
-One jar means **one flat classpath**, and therefore exactly one version of every shared dependency.
-That is a deliberate constraint, not an oversight: a fat jar can hold only one copy of a class, so
-components cannot each bring their own version of a library.
-
-A component whose dependencies cannot be reconciled with the rest of the product is therefore not
-eligible for the uberjar, and should be deployed from its own module bundle with `JarFiles`, or in its
-own process over IPC. The per-module bundles keep their jars separate, so each one is internally
-consistent by construction.
-
-The jar is also large — a few hundred MB — since it carries every protocol implementation whether a
-given deployment uses it or not. How it compares with the other modes: [Choose a deployment mode](#choose-a-deployment-mode).
-
-See Also
+See Also:
 
 - [Running the SFC core process](./sfc-running-core-process.md) — the command-line options of `sfcx` and `sfc-main`
+- [Running SFC protocol adapters - IPC mode](./sfc-running-adapters.md)
+- [Running SFC targets - IPC mode](./sfc-running-targets.md)
+- In-process example: [Simulator to S3 Tables](../examples/in-process-sim-s3tables/README.md), in-process and from the uberjar
+- IPC examples: [OPC-UA to MSK](../examples/ipc-opcua-msk/README.md), [ADS to S3](../examples/ipc-ads-s3/README.md), [SLMP to S3](../examples/ipc-slmp-s3/README.md)
 - [Uberjar PLC simulator example](../examples/uberjar-plc-sim-s3tables/README.md) — S7, ADS and PCCC from `omni-plc-sim` to a file and S3 Tables
+- [SFC Agentic Control Plane](https://github.com/aws-samples/sample-sfc-agentic-control-plane) — manages the full lifecycle of SFC deployments, see [SFC Control Plane](#sfc-control-plane)
+- All examples: [examples catalog](./examples/README.md)
+
 

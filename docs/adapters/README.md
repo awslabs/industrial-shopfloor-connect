@@ -2,7 +2,7 @@
 
 Protocol adapters in SFC (Shop Floor Connectivity) are interfaces that abstract and translate data from various industrial protocols and devices into a common format, allowing seamless data collection from different sources like PLCs, databases, and industrial equipment to AWS services. They act as standardized connectors that handle the protocol-specific communication details.
 
-New here? Start with the [Quickstart](../../README.md#quickstart) and the [examples catalog](../examples/README.md#start-here). Each adapter page except OPC DA has a *Deploy this adapter* section for the [uberjar, in-process and IPC modes](../sfc-deployment.md#configure-a-component-in-each-mode); the fixed `AdapterType` value (required in every mode), `FactoryClassName` and IPC service class of every adapter in this repository are listed in [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+New here? Start with the [Quickstart](../../README.md#quickstart) and the [examples catalog](../examples/README.md#start-here). Each adapter page except OPC DA has a *Deploy this adapter* section for the [uberjar, in-process and IPC modes](../sfc-deployment.md#configuration-in-each-mode); the fixed `AdapterType` value (required in every mode), `FactoryClassName` and IPC service class of every adapter in this repository are listed in [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
 
 - [**ADS (Beckhoff)**](./ads.md)
 

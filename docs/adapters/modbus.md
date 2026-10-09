@@ -4,7 +4,7 @@ The Modbus TCP protocol adapter enables communication with devices supporting th
 
 ## Deploy this adapter
 
-`AdapterType` is `MODBUS-TCP` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+`AdapterType` is `MODBUS-TCP` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
 
 **Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 

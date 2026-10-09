@@ -74,7 +74,7 @@ uberjar in place of the released one, as `sfcx`. If Windows refuses to run the s
 A change to the docs or the examples follows these rules:
 
 * Show each configuration in the style of its deployment mode
-  ([Configure a component in each mode](docs/sfc-deployment.md#configure-a-component-in-each-mode)):
+  ([Configure a component in each mode](docs/sfc-deployment.md#configuration-in-each-mode)):
   uberjar entries name `FactoryClassName` only; in-process entries add
   `"JarFiles": ["${SFC_DEPLOYMENT_DIR}/<module>/lib"]`; IPC configurations have no `AdapterTypes`/`TargetTypes`
   sections, and each adapter names an `AdapterServer` and each target a `TargetServer`, defined under

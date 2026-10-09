@@ -81,6 +81,9 @@ created by the SFC Core at startup. It will receive the content of the initial c
 of the SFC configuration, combined with (or just) custom provider specific configuration data it needs to obtain the
 data it will use to build the SFC configuration.
 
+For configurations managed outside the host, see also the [SFC Control Plane](./sfc-deployment.md#sfc-control-plane):
+it stores configuration versions and pushes a new version to the hosts that run it.
+
 ```mermaid
 %%{init: {'theme':'base','themeVariables':{
   'background':'#0a0e14','primaryColor':'#0d1117','primaryTextColor':'#e6faff',
@@ -341,7 +344,7 @@ It is possible to partially replace parts of  values. Note that this works only 
 These type entries are for the in-process mode, with the module bundles unpacked in `/sfc` (on Windows write
 `"DeploymentDir" : "C:/sfc"`). With the uberjar a type entry needs only `FactoryClassName`, e.g.
 `"S3Type" : { "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter" }`; see
-[Configure a component in each mode](./sfc-deployment.md#configure-a-component-in-each-mode).
+[Configure a component in each mode](./sfc-deployment.md#configuration-in-each-mode).
 
 When rendering the templates the SFC core will check for circular dependencies between templates. After resolving the templates SFC will remove the “Templates” section from the configuration.
 

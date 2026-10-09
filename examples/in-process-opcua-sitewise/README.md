@@ -71,7 +71,7 @@ This workshop will take 1-2 hours to complete, depending on your pace.
 ### What you are going to build
 
 This workshop demonstrates how to send data from an on premises OPC-UA server to AWS IoT SiteWise using 
-the SFC [in-process deployment](../../docs/sfc-deployment.md#in-process-and-ipc-deployment-models).
+the SFC [in-process deployment](../../docs/sfc-deployment.md#details-wrt-in-process-and-ipc-deployment-models).
 You will: 
 
 1. Set-up the infrastructure simulating the on-premises environment
@@ -91,7 +91,7 @@ OT assets, like PLCs, will be in a private OT network (private subnet) and the I
 contains assets that will establish the connection to AWS. 
 For this setup, we simulate a PLC in a private subnet and in a public subnet a Linux-based device with the 
 SFC component installed in it.
-We will use the [in-process deployment](../../docs/sfc-deployment.md#in-process-and-ipc-deployment-models)
+We will use the [in-process deployment](../../docs/sfc-deployment.md#details-wrt-in-process-and-ipc-deployment-models)
 meaning, that the SFC adapter will be running in the same process as the SFC component.
 
 For demonstration purposes both the PLC device will be simulated with a pre-configured EC2 instance, while the device

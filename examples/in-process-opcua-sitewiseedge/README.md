@@ -6,7 +6,7 @@ Shop Floor Connectivity (SFC) is a data ingestion technology that can deliver da
 
 [AWS IoT SiteWise Edge](https://aws.amazon.com/iot-sitewise/sitewise-edge/) software makes it easy to collect, organize, process, and monitor equipment data on-premises. It enables factory operators to get visibility into their equipment data and make decisions that help improve equipment uptime, product quality, and process efficiency. SiteWise Edge is installed on local hardware such as third-party industrial gateways and computers, or on AWS Outposts and AWS Snow Family compute devices. Since SiteWise Edge runs on-premises, local applications that use data from SiteWise Edge will continue to work even during intermittent cloud connectivity.
 
-*This workshop demonstrates data ingestion from an on premises OPC-UA server to AWS IoT SiteWise Edge using the SFC [in-process deployment](../../docs/sfc-deployment.md#in-process-and-ipc-deployment-models). SFC replaces the gateway's OPC-UA collector: the SiteWise Edge gateway still runs, and SFC, on a separate device, publishes to its MQTT broker.*
+*This workshop demonstrates data ingestion from an on premises OPC-UA server to AWS IoT SiteWise Edge using the SFC [in-process deployment](../../docs/sfc-deployment.md#details-wrt-in-process-and-ipc-deployment-models). SFC replaces the gateway's OPC-UA collector: the SiteWise Edge gateway still runs, and SFC, on a separate device, publishes to its MQTT broker.*
 
 ## Create and Setup Gateway
 

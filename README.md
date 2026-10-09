@@ -54,7 +54,7 @@ SFC extends and unifies data collection capabilities additionally to existing AW
 
 ## Quickstart
 
-Follow those steps to get started instantly. Dive deep later on the [docs](./docs/README.md) & [example collection](./docs/examples/README.md).
+Follow those steps to get started instantly. Dive deep later on the [Docs](./docs/README.md) and our [Example Collection](./docs/examples/README.md).
 
 
 ### 1. Install
@@ -333,6 +333,13 @@ aws s3tables delete-table-bucket --table-bucket-arn "$BUCKET_ARN"
 
 If you deployed the explorer, remove it as its
 [clean-up section](./examples/in-process-sim-s3tables/cdk/README.md#clean-up) describes.
+
+### Manage SFC at scale
+
+The [SFC Agentic Control Plane](https://github.com/aws-samples/sample-sfc-agentic-control-plane), built by the
+SFC team, manages the full lifecycle of SFC from a web app in your AWS account: AI-assisted configuration,
+launch packages with AWS IoT credentials for Linux, macOS and Windows hosts, and remote monitoring,
+configuration updates and restarts. See [SFC Control Plane](./docs/sfc-deployment.md#sfc-control-plane).
 
 ### Next steps
 

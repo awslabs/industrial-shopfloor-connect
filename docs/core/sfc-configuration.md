@@ -19,7 +19,7 @@ How the sections connect:
 | In-process | The same, plus `"JarFiles": ["${SFC_DEPLOYMENT_DIR}/<module>/lib"]` | `AdapterType` / `TargetType` |
 | IPC | None; [AdapterServers](#adapterservers) / [TargetServers](#targetservers) instead, one service process per server | `AdapterType` / `TargetType`, plus `AdapterServer` / `TargetServer` |
 
-Details: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode).
+Details: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode).
 
 > **File paths on Windows.** In JSON a backslash starts an escape sequence. Write Windows paths with forward slashes, `"C:/sfc/certs/server.pem"`, or doubled backslashes, `"C:\\sfc\\certs\\server.pem"`. A single backslash either fails to parse (for example `Invalid escape sequence`) or silently changes the path (`"C:\temp"` contains a TAB). Relative paths are resolved against the directory SFC was started from, not the directory of the configuration file.
 
@@ -89,7 +89,7 @@ Each key is the static type of an adapter and must equal the `AdapterType` of th
 - In-process with module bundles: `FactoryClassName` plus `"JarFiles": ["${SFC_DEPLOYMENT_DIR}/<module>/lib"]`.
 - IPC: omit the entry. The protocol adapter keeps its `AdapterType` and sets `AdapterServer` to a key of [AdapterServers](#adapterservers).
 
-How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode).
+How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode).
 
 **Type**: Map[String,[InProcessConfiguration](./in-process-configuration.md)]
 
@@ -339,7 +339,7 @@ Each key is the static type of a target and must equal the `TargetType` of the [
 - In-process with module bundles: `FactoryClassName` plus `"JarFiles": ["${SFC_DEPLOYMENT_DIR}/<module>/lib"]`.
 - IPC: omit the entry. The target keeps its `TargetType` and sets `TargetServer` to a key of [TargetServers](#targetservers).
 
-How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode).
+How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode).
 
 **Type**: Map[String,[InProcessConfiguration](./in-process-configuration.md)]
 

@@ -14,7 +14,7 @@
 
 The InProcessConfiguration class defines settings for loading and instantiating Java components (like protocol adapters or targets) that run within the SFC process. It specifies the factory class responsible for creating component instances and the locations of required JAR files, supporting both individual JAR files and directories containing multiple JARs.
 
-With the SFC uberjar every adapter, target and metrics writer is already on the classpath, so an entry only needs `FactoryClassName`; with the per-module bundles (in-process mode) it also lists the bundle's `lib` directory in `JarFiles`. See [Configure a component in each mode](../sfc-deployment.md#configure-a-component-in-each-mode).
+With the SFC uberjar every adapter, target and metrics writer is already on the classpath, so an entry only needs `FactoryClassName`; with the per-module bundles (in-process mode) it also lists the bundle's `lib` directory in `JarFiles`. See [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode).
 
 - [Schema](#schema)
 - [Examples](#examples)
