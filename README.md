@@ -76,6 +76,9 @@ irm https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/
 The **simulator adapter** generates signals in-process, so you can watch SFC work before connecting
 anything. Save this as `simulator.json`:
 
+<details>
+  <summary><b>Expand simulator.json</b></summary>
+
 ```json
 {
   "AWSVersion": "2022-04-02",
@@ -120,6 +123,8 @@ anything. Save this as `simulator.json`:
   }
 }
 ```
+
+</details>
 
 Run it:
 
@@ -333,6 +338,37 @@ aws s3tables delete-table-bucket --table-bucket-arn "$BUCKET_ARN"
 
 If you deployed the explorer, remove it as its
 [clean-up section](./examples/in-process-sim-s3tables/cdk/README.md#clean-up) describes.
+
+### 4. Publish to AWS - an Amazon ECR image and an AWS IoT Greengrass component
+
+sfcup publishes the released uberjar to your AWS account straight from GitHub: no clone, and nothing is
+installed locally. It needs the AWS CLI v2 with credentials and a region (`--region`, `AWS_REGION` or the
+AWS CLI default); the image also needs Docker, podman or finch.
+
+**Linux / macOS**
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.sh | bash -s -- --aws-ecr --region eu-central-1
+curl -fsSL https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.sh | bash -s -- --aws-greengrass --region eu-central-1
+```
+
+**Windows (PowerShell)**
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.ps1))) -AwsEcr -Region eu-central-1
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.ps1))) -AwsGreengrass -Region eu-central-1
+```
+
+After step 1, the installed `sfcup` does the same: `sfcup --aws-ecr --region eu-central-1` (Windows:
+`sfcup -AwsEcr -Region eu-central-1`).
+
+- `--aws-ecr` builds the `sfcx` image and pushes it to the ECR repository `sfcx` (created if missing), tagged
+  with the SFC version, then prints the `docker run` commands for it.
+- `--aws-greengrass` uploads the jar to S3 and creates the component `com.amazonaws.sfc.Sfcx`, whose default
+  configuration is the simulator of step 2, then prints the `aws greengrassv2 create-deployment` command for
+  your core device.
+
+Options and details: [Publish to AWS with sfcup](./docs/sfc-deployment.md#publish-to-aws-with-sfcup).
 
 ### Manage SFC at scale
 
