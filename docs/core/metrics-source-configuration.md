@@ -9,7 +9,7 @@
 Configuration for individual metrics sources within SFC, controlling collection at the source level. Includes an enable/disable flag and the ability to add custom dimensions specific to the source. Provides granular control over metrics collection for protocol adapters, targets, and other components.
 
 - [Schema](#schema)
-- [Examples](#schema)
+- [Examples](#examples)
 
 **Properties:**
 
@@ -63,14 +63,24 @@ Default is true
 
 
 
-Examples
+## Examples
+
+Metrics section of a target:
 
 ```json
 {
-  "CommonDimensions": {
-    "Environment": "Production",
-    "Location": "Building2",
-    "Device" : "Conveyor1"
+  "Targets": {
+    "DebugTarget": {
+      "TargetType": "DEBUG-TARGET",
+      "Metrics": {
+        "Enabled": true,
+        "CommonDimensions": {
+          "Environment": "Production",
+          "Location": "Building2",
+          "Device": "Conveyor1"
+        }
+      }
+    }
   }
 }
 ```

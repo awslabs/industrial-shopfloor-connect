@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: 2010-09-09
-Description: SiteWise Edge Wind Farm Demo
+Description: SFC OPC-UA to SiteWise Edge demo model and asset
 Transform: AWS::Serverless-2016-10-31
 Resources:
 

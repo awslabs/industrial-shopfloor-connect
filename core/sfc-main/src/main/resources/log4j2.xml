@@ -2,8 +2,24 @@
 <!--
  ~    Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  ~    SPDX-License-Identifier: MIT-0
+ ~
+ ~    log4j2 configuration for the sfc-main process.
+ ~
+ ~    This is the configuration that applies to in-process deployments. log4j2 initialises from the
+ ~    application classpath at startup, and sfc-main.jar is the only jar on it that ships a
+ ~    log4j2.xml. Adapters and targets loaded later through `JarFiles` get their own class loader,
+ ~    so the log4j2.xml inside those modules is never read in this mode.
+ ~
+ ~    Scope: this governs THIRD-PARTY logging only. SFC's own output does not go through log4j2 at
+ ~    all - com.amazonaws.sfc.log.ConsoleLogWriter writes directly to System.out/System.err - so the
+ ~    -info / -trace / -warning / -error command line options are unaffected by anything set here.
+ ~
+ ~    Root is WARN rather than INFO because SFC binds SLF4J to log4j2 (log4j-slf4j2-impl), and
+ ~    several bundled libraries are very chatty at INFO: Iceberg logs a full CommitReport for every
+ ~    commit, Hadoop logs a line per compressor allocated. WARN keeps the diagnostically useful
+ ~    warnings and errors while dropping the per-operation noise. Raise a specific logger below if
+ ~    you need more detail from one library.
 -->
-
 
 <Configuration status="WARN">
 
@@ -11,10 +27,19 @@
         <Console name="Console" target="SYSTEM_OUT">
             <PatternLayout pattern="%d{YYYY-MM-dd HH:mm:ss.SSS} %-5p - %msg%n"/>
         </Console>
-
     </Appenders>
+
     <Loggers>
-        <Root level="info">
+
+        <!-- Expected on platforms without the Hadoop native libraries; the Java fallback is fine,
+             and the warning is emitted on every start. -->
+        <Logger name="org.apache.hadoop.util.NativeCodeLoader" level="error"/>
+
+        <!-- Milo logs the bound OPC UA endpoint URLs and SDK version at startup only. That is
+             the operationally useful "which URL do I connect to" output, so keep it at INFO. -->
+        <Logger name="org.eclipse.milo" level="info"/>
+
+        <Root level="warn">
             <AppenderRef ref="Console"/>
         </Root>
     </Loggers>

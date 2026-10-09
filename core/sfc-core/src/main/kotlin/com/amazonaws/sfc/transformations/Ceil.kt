@@ -16,8 +16,8 @@ class Ceil : TransformationImpl<Nothing>() {
     @TransformerMethod
     fun apply(target: Number): Number =
         when (target) {
-            is Float -> ceil(target.toFloat())
-            is Double -> ceil(target.toDouble())
+            is Float -> ceil(target)
+            is Double -> ceil(target)
             else -> target
         }
 

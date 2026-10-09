@@ -15,7 +15,7 @@ class Int16ToBytes : TransformationImpl<Nothing>() {
     @TransformerMethod
     fun apply(target: Int?): List<Byte>? =
 
-        if (target == null) null else listOf((target.toInt() shr 8).toByte(), (target.toInt() and 0xFF).toByte())
+        if (target == null) null else listOf((target shr 8).toByte(), (target and 0xFF).toByte())
 
     companion object {
         fun fromJson(o: JsonObject): TransformationOperator = TransformationOperatorNoOperand.fromJson<Int16ToBytes>(o)

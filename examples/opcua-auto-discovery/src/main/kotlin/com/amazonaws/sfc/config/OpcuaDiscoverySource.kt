@@ -204,9 +204,9 @@ class OpcuaDiscoverySource(
 
                 acquireClientRead()
 
-                val readResponse = client.read(0.0, TimestampsToReturn.Neither, chunkReadIDs).get()
+                val readResponse = client.read(0.0, TimestampsToReturn.Neither, chunkReadIDs)
 
-                readResponse.results.forEachIndexed { resultIndex: Int, result ->
+                readResponse.results.orEmpty().forEachIndexed { resultIndex: Int, result ->
                     val eventTypeNodeID: NodeId? = result.value.value as NodeId?
                     val eventNameIndex = eventsHelper.allEventClassIdentifiers.indexOf(eventTypeNodeID)
                     if (eventNameIndex == -1) {

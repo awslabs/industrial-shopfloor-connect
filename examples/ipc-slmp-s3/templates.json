@@ -6,7 +6,7 @@
     "BucketName": "%bucket%",
     "Interval": 60,
     "BufferSize": 1,
-    "Prefix": "%prefix",
+    "Prefix": "%prefix%",
     "CredentialProviderClient": "AwsIotClient",
     "Compression": "Zip",
     "TargetServer" : "%targetServer%"

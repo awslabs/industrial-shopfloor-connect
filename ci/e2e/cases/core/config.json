@@ -1,0 +1,152 @@
+{
+  "cases": [
+    {
+      "id": "CORE-CFG-PLACEHOLDER-NEG-01",
+      "title": "An unresolved ${} placeholder aborts startup with a non-zero exit",
+      "tier": "core",
+      "intent": "The suite parameterises every case through SFC's own environment substitution, so this behaviour is load-bearing for the whole harness: if an unset placeholder were silently left as a literal, a case could quietly write to a directory named '${SFC_E2E_SINK}' and pass for the wrong reason. ConfigReader.setPlaceholders reports it and ServiceMain calls exitProcess(1). This is also the suite's first negative configuration test - the repo has none.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ConfigReader.kt:112",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:95"
+      ],
+      "records": 0,
+      "timeoutSeconds": 60,
+      "expectStartupFailure": true,
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "assert": [
+        {
+          "kind": "exitCode",
+          "nonZero": true
+        },
+        {
+          "kind": "logContains",
+          "text": "could not be replaced"
+        },
+        {
+          "kind": "logContains",
+          "text": "SFC_E2E_DELIBERATELY_UNSET_PLACEHOLDER"
+        }
+      ],
+      "priority": "P0",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-PLACEHOLDER-NEG-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_DELIBERATELY_UNSET_PLACEHOLDER}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

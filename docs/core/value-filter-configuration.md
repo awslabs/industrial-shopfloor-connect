@@ -2,6 +2,8 @@
 
 [SFC Configuration](./sfc-configuration.md) > [ValueFilters](./sfc-configuration.md#valuefilters)
 
+A value filter passes a channel value when it matches the expression. It is evaluated on the transformed value; on a channel, after the change filter. Reference it from a [channel](./channel-configuration.md#valuefilter) ValueFilter or an [S3 Tables column](../targets/aws-s3-tables.md#valuefilter). gt, ge, lt and le compare numbers only; eq and ne also compare strings and booleans. Numeric filter values are read as doubles, so to match a String channel write the value as a string ("5").
+
 - [Schema](#schema)
 - [Example](#examples)
 
@@ -31,7 +33,9 @@ Filter operator to apply
 ---
 ### Value
 Filter value.
-If the operator is "and" ("&&") or "or" ("||")it is a nested list of ValueFilterConfigurations that all (and) or any (or) must match for the value to pass. Each filter that is part of an "and" or "or" list can have additional nested "and" ("&&") or "or" ("||") operators.
+If the operator is "and" ("&&") or "or" ("||") it is a nested list of ValueFilterConfigurations that all (and) or any (or) must match for the value to pass. Each filter that is part of an "and" or "or" list can have additional nested "and" ("&&") or "or" ("||") operators.
+
+Only the top-level Operator is checked at startup. A misspelt operator inside "and"/"or" is ignored, and an "and"/"or" group left empty passes every value.
 
 **Type**: Value to test against using the operator, or a list of nested ValueFilterConfigurations if the operator is "and" ("&&") or "or" ("||").
 
@@ -65,7 +69,7 @@ If the operator is "and" ("&&") or "or" ("||")it is a nested list of ValueFilter
     "Value": {
       "oneOf": [
         {
-          "type": ["string", "number", "boolean", "null", "object"]
+          "type": ["string", "number", "boolean", "object"]
         },
         {
           "type": "array",
@@ -167,7 +171,7 @@ Nested conditions:
 }
 ```
 
-Example of a more complex filter that passes a value if the is equal to 0, or in the range 5 to 10 except when the value is 8:
+Example of a more complex filter that passes a value if the value is equal to 0, or in the range 5 to 10 except when the value is 8:
 
 ```json
 {
@@ -198,4 +202,6 @@ Example of a more complex filter that passes a value if the is equal to 0, or in
 }
 
 ```
+
+**Runnable example:** [OPC UA to AWS IoT Core using filters](../../examples/opcua-to-iot-using-filters/README.md) (gt 0 after a TruncAt transformation).
 

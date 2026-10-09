@@ -1,0 +1,1289 @@
+{
+  "cases": [
+    {
+      "id": "AWS-LAM-01",
+      "title": "Lambda BatchSize 1: every record is its own asynchronous Invoke of the real function and is read back from the evidence the function writes",
+      "tier": "aws",
+      "priority": "P0",
+      "intent": "The basic Lambda contract against the real service. With BatchSize 1 each record is flushed on arrival (AwsLambdaTargetWriter.kt:167-169) as the bare record JSON (:253-254) in an Invoke with InvocationType Event (:275-283) of the stack's evidence function, authorised by lambda:InvokeFunction on the project role. An Event invoke returns before the function runs, so the observable is its side effect: the function files each event under lambda-evidence/<marker>/ by $.metadata.marker (evidence.py:24-38), and the sink reads those objects until none has arrived for 8 s after SFC stopped. The case fails if a record is lost or duplicated (the counter values must form a contiguous run after the drain), if SFC batches despite BatchSize 1 (Messages/Writes must be exactly 1), if any invoke fails (WriteError, or the writer's 'Error invoking function' line), or if no event reaches the function at all (the gate).",
+      "pins": [
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:167-169",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:253-254",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:275-283",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:238-246",
+        "ci/cdk/lambda/evidence.py:24-38",
+        "ci/e2e/lib/sinks/aws.py:342-366",
+        "ci/cdk/lib/sfc-it-stack.ts:418-424"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "lambda"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Lam",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "asynchronous invocation keeps no order: after the drain, a contiguous set with no duplicates"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ctr.value",
+          "type": "int"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "Lam",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "Lam",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1,
+          "comment": "BatchSize 1: one record per Invoke"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error invoking function",
+            "payload exceeds max Lambda payload size",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-LAM-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Lam"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Lam": {
+            "TargetType": "AWS-LAMBDA",
+            "FunctionName": "${SFC_E2E_LAMBDA_FUNCTION}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-LAMBDA": {
+            "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-LAMBDA": {
+            "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-lambda-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "LamServer": {
+          "module": "aws-lambda-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Lam": {
+            "TargetServer": "LamServer"
+          }
+        },
+        "TargetServers": {
+          "LamServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-LAM-02",
+      "title": "Lambda batching: BatchSize 10 without Interval sends exactly ten records per event; Interval 200 flushes an idle stream's partial batch, invoking by partial ARN",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Batching is how SFC keeps the number of invocations down, and Interval is what bounds the latency of a partial batch. LamBatch gets a record every 100 ms with BatchSize 10 and no Interval - the documented default, under which the flush timer waits Duration.INFINITE (AwsLambdaTargetConfiguration.kt:79-86) and only the count flushes (AwsLambdaTargetWriter.kt:167-169) - so every Invoke carries exactly ten records as one JSON array (:255-258), whose first element gives the evidence function the marker. LamIdle gets a record every second with BatchSize 10 and Interval 200, so only the inactivity timer (:125-139, :172-181) can flush it, one record at a time. LamIdle addresses the function by partial ARN, <account>:function:<name>: the schema says 'Name or ARN' (docs/targets/aws-lambda.md:217), and the name check that never fires (AWS-LAM-DEF-01) would reject the ':', so a fix that enforces that check as written fails this case. Both targets invoke the evidence function and are told apart by schedule. The case fails if batching is lost or a batch is split (LamBatch Messages/Writes must be exactly 10), if the Interval flush does not happen (LamIdle's writes would carry ten records each), if the ARN form is not accepted (WriteError, no Slow record), or if records are lost or duplicated.",
+      "pins": [
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:125-139",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:158-169",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:172-181",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:250-262",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/config/AwsLambdaTargetConfiguration.kt:64-71",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/config/AwsLambdaTargetConfiguration.kt:79-86",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/config/AwsLambdaTargetConfiguration.kt:174-200",
+        "docs/targets/aws-lambda.md:215-218",
+        "ci/cdk/lambda/evidence.py:24-30"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "lambda"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "LamIdle",
+              "name": "Writes",
+              "op": "ge",
+              "value": 4
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "LamBatch",
+              "name": "Writes",
+              "op": "ge",
+              "value": 3
+            }
+          }
+        }
+      ],
+      "records": 34,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Slow"
+          },
+          "min": 4,
+          "comment": "every LamIdle write counted before the stop carries at least one record, and the drain reads them all"
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Fast"
+          },
+          "min": 30,
+          "comment": "three or more LamBatch writes of exactly ten records"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Slow"
+          },
+          "source": "simSlow",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Fast"
+          },
+          "source": "simFast",
+          "channel": "ctr"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "LamBatch",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "LamBatch",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 10,
+          "comment": "no Interval: only a full batch is sent (the size flush needs ~256 KiB); 1 would mean no batching"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "LamIdle",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "LamIdle",
+            "name": "Writes"
+          },
+          "op": "lt",
+          "value": 2,
+          "comment": "the 200 ms timer flushes each slow record (the start-up reads can share a write); without it a write would carry 10"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "AWS Lambda writer for target \"LamIdle\" calling lambda function \"\\d{12}:function:[A-Za-z0-9_-]+\"",
+          "comment": "the partial ARN is used as configured"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error invoking function",
+            "payload exceeds max Lambda payload size"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-LAM-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Fast",
+            "Interval": 100,
+            "Sources": {
+              "simFast": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "LamBatch"
+            ]
+          },
+          {
+            "Name": "Slow",
+            "Interval": 1000,
+            "Sources": {
+              "simSlow": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "LamIdle"
+            ]
+          }
+        ],
+        "Sources": {
+          "simFast": {
+            "Name": "simFast",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "simSlow": {
+            "Name": "simSlow",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "LamBatch": {
+            "TargetType": "AWS-LAMBDA",
+            "FunctionName": "${SFC_E2E_LAMBDA_FUNCTION}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 10
+          },
+          "LamIdle": {
+            "TargetType": "AWS-LAMBDA",
+            "FunctionName": "${SFC_E2E_ACCOUNT}:function:${SFC_E2E_LAMBDA_FUNCTION}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 10,
+            "Interval": 200
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-LAMBDA": {
+            "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-LAMBDA": {
+            "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-lambda-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "LamBatchServer": {
+          "module": "aws-lambda-target"
+        },
+        "LamIdleServer": {
+          "module": "aws-lambda-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "LamBatch": {
+            "TargetServer": "LamBatchServer"
+          },
+          "LamIdle": {
+            "TargetServer": "LamIdleServer"
+          }
+        },
+        "TargetServers": {
+          "LamBatchServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "LamIdleServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-LAM-03",
+      "title": "Lambda GZip and Zip: each batch goes out as the {compression, payload} envelope at under a third of its JSON size, and the real service accepts every event",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "With Compression the target sends Compress.compressedDataPayload's {compression: GZIP|ZIP, payload: <base64>} envelope in place of the records (AwsLambdaTargetWriter.kt:264-270, Compress.kt:51-57), because the Invoke payload has to be JSON (docs/targets/aws-lambda.md:56). LamGzip and LamZip each put five records into one Invoke; LamPlain sends records of the same shape uncompressed and is the in-run control. The evidence function looks for $.metadata.marker in the event (evidence.py:24-30), which the envelope does not carry, so compressed events land under lambda-evidence/unknown/ and cannot be read back; decoding the envelope is proven for SQS by AWS-SQS-03 (the same Compress code), and here SFC's own counters carry the proof. WriteSuccess is counted only after Invoke returned (AwsLambdaTargetWriter.kt:200-206), so it shows the real service accepted every compressed event. BytesWritten is the length of the payload actually sent (:205), so under 250 bytes per record - about 110 (GZip) and 150 (Zip) for five records, against about 480 for LamPlain's uncompressed records in the same run - shows the events really were compressed. Messages/Writes 5 shows the whole batch went into one envelope, and one 'Used ... compression' line per write shows each codec ran. The case fails if a codec fails or is skipped, if the service rejects an envelope (WriteError), or if a batch is split. The compressed events are also decoded back: every record of the GZip and Zip streams must arrive, as a contiguous counter.",
+      "pins": [
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:264-270",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/Compress.kt:51-57",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:194-206",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:238-246",
+        "docs/targets/aws-lambda.md:53-70",
+        "ci/cdk/lambda/evidence.py:24-30"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "lambda"
+        }
+      },
+      "records": 15,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "LamGzip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 3
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "LamZip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 3
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Plain"
+          },
+          "min": 15,
+          "comment": "LamPlain's events: the function and the invoke permission work in this run"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Plain"
+          },
+          "source": "simPlain",
+          "channel": "ctr"
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Gzip"
+          },
+          "min": 15,
+          "comment": "the GZip envelopes the function received decode back to records (evidence.py opens the envelope to file them under the run marker)"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Gzip"
+          },
+          "source": "simGzip",
+          "channel": "ctr"
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Zip"
+          },
+          "min": 15,
+          "comment": "the Zip envelopes the function received decode back to records (evidence.py opens the envelope to file them under the run marker)"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Zip"
+          },
+          "source": "simZip",
+          "channel": "ctr"
+        },
+        {
+          "kind": "metric",
+          "source": "LamGzip",
+          "name": "WriteSuccess",
+          "op": "ge",
+          "value": 3,
+          "comment": "the service accepted each GZip envelope"
+        },
+        {
+          "kind": "metric",
+          "source": "LamZip",
+          "name": "WriteSuccess",
+          "op": "ge",
+          "value": 3,
+          "comment": "the service accepted each Zip envelope"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "LamGzip",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "LamGzip",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 5
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "LamZip",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "LamZip",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 5
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "LamGzip",
+            "name": "BytesWritten"
+          },
+          "denominator": {
+            "source": "LamGzip",
+            "name": "Messages"
+          },
+          "op": "lt",
+          "value": 250,
+          "comment": "bytes sent per record, compressed"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "LamZip",
+            "name": "BytesWritten"
+          },
+          "denominator": {
+            "source": "LamZip",
+            "name": "Messages"
+          },
+          "op": "lt",
+          "value": 250,
+          "comment": "bytes sent per record, compressed"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "LamPlain",
+            "name": "BytesWritten"
+          },
+          "denominator": {
+            "source": "LamPlain",
+            "name": "Messages"
+          },
+          "op": "ge",
+          "value": 250,
+          "comment": "the control: an uncompressed record is above the threshold, so the two checks above can fail"
+        },
+        {
+          "kind": "logContains",
+          "text": "Used GZIP compression to compress",
+          "min": 3
+        },
+        {
+          "kind": "logContains",
+          "text": "Used ZIP compression to compress",
+          "min": 3
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error invoking function",
+            "payload exceeds max Lambda payload size"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-LAM-03",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Plain",
+            "Interval": 200,
+            "Sources": {
+              "simPlain": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "LamPlain"
+            ]
+          },
+          {
+            "Name": "Gzip",
+            "Interval": 200,
+            "Sources": {
+              "simGzip": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "LamGzip"
+            ]
+          },
+          {
+            "Name": "Zip",
+            "Interval": 200,
+            "Sources": {
+              "simZip": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "LamZip"
+            ]
+          }
+        ],
+        "Sources": {
+          "simPlain": {
+            "Name": "simPlain",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "simGzip": {
+            "Name": "simGzip",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "simZip": {
+            "Name": "simZip",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "LamPlain": {
+            "TargetType": "AWS-LAMBDA",
+            "FunctionName": "${SFC_E2E_LAMBDA_FUNCTION}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1
+          },
+          "LamGzip": {
+            "TargetType": "AWS-LAMBDA",
+            "FunctionName": "${SFC_E2E_LAMBDA_FUNCTION}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 5,
+            "Compression": "GZip"
+          },
+          "LamZip": {
+            "TargetType": "AWS-LAMBDA",
+            "FunctionName": "${SFC_E2E_LAMBDA_FUNCTION}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 5,
+            "Compression": "Zip"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-LAMBDA": {
+            "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-LAMBDA": {
+            "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-lambda-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "LamPlainServer": {
+          "module": "aws-lambda-target"
+        },
+        "LamGzipServer": {
+          "module": "aws-lambda-target"
+        },
+        "LamZipServer": {
+          "module": "aws-lambda-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "LamPlain": {
+            "TargetServer": "LamPlainServer"
+          },
+          "LamGzip": {
+            "TargetServer": "LamGzipServer"
+          },
+          "LamZip": {
+            "TargetServer": "LamZipServer"
+          }
+        },
+        "TargetServers": {
+          "LamPlainServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "LamGzipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "LamZipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-LAM-DEF-01",
+      "title": "An invalid Lambda FunctionName passes validation: SFC starts, and every record becomes a rejected Invoke reported only as a WriteError and an error line (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "docs/targets/aws-lambda.md:105-125 documents the FunctionName rules and validateLambdaFunctionName (AwsLambdaTargetConfiguration.kt:174-200) implements them, but validateLambda (:104-109) only constructs the ConfigurationException and never throws it, unlike the ConfigurationException.check calls (ConfigurationException.kt:38-46) that reject a bad Region or Interval. So a name that can never exist is not reported at startup, as CORE-AWSTGT-VAL-NAMES-REQUIRED-01 shows for every other AWS target: the writer starts (AwsLambdaTargetWriter.kt:123) and every record becomes an Invoke that AWS rejects, reported only as one WriteError and one 'Error invoking function' line per record (:207-225). LamBad's name contains spaces, which no Lambda function name or ARN may contain, so AWS rejects it whether it answers ValidationException or AccessDeniedException, and no IAM permission could make it valid; the file target in the same schedule shows the rest of the pipeline keeps running. The first wait accepts either the defect's signature or the validation message, so one timeline serves assertCurrent and assertCorrect. A fix must keep accepting what AWS accepts: ARNs and qualified names fail the check as written (':' and the 64-character limit), which is why AWS-LAM-02 invokes by partial ARN.",
+      "pins": [
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/config/AwsLambdaTargetConfiguration.kt:104-109",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/config/AwsLambdaTargetConfiguration.kt:174-200",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ConfigurationException.kt:38-46",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:123",
+        "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/AwsLambdaTargetWriter.kt:207-225",
+        "docs/targets/aws-lambda.md:105-125"
+      ],
+      "records": 5,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "failFast": [],
+      "allowWriteErrors": [
+        "LamBad"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "any": [
+              {
+                "metric": {
+                  "source": "LamBad",
+                  "name": "WriteError",
+                  "op": "ge",
+                  "value": 3
+                }
+              },
+              {
+                "log": "FunctionName can only contain letters, numbers, hyphens (-), and underscores (_)"
+              }
+            ]
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "FileTarget",
+              "name": "Writes",
+              "op": "ge",
+              "value": 5
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1,
+          "comment": "the file target keeps delivering beside the broken Lambda target"
+        },
+        {
+          "kind": "metric",
+          "source": "LamBad",
+          "name": "WriteSuccess",
+          "op": "eq",
+          "value": 0,
+          "comment": "no Invoke with this name ever succeeds, today or once it is rejected at startup"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "NoClassDefFoundError",
+            "ClassNotFoundException",
+            "NoSuchMethodError"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-lambda-target/src/main/kotlin/com/amazonaws/sfc/awslambda/config/AwsLambdaTargetConfiguration.kt:107",
+        "summary": "validateLambda() builds the ConfigurationException for an invalid FunctionName but never throws it: SFC starts with a name that can never exist and reports it only as one WriteError and one 'Error invoking function' line per record",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "text": "AWS Lambda writer for target \"LamBad\" calling lambda function \"sfc e2e invalid name\"",
+            "comment": "the writer started with the invalid name"
+          },
+          {
+            "kind": "metric",
+            "source": "LamBad",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 3,
+            "comment": "each record is one Invoke that AWS rejects"
+          },
+          {
+            "kind": "logContains",
+            "text": "Error invoking function \"sfc e2e invalid name\" for target \"LamBad\"",
+            "min": 3
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "FunctionName can only contain letters, numbers, hyphens (-), and underscores (_)"
+            ],
+            "comment": "the check's message is built and discarded"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "text": "FunctionName can only contain letters, numbers, hyphens (-), and underscores (_)",
+            "comment": "rejected at startup with the documented rule"
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "AWS Lambda writer for target \"LamBad\"",
+              "Error invoking function"
+            ]
+          },
+          {
+            "kind": "metric",
+            "source": "LamBad",
+            "name": "WriteError",
+            "op": "eq",
+            "value": 0
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-LAM-DEF-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget",
+              "LamBad"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "LamBad": {
+            "TargetType": "AWS-LAMBDA",
+            "FunctionName": "sfc e2e invalid name",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "AWS-LAMBDA": {
+            "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "AWS-LAMBDA": {
+            "FactoryClassName": "com.amazonaws.sfc.awslambda.AwsLambdaTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-lambda-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "LamBadServer": {
+          "module": "aws-lambda-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "LamBad": {
+            "TargetServer": "LamBadServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "LamBadServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

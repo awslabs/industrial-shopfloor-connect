@@ -121,7 +121,7 @@ class SimulationDeserializer : JsonDeserializer<Simulation> {
             is ULong -> value.toDouble()
             is Float -> value.toDouble()
             is String -> value.toDouble()
-            is Double -> value.toDouble()
+            is Double -> value
             is Boolean -> if (value) 1.0 else 0.0
             else -> {
                 throw InvalidParameterException("Value $value must be a number")

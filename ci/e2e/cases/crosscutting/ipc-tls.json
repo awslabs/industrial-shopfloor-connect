@@ -1,0 +1,2576 @@
+{
+  "cases": [
+    {
+      "id": "CORE-IPC-TLS-CERTEXPIRY-01",
+      "title": "No expiry warning for certificates that expire within the warning window (known defect)",
+      "tier": "core",
+      "priority": "P2",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The run PKI's certificates are valid for 2 days (ci/e2e/lib/pki.py), well inside the default 30-day ExpirationWarningPeriod. With MutualTLS both the adapter service (server certificate and CA) and sfc-main (CA and client certificate) start a CertificateExpiryChecker, which runs once at start. It compares notAfter <= now.add(Period.ofDays(-30)), i.e. thirty days in the past, so only certificates that expired over 30 days ago would warn; these get the plain 'Checking expiration ... valid until' line instead of 'will expire in'. Correct: compare against now plus the period. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/CertificateExpiryChecker.kt:44-61",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:90",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBase.kt:49-56",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/crypto/CertificateConfiguration.kt:142",
+        "ci/e2e/lib/pki.py:42"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/CertificateExpiryChecker.kt:51",
+        "summary": "CertificateExpiryChecker tests notAfter <= now minus ExpirationWarningPeriod days, so certificates expiring within the window never warn (and the day count at :56 has the wrong sign)",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "process": "adapter-SimAdapter",
+            "text": "Checking expiration of certificate CN=sfc-e2e-server"
+          },
+          {
+            "kind": "logContains",
+            "process": "sfc-main",
+            "text": "Checking expiration of certificate CN=sfc-e2e-client"
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "will expire in"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "process": "adapter-SimAdapter",
+            "text": "will expire in"
+          },
+          {
+            "kind": "logContains",
+            "process": "sfc-main",
+            "text": "will expire in"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-CERTEXPIRY-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator",
+          "args": [
+            "-connection",
+            "MutualTLS",
+            "-cert",
+            "${SFC_E2E_PKI}/server.crt",
+            "-key",
+            "${SFC_E2E_PKI}/server.key",
+            "-ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000,
+            "ConnectionType": "MutualTLS",
+            "ClientCertificate": "${SFC_E2E_PKI}/client.crt",
+            "ClientPrivateKey": "${SFC_E2E_PKI}/client.key",
+            "CaCertificate": "${SFC_E2E_PKI}/ca.crt"
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-IPC-TLS-FAILOPEN-01",
+      "title": "A TLS adapter service with an unusable key silently serves PlainText (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The adapter service is told -connection ServerSideTLS with a valid certificate but a key file that is not a key (garbage.key in this case directory). createGrpcServer catches the TLS setup exception, logs it, and builds the server without transport security; the service then announces the configured ServerSideTLS. A PlainText sfc-main gets data and the probe sees cleartext HTTP/2 on the port, so a typo in a key path silently downgrades the link. Correct: the service refuses to start. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:58-96",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:88-91"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "records": 5,
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 5
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "adapter",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/adapter.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--server",
+            "SimAdapterServer",
+            "--mode",
+            "h2c,tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:92-96",
+        "summary": "createGrpcServer catches every TLS setup exception, logs it and returns builder.build() without transport security, and the service still logs the configured TLS connection type: an unusable key silently downgrades the service to PlainText",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "process": "adapter-SimAdapter",
+            "text": "Error setting up TLS for ServerSideTLS"
+          },
+          {
+            "kind": "logContains",
+            "process": "adapter-SimAdapter",
+            "text": "connection type is ServerSideTLS",
+            "comment": "Misleading: the listener it announces is not TLS."
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "adapter"
+            },
+            "path": "plaintextH2",
+            "equals": true
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "adapter"
+            },
+            "path": "plaintextH2",
+            "equals": false,
+            "comment": "A service that cannot set up TLS must not serve cleartext; correct code exits instead of listening."
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-FAILOPEN-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator",
+          "args": [
+            "-connection",
+            "ServerSideTLS",
+            "-cert",
+            "${SFC_E2E_PKI}/server.crt",
+            "-key",
+            "${SFC_E2E_CASE_DIR}/garbage.key"
+          ]
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "garbage.key": "this is not a private key\n-----BEGIN PRIVATE KEY-----\nbm90IGEga2V5\n-----END PRIVATE KEY-----\n"
+      }
+    },
+    {
+      "id": "CORE-IPC-TLS-MISMATCH-01",
+      "title": "A PlainText client against a TLS adapter service fails, but the dedicated mismatch hint is never logged (known defect)",
+      "tier": "core",
+      "priority": "P0",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The adapter service runs ServerSideTLS while sfc-main dials it in PlainText. No data can flow; sfc-main keeps retrying every 10 s (the case waits for the second attempt, which also proves it stays up). IpcSourceReader has a hint for exactly this misconfiguration ('PlainText connection type is configured for client, check if server requires ServerSide or Mutual TLS'), but it sits in a catch for StatusException around initializeAsync, and IpcSourceReadClient's initializer catches every exception itself and returns false. The hint is unreachable; the user gets a generic 'Failed to initialize ...' line instead. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReader.kt:98-108",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReadClient.kt:33-55",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReader.kt:194"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "log": "Initializing IPC source adapter service on",
+            "count": 2,
+            "process": "sfc-main",
+            "timeoutSeconds": 45
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "adapter",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/adapter.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--server",
+            "SimAdapterServer",
+            "--mode",
+            "h2c,tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "max": 0
+        },
+        {
+          "kind": "logContains",
+          "process": "adapter-SimAdapter",
+          "text": "connection type is ServerSideTLS"
+        },
+        {
+          "kind": "logContains",
+          "process": "sfc-main",
+          "text": "using connection type PlainText"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "accepted",
+          "equals": true,
+          "comment": "The port does serve TLS: the failure is the client's connection type."
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReadClient.kt:46-50",
+        "summary": "IpcSourceReadClient's initializer swallows the StatusException and returns false, so the PlainText-versus-TLS hint in IpcSourceReader's catch (StatusException) is unreachable",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "process": "sfc-main",
+            "text": "Failed to initialize IPC source service adapter for server"
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "connection type is configured for client, check if server requires ServerSide or Mutual TLS"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "process": "sfc-main",
+            "text": "PlainText connection type is configured for client, check if server requires ServerSide or Mutual TLS"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-MISMATCH-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator",
+          "args": [
+            "-connection",
+            "ServerSideTLS",
+            "-cert",
+            "${SFC_E2E_PKI}/server.crt",
+            "-key",
+            "${SFC_E2E_PKI}/server.key"
+          ]
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-IPC-TLS-MISMATCH-02",
+      "title": "A ServerSideTLS client without ServerCertificate against a PlainText adapter service fails clearly and retries",
+      "tier": "core",
+      "priority": "P1",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "sfc-main is configured for ServerSideTLS with no ServerCertificate, so it first tries to fetch the server certificate over a TLS handshake; the adapter service is PlainText, so that fetch fails and client creation fails with a message naming the cause. No data flows, and sfc-main retries after 10 s (the case waits for the second attempt, proving it stays up). IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBuilder.kt:32-46",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBuilder.kt:83-95",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReader.kt:125-140"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "log": "Initializing IPC source adapter service on",
+            "count": 2,
+            "process": "sfc-main",
+            "timeoutSeconds": 45
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "adapter",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/adapter.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--server",
+            "SimAdapterServer",
+            "--mode",
+            "h2c"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "max": 0
+        },
+        {
+          "kind": "logContains",
+          "process": "adapter-SimAdapter",
+          "text": "connection type is PlainText"
+        },
+        {
+          "kind": "logContains",
+          "process": "sfc-main",
+          "text": "using connection type ServerSideTLS"
+        },
+        {
+          "kind": "logContains",
+          "process": "sfc-main",
+          "text": "Error creating IPC client, Could not retrieve required server certificate for connection type",
+          "min": 2,
+          "comment": "Once per attempt: the first and the retry."
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "plaintextH2",
+          "equals": true
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-MISMATCH-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000,
+            "ConnectionType": "ServerSideTLS"
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-IPC-TLS-MTLS-01",
+      "title": "MutualTLS between sfc-main and the adapter service delivers data",
+      "tier": "core",
+      "priority": "P0",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The adapter service runs -connection MutualTLS with the run's server certificate, key and CA, and sfc-main's server entry carries the client certificate, key and CA. Records flow, both sides report MutualTLS, and the probe shows the port is TLS-only and serves a client that presents the CA-signed client certificate. Whether the server actually requires that certificate is CORE-IPC-TLS-MTLS-NOCLIENTCERT-01. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:73-85",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:115-132",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBuilder.kt:99-117",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ServerConfiguration.kt:177-190"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "records": 8,
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 8
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "adapter",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/adapter.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--server",
+            "SimAdapterServer",
+            "--mode",
+            "h2c,tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt",
+            "--cert",
+            "${SFC_E2E_PKI}/client.crt",
+            "--key",
+            "${SFC_E2E_PKI}/client.key"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "logRegex",
+          "process": "sfc-main",
+          "regex": "Creating client to connect to IPC service [0-9.]+:[0-9]+ using connection type MutualTLS"
+        },
+        {
+          "kind": "logContains",
+          "process": "adapter-SimAdapter",
+          "text": "connection type is MutualTLS"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error setting up TLS for",
+            "Error initializing IPC source service",
+            "Failed to initialize IPC source service adapter"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "plaintextH2",
+          "equals": false
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "accepted",
+          "equals": true
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "peerCN",
+          "equals": "sfc-e2e-server"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-MTLS-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator",
+          "args": [
+            "-connection",
+            "MutualTLS",
+            "-cert",
+            "${SFC_E2E_PKI}/server.crt",
+            "-key",
+            "${SFC_E2E_PKI}/server.key",
+            "-ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000,
+            "ConnectionType": "MutualTLS",
+            "ClientCertificate": "${SFC_E2E_PKI}/client.crt",
+            "ClientPrivateKey": "${SFC_E2E_PKI}/client.key",
+            "CaCertificate": "${SFC_E2E_PKI}/ca.crt"
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-IPC-TLS-MTLS-NOCLIENTCERT-01",
+      "title": "A MutualTLS adapter service serves clients that present no certificate, or one from another CA (known defect)",
+      "tier": "core",
+      "priority": "P0",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "MutualTLS exists to authenticate the client. IpcBaseService builds the MutualTLS server context with trustManager(ca) but clientAuth(ClientAuth.NONE), so the server never requests a client certificate. sfc-main is a proper MutualTLS client here, so data flows whatever the fix; three probes then talk to the same port: with the CA-signed client certificate, with no certificate, and with a certificate from the unrelated rogue CA. Today all three are served HTTP/2, so anyone who can reach the port can initialise and read the adapter. Correct: only the CA-signed client is served. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:123-131"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "records": 5,
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 5
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "valid",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/valid.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--server",
+            "SimAdapterServer",
+            "--mode",
+            "tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt",
+            "--cert",
+            "${SFC_E2E_PKI}/client.crt",
+            "--key",
+            "${SFC_E2E_PKI}/client.key"
+          ]
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "nocert",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/nocert.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--server",
+            "SimAdapterServer",
+            "--mode",
+            "tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "rogue",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/rogue.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--server",
+            "SimAdapterServer",
+            "--mode",
+            "tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt",
+            "--cert",
+            "${SFC_E2E_PKI}/rogue-client.crt",
+            "--key",
+            "${SFC_E2E_PKI}/rogue-client.key"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5
+        },
+        {
+          "kind": "logContains",
+          "process": "adapter-SimAdapter",
+          "text": "connection type is MutualTLS"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "valid"
+          },
+          "path": "accepted",
+          "equals": true,
+          "comment": "Control: the CA-signed client is served, so the probe itself works against this port."
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:129",
+        "summary": "The MutualTLS server SslContext uses clientAuth(ClientAuth.NONE), so client certificates are never requested or verified: a client with no certificate, or with one from another CA, can initialise and read a MutualTLS adapter service",
+        "assertCurrent": [
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "nocert"
+            },
+            "path": "accepted",
+            "equals": true,
+            "comment": "Served without presenting any certificate."
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "rogue"
+            },
+            "path": "accepted",
+            "equals": true,
+            "comment": "Served with a certificate the configured CA never signed."
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "nocert"
+            },
+            "path": "accepted",
+            "equals": false
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "rogue"
+            },
+            "path": "accepted",
+            "equals": false
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-MTLS-NOCLIENTCERT-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator",
+          "args": [
+            "-connection",
+            "MutualTLS",
+            "-cert",
+            "${SFC_E2E_PKI}/server.crt",
+            "-key",
+            "${SFC_E2E_PKI}/server.key",
+            "-ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000,
+            "ConnectionType": "MutualTLS",
+            "ClientCertificate": "${SFC_E2E_PKI}/client.crt",
+            "ClientPrivateKey": "${SFC_E2E_PKI}/client.key",
+            "CaCertificate": "${SFC_E2E_PKI}/ca.crt"
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-IPC-TLS-PLAIN-01",
+      "title": "IPC PlainText baseline: cleartext HTTP/2 on the wire, both sides report PlainText",
+      "tier": "core",
+      "priority": "P0",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The oracle every IPC TLS case inverts. With no -connection the adapter and target services listen in PlainText and sfc-main dials them in PlainText, so data flows and a probe that sends the cleartext HTTP/2 preface to each service port gets a SETTINGS frame back, while a TLS handshake against the same port is not served. IPC mode only: the IPC transport does not exist in-process or in the uberjar.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBuilder.kt:37",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBuilder.kt:127-133",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:91",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetServer.kt:92",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcProtocolServerCommandLine.kt:47"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "records": 8,
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 8
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "adapter",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/adapter.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--section",
+            "AdapterServers",
+            "--server",
+            "SimAdapterServer",
+            "--mode",
+            "h2c,tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "target",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/target.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--section",
+            "TargetServers",
+            "--server",
+            "FileTargetServer",
+            "--mode",
+            "h2c,tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "logRegex",
+          "process": "sfc-main",
+          "regex": "Creating client to connect to IPC service [0-9.]+:[0-9]+ using connection type PlainText",
+          "comment": "IpcClientBuilder.kt:37, logged once per client."
+        },
+        {
+          "kind": "logContains",
+          "process": "adapter-SimAdapter",
+          "text": "IPC protocol service started, listening on"
+        },
+        {
+          "kind": "logContains",
+          "process": "adapter-SimAdapter",
+          "text": "connection type is PlainText"
+        },
+        {
+          "kind": "logContains",
+          "process": "target-FileTarget",
+          "text": "Target IPC service started, listening on"
+        },
+        {
+          "kind": "logContains",
+          "process": "target-FileTarget",
+          "text": "connection type is PlainText"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "plaintextH2",
+          "equals": true,
+          "comment": "The adapter port answers the cleartext HTTP/2 preface with a SETTINGS frame."
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "accepted",
+          "equals": false,
+          "comment": "...and does not serve a TLS client."
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "target"
+          },
+          "path": "plaintextH2",
+          "equals": true
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "target"
+          },
+          "path": "accepted",
+          "equals": false
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-PLAIN-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-IPC-TLS-SST-01",
+      "title": "Adapter service with ServerSideTLS and a pinned server certificate delivers data encrypted",
+      "tier": "core",
+      "priority": "P0",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The adapter service is started with -connection ServerSideTLS and the run's server certificate and key, and sfc-main's server entry pins that certificate. Records flow, both sides report ServerSideTLS, and an independent probe proves the port really is TLS: the cleartext HTTP/2 preface gets no SETTINGS frame, while a TLS client that trusts only the run CA completes the handshake (ALPN h2, CN sfc-e2e-server) and is served. That proves encryption on the wire, not just configuration. IPC mode only: the IPC transport exists only there.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:63-71",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:99-112",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:136-163",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBuilder.kt:55-82",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:91"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "records": 8,
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 8
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "adapter",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/adapter.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--server",
+            "SimAdapterServer",
+            "--mode",
+            "h2c,tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "logRegex",
+          "process": "sfc-main",
+          "regex": "Creating client to connect to IPC service [0-9.]+:[0-9]+ using connection type ServerSideTLS"
+        },
+        {
+          "kind": "logContains",
+          "process": "adapter-SimAdapter",
+          "text": "connection type is ServerSideTLS"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error setting up TLS for",
+            "Could not retrieve required server certificate",
+            "Error initializing IPC source service"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "plaintextH2",
+          "equals": false,
+          "comment": "No cleartext HTTP/2 on the adapter port."
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "handshake",
+          "equals": "ok"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "accepted",
+          "equals": true,
+          "comment": "A TLS client verifying against the run CA is served HTTP/2."
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "alpn",
+          "equals": "h2"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "peerCN",
+          "equals": "sfc-e2e-server"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-SST-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator",
+          "args": [
+            "-connection",
+            "ServerSideTLS",
+            "-cert",
+            "${SFC_E2E_PKI}/server.crt",
+            "-key",
+            "${SFC_E2E_PKI}/server.key"
+          ]
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000,
+            "ConnectionType": "ServerSideTLS",
+            "ServerCertificate": "${SFC_E2E_PKI}/server.crt"
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-IPC-TLS-SST-TOFU-01",
+      "title": "ServerSideTLS without ServerCertificate works by trusting whatever certificate the server presents",
+      "tier": "core",
+      "priority": "P1",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The client side of ServerSideTLS needs no trust material: without ServerCertificate, IpcClientBuilder opens a separate TLS 1.2 connection through a trust-all X509TrustManager, takes the first certificate the server presents and pins it for the gRPC channel. sfc-main here is given no CA, no certificate and nothing else, yet records flow over a port the probe shows to be TLS-only. So the client authenticates nothing; and because the certificate is fetched again whenever the client is rebuilt (getIpcClient after every reset), it is trust on every connect, not just on first use. Undocumented; pinned as current behaviour. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBuilder.kt:76-95",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBuilder.kt:139-168",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBase.kt:34-46",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ServerConfiguration.kt:171-175"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "records": 8,
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 8
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "adapter",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/adapter.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--server",
+            "SimAdapterServer",
+            "--mode",
+            "h2c,tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "logRegex",
+          "process": "sfc-main",
+          "regex": "Creating client to connect to IPC service [0-9.]+:[0-9]+ using connection type ServerSideTLS"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Could not retrieve required server certificate",
+            "Error initializing IPC source service"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "plaintextH2",
+          "equals": false
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "probe",
+          "where": {
+            "probe": "adapter"
+          },
+          "path": "accepted",
+          "equals": true,
+          "comment": "The port is TLS-only, so the records above crossed TLS with no client-side trust configured."
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-SST-TOFU-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator",
+          "args": [
+            "-connection",
+            "ServerSideTLS",
+            "-cert",
+            "${SFC_E2E_PKI}/server.crt",
+            "-key",
+            "${SFC_E2E_PKI}/server.key"
+          ]
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000,
+            "ConnectionType": "ServerSideTLS"
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-IPC-TLS-TARGET-01",
+      "title": "IPC target services ignore -connection and always listen in PlainText (known defect)",
+      "tier": "core",
+      "priority": "P0",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "Two file targets: FileTarget is plain IPC and carries the records gate, so the case runs the same whether or not the defect is fixed. TlsTarget's service is started exactly like a TLS adapter service (-connection ServerSideTLS -cert -key) and sfc-main is configured for ServerSideTLS with the pinned certificate. createIpcTargetServer builds its ServerConfiguration from address, port, key and cert only, and IpcTargetServerCommandLine has no connection-type accessor, so the service listens in PlainText: the probe sees cleartext HTTP/2, the TLS-configured sfc-main cannot initialise it and TlsTarget gets nothing, while target configurations (including resolved secrets) cross every target link in cleartext. Correct: the service honours -connection like adapter services do. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetServer.kt:428-439",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetServerCommandLine.kt:13-52",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetServer.kt:92",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ServerConfiguration.kt:95-96",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcBaseService.kt:136-163"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "tls": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "file"
+        }
+      },
+      "records": 8,
+      "timeoutSeconds": 60,
+      "allowWriteErrors": [
+        "TlsTarget",
+        "SfcCore"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 8
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/xc_probe.py",
+            "ipc",
+            "--name",
+            "tlstarget",
+            "--out",
+            "${SFC_E2E_SINK_PROBE}/tlstarget.json",
+            "--config",
+            "${SFC_E2E_WORK}/config.json",
+            "--section",
+            "TargetServers",
+            "--server",
+            "TlsTargetServer",
+            "--mode",
+            "h2c,tls",
+            "--ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "logRegex",
+          "process": "sfc-main",
+          "regex": "Creating client to connect to IPC service [0-9.]+:[0-9]+ using connection type ServerSideTLS",
+          "comment": "sfc-main did dial TlsTarget with TLS."
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetServer.kt:434-439",
+        "summary": "createIpcTargetServer builds the server configuration from address, port, key and cert only (no connection type, no CA), so every IPC target service listens in PlainText whatever -connection says; IpcMetricsServer.kt:246 has the same construction",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "process": "target-TlsTarget",
+            "text": "connection type is PlainText"
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "tlstarget"
+            },
+            "path": "plaintextH2",
+            "equals": true
+          },
+          {
+            "kind": "recordCount",
+            "sink": "tls",
+            "max": 0,
+            "comment": "The TLS-configured sfc-main cannot talk to the PlainText service. Valid as a count: all targets are initialised at start, long before the 8th record."
+          },
+          {
+            "kind": "logContains",
+            "process": "sfc-main",
+            "text": "Error IPC initializing server for target \"TlsTarget\"",
+            "comment": "The TLS client receives the PlainText server's HTTP/2 SETTINGS frame: 'not an SSL/TLS record: 00001204...'."
+          },
+          {
+            "kind": "metric",
+            "source": "SfcCore",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 1,
+            "comment": "sfc-main counts the writes it could not deliver to TlsTarget, hence allowWriteErrors."
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "process": "target-TlsTarget",
+            "text": "connection type is ServerSideTLS"
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "tlstarget"
+            },
+            "path": "plaintextH2",
+            "equals": false
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "probe",
+            "where": {
+              "probe": "tlstarget"
+            },
+            "path": "accepted",
+            "equals": true
+          },
+          {
+            "kind": "recordCount",
+            "sink": "tls",
+            "min": 1
+          },
+          {
+            "kind": "metric",
+            "source": "SfcCore",
+            "name": "WriteError",
+            "op": "eq",
+            "value": 0
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-TARGET-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget",
+              "TlsTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "TlsTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_TLS}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "TlsTargetServer": {
+          "module": "file-target",
+          "args": [
+            "-connection",
+            "ServerSideTLS",
+            "-cert",
+            "${SFC_E2E_PKI}/server.crt",
+            "-key",
+            "${SFC_E2E_PKI}/server.key"
+          ]
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "TlsTarget": {
+            "TargetServer": "TlsTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "TlsTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002,
+            "ConnectionType": "ServerSideTLS",
+            "ServerCertificate": "${SFC_E2E_PKI}/server.crt"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-IPC-TLS-WRONGCA-01",
+      "title": "A MutualTLS client whose CA did not sign the server certificate is rejected",
+      "tier": "core",
+      "priority": "P1",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The adapter service runs MutualTLS with the run CA's server certificate; sfc-main has a valid client certificate but trusts only the unrelated rogue CA. The client must refuse the server: no data flows, initialisation fails with UNAVAILABLE and the read with 'General OpenSslEngine problem', and sfc-main retries after 10 s (the case waits for the second attempt, proving it stays up). CORE-IPC-TLS-MTLS-01 is the same setup with the right CA and delivers data, so the only cause is server-chain validation: the MutualTLS client does check the server, unlike the server side (CORE-IPC-TLS-MTLS-NOCLIENTCERT-01). Note the messages name no certificate problem at all. IPC mode only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcClientBuilder.kt:114-116",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReadClient.kt:46-50",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReader.kt:125-140"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        }
+      },
+      "timeoutSeconds": 60,
+      "steps": [
+        {
+          "wait": {
+            "log": "Initializing IPC source adapter service on",
+            "count": 2,
+            "process": "sfc-main",
+            "timeoutSeconds": 45
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "max": 0
+        },
+        {
+          "kind": "logContains",
+          "process": "sfc-main",
+          "text": "using connection type MutualTLS"
+        },
+        {
+          "kind": "logContains",
+          "process": "sfc-main",
+          "text": "Failed to initialize IPC source service adapter for server",
+          "min": 2,
+          "comment": "Once per attempt (IpcSourceReadClient.kt:49): the first and the retry after 10 s."
+        },
+        {
+          "kind": "logRegex",
+          "process": "sfc-main",
+          "regex": "Failed to initialize IPC source service adapter for server [0-9.]+:[0-9]+ with error UNAVAILABLE"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "IPC source service adapter for server"
+          ],
+          "process": "sfc-main",
+          "stream": "stdout",
+          "comment": "The INFO 'IPC source service adapter for server ... initialized' line (IpcSourceReadClient.kt:46) never appears; the ERROR goes to stderr."
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-IPC-TLS-WRONGCA-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator",
+          "args": [
+            "-connection",
+            "MutualTLS",
+            "-cert",
+            "${SFC_E2E_PKI}/server.crt",
+            "-key",
+            "${SFC_E2E_PKI}/server.key",
+            "-ca",
+            "${SFC_E2E_PKI}/ca.crt"
+          ]
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000,
+            "ConnectionType": "MutualTLS",
+            "ClientCertificate": "${SFC_E2E_PKI}/client.crt",
+            "ClientPrivateKey": "${SFC_E2E_PKI}/client.key",
+            "CaCertificate": "${SFC_E2E_PKI}/rogue-ca.crt"
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -325,7 +325,7 @@ class OpcuaAutoDiscoveryConfigProvider(
         if (providerConfig?.includeDescription == true) {
             val description = discoveredNode.node.description?.text
             if (!description.isNullOrEmpty()) {
-                newChannel[CONFIG_DESCRIPTION] = discoveredNode.node.description.text.toString()
+                newChannel[CONFIG_DESCRIPTION] = description
             }
         }
 

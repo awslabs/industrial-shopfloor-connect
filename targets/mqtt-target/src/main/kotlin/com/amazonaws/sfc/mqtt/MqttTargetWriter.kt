@@ -27,6 +27,10 @@ import com.amazonaws.sfc.mqtt.config.MqttTargetConfiguration.Companion.CONFIG_BA
 import com.amazonaws.sfc.mqtt.config.MqttTargetConfiguration.Companion.CONFIG_TOPIC_NAME
 import com.amazonaws.sfc.mqtt.config.MqttWriterConfiguration
 import com.amazonaws.sfc.mqtt.config.MqttWriterConfiguration.Companion.MQTT_TARGET
+// Explicitly imported: this module shares package com.amazonaws.sfc.mqtt with adapters/mqtt, and
+// both are bundled into the uberjar, so an unqualified BuildConfig resolved to whichever module's
+// copy was merged first - reporting the adapter's name and version for this target.
+import com.amazonaws.sfc.mqtttarget.BuildConfig
 import com.amazonaws.sfc.targets.TargetDataChannel
 import com.amazonaws.sfc.targets.TargetException
 import com.amazonaws.sfc.targets.TargetFormatter

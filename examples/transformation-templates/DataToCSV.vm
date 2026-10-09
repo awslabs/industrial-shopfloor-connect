@@ -1,10 +1,9 @@
 ## Example transformation template for converting data to CSV format
-## sources loop
+## One line per value: source, value name, value and timestamp. The timestamp column is filled only when the
+## schedule's TimestampLevel is Channel or Both; $! prints an empty string instead of the reference when it is missing.
 #foreach($sourceName in $sources.keySet())
-    ## source values loop
-    #foreach($valueName in $sources[$sourceName]["values"].keySet())
-        ## get the node for the value, contains the actual value and the timestamp
-        #set( $value = $sources[$sourceName]["values"][$valueName])
-    "$sourceName","$valueName","$value["value"]","$value["timestamp"]"
-    #end
+#foreach($valueName in $sources[$sourceName]["values"].keySet())
+#set( $value = $sources[$sourceName]["values"][$valueName])
+"$sourceName","$valueName",$value["value"],"$!value["timestamp"]"
+#end
 #end

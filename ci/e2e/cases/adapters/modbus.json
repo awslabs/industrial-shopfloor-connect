@@ -1,0 +1,1729 @@
+{
+  "cases": [
+    {
+      "id": "ADP-MODBUS-PILOT",
+      "title": "pilot: omni-plc-sim Modbus TCP (generic profile) -> modbus-tcp adapter -> file",
+      "intent": "The first case on a real Modbus TCP server: every logical tag of the default map, read through SFC's request planner (5 requests per cycle: FC1 0/17, FC2 0/10, FC3 0/110, FC3 200/42, FC4 0/17), decoded raw and through the register transformations, in all three deployment modes. Static words are exact; dynamic signals are range- and change-checked over 8 records (the first read waits out the TCP client's 1 s first-send delay, so the second read follows it back to back; 8 records leave at least six samples 200 ms apart); the simulator's own request log proves the wire plan and that no exception was sent.",
+      "pins": [
+        "adapters/modbus/src/main/kotlin/com/amazonaws/sfc/modbus/adapter/ModbusDevice.kt:192-231",
+        "adapters/modbus/src/main/kotlin/com/amazonaws/sfc/modbus/protocol/RequestBase.kt:69",
+        "adapters/modbus/src/main/kotlin/com/amazonaws/sfc/modbus/protocol/ResponseBase.kt:188-231",
+        "adapters/modbus-tcp/src/main/kotlin/com/amazonaws/sfc/modbus/tcp/protocol/MBAPHeader.kt:114-126",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/JsonHelper.kt:104-117",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourcesValuesAsFlow.kt:133-146",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/tcp/TcpClient.kt:256-260"
+      ],
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "plc",
+          "kind": "plc-sim",
+          "args": {
+            "protocol": "modbus",
+            "profile": "generic"
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "plc": {
+          "kind": "jsonl",
+          "service": "plc",
+          "file": "events.jsonl"
+        }
+      },
+      "records": 8,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.plc.values",
+          "keys": [
+            "co_true",
+            "co_false",
+            "co_bits",
+            "co_blink",
+            "di_false",
+            "di_true",
+            "di_bits",
+            "bool_true",
+            "bool_false",
+            "byte",
+            "sint",
+            "usint",
+            "int",
+            "uint",
+            "word",
+            "dint_raw",
+            "dint",
+            "udint_raw",
+            "udint",
+            "dword_raw",
+            "lint_raw",
+            "ulint_raw",
+            "real_raw",
+            "real",
+            "lreal_raw",
+            "time_raw",
+            "time",
+            "string_raw",
+            "string_bs_raw",
+            "bcd",
+            "status_word",
+            "date",
+            "tod",
+            "dt_raw",
+            "dtl_raw",
+            "clock7_raw",
+            "epoch",
+            "m10k_raw",
+            "real_cdab",
+            "real_badc",
+            "real_dcba",
+            "dint_cdab",
+            "pattern_raw",
+            "int_array_raw",
+            "real_array_raw",
+            "motor_raw",
+            "scan16",
+            "scan32",
+            "scan_raw",
+            "t_raw",
+            "sine",
+            "cosine",
+            "tangent",
+            "cotangent",
+            "exp",
+            "quadratic",
+            "sawtooth",
+            "triangle",
+            "square",
+            "damped",
+            "noise",
+            "randomwalk",
+            "sine64_raw",
+            "sine_int",
+            "blink_1hz",
+            "blink_5hz",
+            "ai_sine",
+            "ai_static",
+            "ir_scan16"
+          ],
+          "comment": "every channel in every record: no read cycle lost a value and no transformation returned null (a null value is dropped from the record, ScheduleReader.kt:766)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "co_true",
+          "values": [
+            true
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "co_false",
+          "values": [
+            false
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "di_false",
+          "values": [
+            false
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "di_true",
+          "values": [
+            true
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.co_bits.value",
+          "equals": [
+            true,
+            false,
+            true,
+            false,
+            false,
+            true,
+            false,
+            true
+          ],
+          "comment": "coils 2..9 = 0xA5 LSB-first"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.di_bits.value",
+          "equals": [
+            false,
+            true,
+            false,
+            true,
+            true,
+            false,
+            true,
+            false
+          ],
+          "comment": "discrete inputs 2..9 = 0x5A LSB-first"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.co_blink.value",
+          "type": "bool"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "bool_true",
+          "values": [
+            "1",
+            1
+          ],
+          "comment": "A single register is a UShort: a JSON string in-process/uberjar (JsonHelper.kt:107-112), a number in IPC (GrpcSourceValueFromNativeExt.kt:194-195)"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "bool_false",
+          "values": [
+            "0",
+            0
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "byte",
+          "values": [
+            "165",
+            165
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "sint",
+          "values": [
+            "65436",
+            65436
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "usint",
+          "values": [
+            "200",
+            200
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "int",
+          "values": [
+            "53191",
+            53191
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "uint",
+          "values": [
+            "54321",
+            54321
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "word",
+          "values": [
+            "54321",
+            54321
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "bcd",
+          "values": [
+            "4660",
+            4660
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "status_word",
+          "values": [
+            "42435",
+            42435
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "date",
+          "values": [
+            "12584",
+            12584
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.dint_raw.value",
+          "in": [
+            [
+              "46697",
+              "64814"
+            ],
+            [
+              46697,
+              64814
+            ]
+          ],
+          "comment": "Size > 1 is a List<UShort>: strings in every mode as far as the code shows (both hops keep UShort, GrpcValueFromNativeExt.kt:124-130, GrpcSourceValueAsNativeExt.kt:50, GrpcTargetValueFromNativeExt.kt:213-216, GrpcTargetValueAsNativeExt.kt:59); numbers accepted too because this was not run"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.udint_raw.value",
+          "in": [
+            [
+              "45776",
+              "24064"
+            ],
+            [
+              45776,
+              24064
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.dword_raw.value",
+          "in": [
+            [
+              "45776",
+              "24064"
+            ],
+            [
+              45776,
+              24064
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.lint_raw.value",
+          "in": [
+            [
+              "65535",
+              "65248",
+              "36356",
+              "64309"
+            ],
+            [
+              65535,
+              65248,
+              36356,
+              64309
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ulint_raw.value",
+          "in": [
+            [
+              "0",
+              "2874",
+              "29646",
+              "12274"
+            ],
+            [
+              0,
+              2874,
+              29646,
+              12274
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.real_raw.value",
+          "in": [
+            [
+              "17984",
+              "58880"
+            ],
+            [
+              17984,
+              58880
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.lreal_raw.value",
+          "in": [
+            [
+              "49400",
+              "7383",
+              "0",
+              "0"
+            ],
+            [
+              49400,
+              7383,
+              0,
+              0
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.time_raw.value",
+          "in": [
+            [
+              "0",
+              "1234"
+            ],
+            [
+              0,
+              1234
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.string_raw.value",
+          "in": [
+            [
+              "21318",
+              "17197",
+              "21321",
+              "19712",
+              "0",
+              "0",
+              "0",
+              "0"
+            ],
+            [
+              21318,
+              17197,
+              21321,
+              19712,
+              0,
+              0,
+              0,
+              0
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.string_bs_raw.value",
+          "in": [
+            [
+              "18003",
+              "11587",
+              "18771",
+              "77",
+              "0",
+              "0",
+              "0",
+              "0"
+            ],
+            [
+              18003,
+              11587,
+              18771,
+              77,
+              0,
+              0,
+              0,
+              0
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.dt_raw.value",
+          "in": [
+            [
+              "9222",
+              "5394",
+              "13398",
+              "30871"
+            ],
+            [
+              9222,
+              5394,
+              13398,
+              30871
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.dtl_raw.value",
+          "in": [
+            [
+              "2024",
+              "1551",
+              "1804",
+              "8760",
+              "12039",
+              "12096"
+            ],
+            [
+              2024,
+              1551,
+              1804,
+              8760,
+              12039,
+              12096
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.clock7_raw.value",
+          "in": [
+            [
+              "2024",
+              "6",
+              "15",
+              "12",
+              "34",
+              "56",
+              "789"
+            ],
+            [
+              2024,
+              6,
+              15,
+              12,
+              34,
+              56,
+              789
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.m10k_raw.value",
+          "in": [
+            [
+              "12345",
+              "6789"
+            ],
+            [
+              12345,
+              6789
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.pattern_raw.value",
+          "in": [
+            [
+              "0",
+              "65535",
+              "4660",
+              "43690",
+              "21845",
+              "32767",
+              "32768",
+              "16383",
+              "16384"
+            ],
+            [
+              0,
+              65535,
+              4660,
+              43690,
+              21845,
+              32767,
+              32768,
+              16383,
+              16384
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.int_array_raw.value",
+          "in": [
+            [
+              "0",
+              "1",
+              "65535",
+              "1000",
+              "64536",
+              "32767",
+              "32768",
+              "12345"
+            ],
+            [
+              0,
+              1,
+              65535,
+              1000,
+              64536,
+              32767,
+              32768,
+              12345
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.real_array_raw.value",
+          "in": [
+            [
+              "0",
+              "0",
+              "16256",
+              "0",
+              "49024",
+              "0",
+              "16457",
+              "4059"
+            ],
+            [
+              0,
+              0,
+              16256,
+              0,
+              49024,
+              0,
+              16457,
+              4059
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.motor_raw.value",
+          "in": [
+            [
+              "7",
+              "17595",
+              "34816",
+              "1",
+              "5"
+            ],
+            [
+              7,
+              17595,
+              34816,
+              1,
+              5
+            ]
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ai_static.value",
+          "in": [
+            [
+              "0",
+              "6912",
+              "13824",
+              "20736",
+              "27648",
+              "32511",
+              "32767",
+              "37888"
+            ],
+            [
+              0,
+              6912,
+              13824,
+              20736,
+              27648,
+              32511,
+              32767,
+              37888
+            ]
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "dint",
+          "values": [
+            -1234567890
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "real",
+          "values": [
+            12345.5
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "time",
+          "values": [
+            1234
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "tod",
+          "values": [
+            45296789
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "epoch",
+          "values": [
+            1718454896
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "real_cdab",
+          "values": [
+            12345.5
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "real_badc",
+          "values": [
+            12345.5
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "real_dcba",
+          "values": [
+            12345.5
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "dint_cdab",
+          "values": [
+            -1234567890
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "udint",
+          "values": [
+            "3000000000",
+            3000000000
+          ],
+          "comment": "ToUnsigned yields UInt, written as a string by JsonHelper.kt:91-96 in every mode (the IPC target hop keeps UInt: GrpcTargetValueFromNativeExt.kt:257-258, GrpcTargetValueAsNativeExt.kt:53)"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "scan16",
+          "min": 0,
+          "max": 65535
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.scan16.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "ir_scan16",
+          "min": 0,
+          "max": 65535
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.ir_scan16.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "sine_int",
+          "min": 0,
+          "max": 65535
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.sine_int.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "scan32",
+          "min": 0,
+          "max": 2147483647,
+          "comment": "the scan counter starts at 0 when the simulator starts (\u00a74 conventions), so I32 stays positive"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.scan32.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "ai_sine",
+          "min": 0,
+          "max": 27648
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.ai_sine.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "sine",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.sine.value",
+          "min": 3,
+          "comment": "8 records: the first two reads are back to back (SourcesValuesAsFlow.kt:133-146), the other six are 200 ms apart and cover all five phases of a 1 Hz or 2 Hz signal, so a symmetric waveform shows at least 3 values; with 5 records it can show 2"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "cosine",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.cosine.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "tangent",
+          "min": -1000,
+          "max": 1000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.tangent.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "cotangent",
+          "min": -1000,
+          "max": 1000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.cotangent.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "exp",
+          "min": 4.97,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.exp.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "quadratic",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.quadratic.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "sawtooth",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.sawtooth.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "triangle",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.triangle.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "damped",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.damped.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "noise",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.noise.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "randomwalk",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.randomwalk.value",
+          "min": 3,
+          "comment": "requires the per-scan random-walk step pinned in \u00a74.6"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.scan_raw.value",
+          "type": "list"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.scan_raw.value",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.t_raw.value",
+          "type": "list"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.t_raw.value",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.sine64_raw.value",
+          "type": "list"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.sine64_raw.value",
+          "min": 3
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "square",
+          "values": [
+            100.0,
+            -100.0
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "blink_1hz",
+          "values": [
+            "0",
+            "1",
+            0,
+            1
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "blink_5hz",
+          "values": [
+            "0",
+            "1",
+            0,
+            1
+          ]
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "co_blink",
+          "values": [
+            true,
+            false
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "plc",
+          "path": "status",
+          "equals": "ok",
+          "comment": "the simulator sent no exception and dropped no frame; the harness readiness probe's connect/disconnect (conn 1) is also ok"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read_coils"
+          },
+          "path": "detail.addr",
+          "values": [
+            0
+          ],
+          "comment": "SFC's request plan: Address-1 on the wire, gaps <= 16 bits / 8 registers merged, one request per range (ModbusDevice.kt:192-231, RequestBase.kt:69)"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read_coils"
+          },
+          "path": "detail.qty",
+          "values": [
+            17
+          ]
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read_discrete_inputs"
+          },
+          "path": "detail.addr",
+          "values": [
+            0
+          ]
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read_discrete_inputs"
+          },
+          "path": "detail.qty",
+          "values": [
+            10
+          ]
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read_holding_registers"
+          },
+          "path": "detail.addr",
+          "values": [
+            0,
+            200
+          ]
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read_holding_registers"
+          },
+          "path": "detail.qty",
+          "values": [
+            110,
+            42
+          ]
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read_input_registers"
+          },
+          "path": "detail.addr",
+          "values": [
+            0
+          ]
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "read_input_registers"
+          },
+          "path": "detail.qty",
+          "values": [
+            17
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "plc",
+          "where": {
+            "op": "read_holding_registers"
+          },
+          "path": "detail.unit",
+          "equals": 1
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "whilst reading",
+            "is not a recognized function/error code",
+            "invalid exception code",
+            "Exception while receiving responses",
+            "Received response for transaction",
+            "Error applying transformation",
+            "TransformationException",
+            "Error processing data from reader"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MODBUS-PILOT",
+        "Transformations": {
+          "F32BE": [
+            {
+              "Operator": "NumbersToFloatBE"
+            }
+          ],
+          "F32LE": [
+            {
+              "Operator": "NumbersToFloatLE"
+            }
+          ],
+          "F32CDAB": [
+            {
+              "Operator": "ReverseList"
+            },
+            {
+              "Operator": "NumbersToFloatBE"
+            }
+          ],
+          "F32BADC": [
+            {
+              "Operator": "ReverseList"
+            },
+            {
+              "Operator": "NumbersToFloatLE"
+            }
+          ],
+          "I32": [
+            {
+              "Operator": "Int16sToInt32"
+            }
+          ],
+          "I32CDAB": [
+            {
+              "Operator": "ReverseList"
+            },
+            {
+              "Operator": "Int16sToInt32"
+            }
+          ],
+          "U32": [
+            {
+              "Operator": "Int16sToInt32"
+            },
+            {
+              "Operator": "ToUnsigned"
+            }
+          ]
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "plc": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "plc": {
+            "Name": "plc",
+            "ProtocolAdapter": "Modbus",
+            "AdapterDevice": "plc1",
+            "ReadTimeout": 5000,
+            "Optimization": {
+              "Enabled": true,
+              "RegisterMaxGapSize": 8,
+              "CoilMaxGapSize": 16
+            },
+            "Channels": {
+              "co_true": {
+                "Name": "co_true",
+                "Type": "Coil",
+                "Address": 1
+              },
+              "co_false": {
+                "Name": "co_false",
+                "Type": "Coil",
+                "Address": 2
+              },
+              "co_bits": {
+                "Name": "co_bits",
+                "Type": "Coil",
+                "Address": 3,
+                "Size": 8
+              },
+              "co_blink": {
+                "Name": "co_blink",
+                "Type": "Coil",
+                "Address": 17
+              },
+              "di_false": {
+                "Name": "di_false",
+                "Type": "DiscreteInput",
+                "Address": 1
+              },
+              "di_true": {
+                "Name": "di_true",
+                "Type": "DiscreteInput",
+                "Address": 2
+              },
+              "di_bits": {
+                "Name": "di_bits",
+                "Type": "DiscreteInput",
+                "Address": 3,
+                "Size": 8
+              },
+              "bool_true": {
+                "Name": "bool_true",
+                "Type": "HoldingRegister",
+                "Address": 1
+              },
+              "bool_false": {
+                "Name": "bool_false",
+                "Type": "HoldingRegister",
+                "Address": 2
+              },
+              "byte": {
+                "Name": "byte",
+                "Type": "HoldingRegister",
+                "Address": 3
+              },
+              "sint": {
+                "Name": "sint",
+                "Type": "HoldingRegister",
+                "Address": 4
+              },
+              "usint": {
+                "Name": "usint",
+                "Type": "HoldingRegister",
+                "Address": 5
+              },
+              "int": {
+                "Name": "int",
+                "Type": "HoldingRegister",
+                "Address": 6
+              },
+              "uint": {
+                "Name": "uint",
+                "Type": "HoldingRegister",
+                "Address": 7
+              },
+              "word": {
+                "Name": "word",
+                "Type": "HoldingRegister",
+                "Address": 8
+              },
+              "dint_raw": {
+                "Name": "dint_raw",
+                "Type": "HoldingRegister",
+                "Address": 9,
+                "Size": 2
+              },
+              "dint": {
+                "Name": "dint",
+                "Type": "HoldingRegister",
+                "Address": 9,
+                "Size": 2,
+                "Transformation": "I32"
+              },
+              "udint_raw": {
+                "Name": "udint_raw",
+                "Type": "HoldingRegister",
+                "Address": 11,
+                "Size": 2
+              },
+              "udint": {
+                "Name": "udint",
+                "Type": "HoldingRegister",
+                "Address": 11,
+                "Size": 2,
+                "Transformation": "U32"
+              },
+              "dword_raw": {
+                "Name": "dword_raw",
+                "Type": "HoldingRegister",
+                "Address": 13,
+                "Size": 2
+              },
+              "lint_raw": {
+                "Name": "lint_raw",
+                "Type": "HoldingRegister",
+                "Address": 15,
+                "Size": 4
+              },
+              "ulint_raw": {
+                "Name": "ulint_raw",
+                "Type": "HoldingRegister",
+                "Address": 19,
+                "Size": 4
+              },
+              "real_raw": {
+                "Name": "real_raw",
+                "Type": "HoldingRegister",
+                "Address": 23,
+                "Size": 2
+              },
+              "real": {
+                "Name": "real",
+                "Type": "HoldingRegister",
+                "Address": 23,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "lreal_raw": {
+                "Name": "lreal_raw",
+                "Type": "HoldingRegister",
+                "Address": 25,
+                "Size": 4
+              },
+              "time_raw": {
+                "Name": "time_raw",
+                "Type": "HoldingRegister",
+                "Address": 29,
+                "Size": 2
+              },
+              "time": {
+                "Name": "time",
+                "Type": "HoldingRegister",
+                "Address": 29,
+                "Size": 2,
+                "Transformation": "I32"
+              },
+              "string_raw": {
+                "Name": "string_raw",
+                "Type": "HoldingRegister",
+                "Address": 31,
+                "Size": 8
+              },
+              "string_bs_raw": {
+                "Name": "string_bs_raw",
+                "Type": "HoldingRegister",
+                "Address": 39,
+                "Size": 8
+              },
+              "bcd": {
+                "Name": "bcd",
+                "Type": "HoldingRegister",
+                "Address": 47
+              },
+              "status_word": {
+                "Name": "status_word",
+                "Type": "HoldingRegister",
+                "Address": 48
+              },
+              "date": {
+                "Name": "date",
+                "Type": "HoldingRegister",
+                "Address": 49
+              },
+              "tod": {
+                "Name": "tod",
+                "Type": "HoldingRegister",
+                "Address": 50,
+                "Size": 2,
+                "Transformation": "I32"
+              },
+              "dt_raw": {
+                "Name": "dt_raw",
+                "Type": "HoldingRegister",
+                "Address": 52,
+                "Size": 4
+              },
+              "dtl_raw": {
+                "Name": "dtl_raw",
+                "Type": "HoldingRegister",
+                "Address": 56,
+                "Size": 6
+              },
+              "clock7_raw": {
+                "Name": "clock7_raw",
+                "Type": "HoldingRegister",
+                "Address": 62,
+                "Size": 7
+              },
+              "epoch": {
+                "Name": "epoch",
+                "Type": "HoldingRegister",
+                "Address": 69,
+                "Size": 2,
+                "Transformation": "I32"
+              },
+              "m10k_raw": {
+                "Name": "m10k_raw",
+                "Type": "HoldingRegister",
+                "Address": 71,
+                "Size": 2
+              },
+              "real_cdab": {
+                "Name": "real_cdab",
+                "Type": "HoldingRegister",
+                "Address": 73,
+                "Size": 2,
+                "Transformation": "F32CDAB"
+              },
+              "real_badc": {
+                "Name": "real_badc",
+                "Type": "HoldingRegister",
+                "Address": 75,
+                "Size": 2,
+                "Transformation": "F32BADC"
+              },
+              "real_dcba": {
+                "Name": "real_dcba",
+                "Type": "HoldingRegister",
+                "Address": 77,
+                "Size": 2,
+                "Transformation": "F32LE"
+              },
+              "dint_cdab": {
+                "Name": "dint_cdab",
+                "Type": "HoldingRegister",
+                "Address": 79,
+                "Size": 2,
+                "Transformation": "I32CDAB"
+              },
+              "pattern_raw": {
+                "Name": "pattern_raw",
+                "Type": "HoldingRegister",
+                "Address": 81,
+                "Size": 9
+              },
+              "int_array_raw": {
+                "Name": "int_array_raw",
+                "Type": "HoldingRegister",
+                "Address": 90,
+                "Size": 8
+              },
+              "real_array_raw": {
+                "Name": "real_array_raw",
+                "Type": "HoldingRegister",
+                "Address": 98,
+                "Size": 8
+              },
+              "motor_raw": {
+                "Name": "motor_raw",
+                "Type": "HoldingRegister",
+                "Address": 106,
+                "Size": 5
+              },
+              "scan16": {
+                "Name": "scan16",
+                "Type": "HoldingRegister",
+                "Address": 201
+              },
+              "scan32": {
+                "Name": "scan32",
+                "Type": "HoldingRegister",
+                "Address": 202,
+                "Size": 2,
+                "Transformation": "I32"
+              },
+              "scan_raw": {
+                "Name": "scan_raw",
+                "Type": "HoldingRegister",
+                "Address": 204,
+                "Size": 4
+              },
+              "t_raw": {
+                "Name": "t_raw",
+                "Type": "HoldingRegister",
+                "Address": 208,
+                "Size": 4
+              },
+              "sine": {
+                "Name": "sine",
+                "Type": "HoldingRegister",
+                "Address": 212,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "cosine": {
+                "Name": "cosine",
+                "Type": "HoldingRegister",
+                "Address": 214,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "tangent": {
+                "Name": "tangent",
+                "Type": "HoldingRegister",
+                "Address": 216,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "cotangent": {
+                "Name": "cotangent",
+                "Type": "HoldingRegister",
+                "Address": 218,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "exp": {
+                "Name": "exp",
+                "Type": "HoldingRegister",
+                "Address": 220,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "quadratic": {
+                "Name": "quadratic",
+                "Type": "HoldingRegister",
+                "Address": 222,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "sawtooth": {
+                "Name": "sawtooth",
+                "Type": "HoldingRegister",
+                "Address": 224,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "triangle": {
+                "Name": "triangle",
+                "Type": "HoldingRegister",
+                "Address": 226,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "square": {
+                "Name": "square",
+                "Type": "HoldingRegister",
+                "Address": 228,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "damped": {
+                "Name": "damped",
+                "Type": "HoldingRegister",
+                "Address": 230,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "noise": {
+                "Name": "noise",
+                "Type": "HoldingRegister",
+                "Address": 232,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "randomwalk": {
+                "Name": "randomwalk",
+                "Type": "HoldingRegister",
+                "Address": 234,
+                "Size": 2,
+                "Transformation": "F32BE"
+              },
+              "sine64_raw": {
+                "Name": "sine64_raw",
+                "Type": "HoldingRegister",
+                "Address": 236,
+                "Size": 4
+              },
+              "sine_int": {
+                "Name": "sine_int",
+                "Type": "HoldingRegister",
+                "Address": 240
+              },
+              "blink_1hz": {
+                "Name": "blink_1hz",
+                "Type": "HoldingRegister",
+                "Address": 241
+              },
+              "blink_5hz": {
+                "Name": "blink_5hz",
+                "Type": "HoldingRegister",
+                "Address": 242
+              },
+              "ai_sine": {
+                "Name": "ai_sine",
+                "Type": "InputRegister",
+                "Address": 1
+              },
+              "ai_static": {
+                "Name": "ai_static",
+                "Type": "InputRegister",
+                "Address": 9,
+                "Size": 8
+              },
+              "ir_scan16": {
+                "Name": "ir_scan16",
+                "Type": "InputRegister",
+                "Address": 17
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Modbus": {
+            "AdapterType": "MODBUS-TCP",
+            "Devices": {
+              "plc1": {
+                "Address": "127.0.0.1",
+                "Port": "${SFC_E2E_PLC_PORT}",
+                "DeviceId": 1,
+                "ConnectTimeout": 1000,
+                "WaitAfterConnectError": 1000,
+                "WaitAfterReadError": 1000,
+                "WaitAfterWriteError": 1000
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MODBUS-TCP": {
+            "FactoryClassName": "com.amazonaws.sfc.modbus.tcp.ModbusTcpAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MODBUS-TCP": {
+            "FactoryClassName": "com.amazonaws.sfc.modbus.tcp.ModbusTcpAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/modbus-tcp/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "ModbusServer": {
+          "module": "modbus-tcp"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Modbus": {
+            "AdapterServer": "ModbusServer"
+          }
+        },
+        "AdapterServers": {
+          "ModbusServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

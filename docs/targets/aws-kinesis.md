@@ -4,18 +4,60 @@
 
 The Amazon [Kinesis](https://aws.amazon.com/kinesis/) target connector for Shop Floor Connectivity (SFC) enables streaming of industrial device data directly to Amazon Kinesis Data Streams. It provides configurable compression, batching , template based data transformations and delivery of device data to Kinesis streams for real-time processing and analytics.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `AWS-KINESIS` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWS-KINESIS": {
-      "JarFiles" : ["<location of deployment>/aws-kinesis-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter"
-   }
+"TargetTypes": {
+  "AWS-KINESIS": { "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter" }
 }
 ```
 
+**In-process** - module bundle `aws-kinesis-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
 
+```json
+"TargetTypes": {
+  "AWS-KINESIS": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-kinesis-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awskinesis.AwsKinesisTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "KinesisTarget": {
+    "TargetType": "AWS-KINESIS",
+    "TargetServer": "KinesisServer"
+  }
+},
+"TargetServers": {
+  "KinesisServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-kinesis-target/bin/aws-kinesis-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-kinesis-target\lib\*" com.amazonaws.sfc.awskinesis.AwsKinesisTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awskinesis.AwsKinesisTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awskinesis.AwsKinesisTargetService -port 50001`).
+
+**Examples:** uberjar: [uberjar-sim-kinesis](../../examples/uberjar-sim-kinesis/README.md) · all: [examples catalog](../examples/README.md)
 
 ## AwsKinesisTargetConfiguration
 
@@ -40,11 +82,13 @@ Requires IAM permission `kinesis:PutRecords` for the stream the data is sent to.
 
 ---
 ### BatchSize
-The BatchSize property determines how many messages to accumulate before sending them in a single putRecordBatch API call to Amazon Kinesis. The default value is 10 messages, and there is a hard limit of 500 messages per batch as per Kinesis service limits. This batching mechanism helps optimize throughput and reduce API calls by grouping multiple records into a single request.
+The BatchSize property determines how many messages to accumulate before sending them in a single PutRecords API call to Amazon Kinesis. The default value is 10 messages, and there is a hard limit of 500 messages per batch as per Kinesis service limits. This batching mechanism helps optimize throughput and reduce API calls by grouping multiple records into a single request.
+
+A batch is also sent before it would exceed 5 MiB. Each record uses its position in the batch (`0`, `1`, ...) as partition key, so the partition key does not depend on the source of the data.
 
 **Type**: Integer
 
-Default is 10, Maximum is 500
+Default is 10, Maximum is 500 (higher values are capped at 500)
 
 ---
 
@@ -66,13 +110,15 @@ The Compression property specifies the compression algorithm to use when sending
 
 Using compression can help reduce bandwidth usage and costs, especially when sending large volumes of data, though it adds some processing overhead.
 
+With compression, each Kinesis record holds the raw GZip or Zip bytes of one message, without a JSON envelope. Use the values exactly as listed; an unrecognised value (for example "gzip") silently means no compression.
+
 **Type**: String
 
 Default is "None"
 
 -- -
 ### Interval
-The Interval property defines a time-based trigger (in milliseconds) for sending data to the Kinesis stream, even if the [BatchSize](#batchsize) hasn't been reached. When specified, the adapter will flush the buffer and send data either when the [BatchSize](#batchsize) is reached OR when this time interval has elapsed, whichever comes first. This ensures data freshness by preventing messages from sitting in the buffer for too long while waiting for the batch to fill up.
+The Interval property sets a time in milliseconds without new data after which a partially filled buffer is sent to the Kinesis stream, even if the [BatchSize](#batchsize) hasn't been reached. The timer restarts with every record, so while data arrives more often than the interval, records are only sent when the [BatchSize](#batchsize) or the 5 MiB request limit is reached.
 
 **Type**: Integer
 
@@ -84,7 +130,7 @@ Optional, if not set only [BatchSize](#batchsize) is used
 
 ### Endpoint
 
-The EndPoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
+The Endpoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
 
 https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html
 
@@ -96,7 +142,7 @@ https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-supp
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
@@ -132,7 +178,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -142,7 +188,7 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
 
@@ -174,7 +220,8 @@ When a custom [formatter](#formatter) is configured for a target then this prope
         "Compression": {
           "type": "string",
           "description": "Compression type for messages",
-          "enum": ["None", "GZIP"]
+          "enum": ["None", "Zip", "GZip"],
+          "default": "None"
         },
         "CredentialProviderClient": {
           "type": "string",
@@ -182,7 +229,7 @@ When a custom [formatter](#formatter) is configured for a target then this prope
         },
         "Interval": {
           "type": "integer",
-          "description": "Interval in milliseconds between batch publishes"
+          "description": "Time in milliseconds without new data after which a partial batch is sent"
         },
         "Region": {
           "type": "string",
@@ -223,8 +270,8 @@ Configuration using  default AWS SDK credential provider chain.
 {
   "TargetType" : "AWS-KINESIS",    
   "StreamName": "data-stream",
-  "Region": "us-east-1"
-  "Compression": "ZIP"
+  "Region": "us-east-1",
+  "Compression": "Zip"
 }
 
 ```

@@ -2,9 +2,9 @@
 
 [SFC Configuration](./sfc-configuration.md) > [Sources](./sfc-configuration.md#sources) 
 
-Defines core configuration properties for [SFC source adapters](../adapters/README.md).. Includes settings for channel management, data transformation (composition/decomposition), timestamps, filtering, and metadata. Source adapters extend this base configuration with protocol-specific properties. Essential for configuring how data is collected and processed from input sources.
+Defines core configuration properties for [SFC source adapters](../adapters/README.md). Includes settings for channel management, data transformation (composition/decomposition), timestamps, filtering, and metadata. Source adapters extend this base configuration with protocol-specific properties. Essential for configuring how data is collected and processed from input sources.
 
-SourceConfiguration defines common properties for [SFC source adapters](../adapters/README.md). Source adapter implementations extend this type with their specific additional properties.
+See it running: [OPC UA to AWS IoT Core using filters](../../examples/opcua-to-iot-using-filters/README.md).
 
 - [Schema](#schema)
 - [Examples](#examples)
@@ -37,16 +37,20 @@ Specifies a time adjustment in milliseconds that will be applied to timestamps o
 
 To set the timestamp to a later value use a positive value, for an earlier value use a negative value.
 
+> Not applied when the adapter runs as an IPC service; channel values then carry the source timestamp.
+
 ---
 
 ### Channels
 Defines a mapping of channel identifiers to their configurations, representing the values read from a source. While each protocol implementation defines its specific channel attributes, the SFC core uses a common set of generic attributes for processing. The protocol implementation handles the specific details of reading and interpreting data from the source according to its configuration
 
+Channel IDs cannot contain "/". A channel ID starting with # is ignored. Channel Names (or IDs where no Name is set) must be unique within a source.
+
 **Type**: Map[String,[ChannelConfiguration](./channel-configuration.md)]
 
 ---
 ### Compose
-Defines a mapping that combines multiple channel values into structured data. Each map entry specifies a structure name and a list of channel IDs to be merged. The resulting structure uses channel IDs (or their configured names) as field names, with the source timestamp. Original channel values are removed after composition. For example, combining "Input0" and "Output0" channels under an "IO" structure transforms individual boolean values into a single structured object with both values as fields
+Defines a mapping that combines multiple channel values into structured data. Each map entry specifies a structure name and a list of channel IDs to be merged. The resulting structure uses channel IDs (or their configured names) as field names, with the source timestamp. Original channel values are removed after composition. For example, combining "Input0" and "Output0" channels under an "IO" structure transforms individual boolean values into a single structured object with both values as fields. Compose only groups values into a structure; it does not calculate anything. To calculate values such as averages over time, use [Aggregation](./aggregation-configuration.md).
 
 **Type**: Map[String, List[String]]
 
@@ -86,15 +90,15 @@ This will result in the Input0 and Output0 channel values being replaced by a ne
 The Decompose property controls whether structured values from the channels in the source should be broken down into individual elements. When set to true:
 
 - A structured value will be split into separate values for each sub-element
-- Each decomposed value is named using the pattern "originalName.subElementName"
+- Each decomposed value is named `<channel ID>.<field>` (the channel's Name is not used)
 - The original structured value is removed after decomposition
-- For lists of structures (when Spread is true), each structure is decomposed with names following the pattern "elementName.index.subElementName"
+- For lists of structures (when Spread is true), each structure is decomposed with names following the pattern `<channel ID>.<index>.<field>`
 
 This property can be set at both [channel](./channel-configuration.md#decompose) and source level, with the channel-level setting taking precedence over the source-level setting. The default value is false.
 
 This feature is particularly useful when working with complex data structures that need to be broken down into simpler individual values for processing or analysis
 
-If the value is  list of structures and the value of the [Spread](#spread) setting is true then each structure in the list is decomposed. 
+If the value is a list of structures and the value of the [Spread](#spread) setting is true then each structure in the list is decomposed. 
 
 **Type**: Boolean
 
@@ -109,23 +113,25 @@ Provides a free-form text field where users can add descriptive information abou
 ---
 ### Metadata
 
-The optional [Metadata](../README.md#metadata) element can be used to add additional data to the output at the source level. If metadata is specified, which is a map of string indexed values, it will be added to the output at the channel level as an element that can be configured through the "Metadata" entry of the [ElementNames](./sfc-configuration.md#elementnames) configuration element.
+The optional [Metadata](../README.md#metadata) element can be used to add additional data to the output at the source level. If metadata is specified, which is a map of string indexed values, it is added under the metadata node of the source in the output. The name of that node can be configured through the "Metadata" entry of the [ElementNames](./sfc-configuration.md#elementnames) configuration element.
 
 **Type**: Map[String, String]
 
 ---
 ### Name
-Defines an optional descriptive identifier for the source that will be used as the key in output value maps. If not specified, the system uses the source identifier instead. This allows meaningful naming of data sources (like "AC-Unit-1" or "Plant-1/Cooling-Pump") to improve readability and identification in the output data.
+Name of the source in the output data, used as the key in output value maps. Set it to the source key if you don't need a different name. This allows meaningful naming of data sources (like "AC-Unit-1" or "Plant-1/Cooling-Pump") to improve readability and identification in the output data.
 
 **Type**: String
 
-Optional
+Required
 
 ---
 ### ProtocolAdapter
 Specifies which protocol adapter should be used for this source by referencing its identifier. The referenced protocol adapter must be defined in the [ProtocolAdapters](./sfc-configuration.md#protocoladapters)  section of the configuration. This setting establishes the connection between the source and the specific protocol implementation used to communicate with the data source.
 
 **Type**: String
+
+Required
 
 ---
 ### SourceTimestampAdjustment
@@ -137,15 +143,15 @@ To set the timestamp to a later value use a positive value, for an earlier value
 
 ---
 ### Spread
-If set to true and the value of the channel the value is a list then for each element in the list a new individual value is created.
-The value of this setting overrules the setting of the Spread setting at source level.
-The value of this setting can be overruled for specific channels by setting the [Spread](./channel-configuration.md#spread) setting for that channel.
+If true, list values of all channels of this source are spread into individual values. A channel's own [Spread](./channel-configuration.md#spread) setting overrides this.
 
 **Type**: Boolean
 
 Default is false
 
-The names of the values for the fields in the structure start with the name of the value element with a sequence number, separated by a ".". After splitting the list value into individual values, it is removed from the dataset.
+Each structure in the list becomes a value named `<channel ID>.<index>`. After splitting the list value into individual values, it is removed from the dataset.
+
+> Currently only lists of structures are spread. A list of primitive values (numbers, strings) is dropped from the output, so do not spread such channels; set their own Spread to false when the source sets it.
 
 
 
@@ -169,12 +175,12 @@ The names of the values for the fields in the structure start with the name of t
       "description": "Adjustment value for timestamps in milliseconds"
     },
     "Channels": {
-      "type": "array",
-      "items": {
+      "type": "object",
+      "additionalProperties": {
         "$ref": "#/definitions/ChannelConfiguration"
       },
-      "minItems": 1,
-      "description": "List of channel configurations"
+      "minProperties": 1,
+      "description": "Map of channel configurations, keyed by channel ID"
     },
     "Compose": {
       "type": "object",
@@ -207,23 +213,24 @@ The names of the values for the fields in the structure start with the name of t
     },
     "Name": {
       "type": "string",
-      "description": "Optional output name override for the source"
+      "minLength": 1,
+      "description": "Name of the source in the output"
     },
     "ProtocolAdapter": {
-      "$ref": "#/definitions/ProtocolAdapterConfiguration",
-      "description": "Protocol adapter configuration"
+      "type": "string",
+      "description": "ID of an entry in ProtocolAdapters"
     },
     "SourceTimestampAdjustment": {
       "type": "integer",
       "description": "Adjustment value for source timestamps in milliseconds"
     },
     "Spread": {
-      "type": "integer",
-      "minimum": 0,
-      "description": "Spread interval for data collection in milliseconds"
+      "type": "boolean",
+      "default": false,
+      "description": "Enable/disable spreading of list values into individual values"
     }
   },
-  "required": ["Channels"]
+  "required": ["Name", "ProtocolAdapter", "Channels"]
 }
 
 ```
@@ -232,7 +239,7 @@ The names of the values for the fields in the structure start with the name of t
 
 ## Examples
 
-**<u>Note: In an SFC configuration sources will also be for a source type which extends the SourceConfiguration with their specific properties.</u>**
+**<u>Note: In an SFC configuration sources will also be for a source type which extends the SourceConfiguration with their specific properties.</u>** The channels below are shown without these protocol-specific properties (for example `NodeId` for OPC UA); see the [adapter](../adapters/README.md) pages. `ProtocolAdapter` is the ID of an entry in the [ProtocolAdapters](./sfc-configuration.md#protocoladapters) section.
 
 
 
@@ -240,15 +247,12 @@ Minimal configuration:
 
 ```json
 {
-  "Channels": [
-    {
-      "Name": "Temperature"
-    },
-        {
-      "Name": "Pressure"
-    }
-   
-  ]
+  "Name": "Boiler3",
+  "ProtocolAdapter": "PlcAdapter",
+  "Channels": {
+    "Temperature": {},
+    "Pressure": {}
+  }
 }
 ```
 
@@ -258,14 +262,12 @@ Basic configuration with metadata:
 
 ```json
 {
-  "Channels": [
-    {
-      "Name": "Temperature",
-    },
-    {
-      "Name": "Pressure"
-    }
-  ],
+  "Name": "Boiler3",
+  "ProtocolAdapter": "PlcAdapter",
+  "Channels": {
+    "Temperature": {},
+    "Pressure": {}
+  },
   "Metadata": {
     "location": "Building1",
     "equipment": "Boiler3"
@@ -279,19 +281,16 @@ Configuration with composition:
 
 ```json
 {
-  "Channels": [
-    {
-      "Name": "Flow1"
-    },
-    {
-      "Name": "Flow2"
-    }
-  ],
+  "Channels": {
+    "Flow1": {},
+    "Flow2": {}
+  },
   "Compose": {
-    "TotalFlow": ["Flow1", "Flow2"],
+    "Flows": ["Flow1", "Flow2"],
     "ProcessMetrics": ["Flow1", "Flow2"]
   },
   "Name": "FlowMeter",
+  "ProtocolAdapter": "PlcAdapter",
   "Description": "Flow measurement station"
 }
 ```
@@ -302,16 +301,14 @@ Configuration with timestamp adjustment of -200 milliseconds
 
 ```json
 {
-  "Channels": [
-    {
-      "Name": "Level",
-      "DataType": "Double",
-      "ScanRate": 1000
-    }
-  ],
+  "Name": "LevelSensor",
+  "ProtocolAdapter": "PlcAdapter",
+  "Channels": {
+    "Level": {}
+  },
   "ChannelTimestampAdjustment": -200,
   "SourceTimestampAdjustment": 1000,
-  "Spread": 100
+  "Spread": true
 }
 ```
 
@@ -323,31 +320,20 @@ Configuration with timestamp adjustment of -200 milliseconds
 {
   "Name": "ProcessUnit1",
   "Description": "Main process unit monitoring",
-  "Channels": [
-    {
-      "Name": "Temperature1",
-      "DataType": "Double",
-      "ScanRate": 1000
-    },
-    {
-      "Name": "Temperature2",
-      "DataType": "Double",
-      "ScanRate": 1000
-    },
-    {
-      "Name": "Pressure",
-      "DataType": "Double",
-      "ScanRate": 500
-    }
-  ],
+  "ProtocolAdapter": "PlcAdapter",
+  "Channels": {
+    "Temperature1": {},
+    "Temperature2": {},
+    "Pressure": {}
+  },
   "Compose": {
-    "AverageTemp": ["Temperature1", "Temperature2"],
+    "Temperatures": ["Temperature1", "Temperature2"],
     "ProcessConditions": ["Temperature1", "Temperature2", "Pressure"]
   },
   "ChangeFilter": "DeadbandFilter",
   "ChannelTimestampAdjustment": -100,
   "SourceTimestampAdjustment": 500,
-  "Spread": 250,
+  "Spread": true,
   "Decompose": false,
   "Metadata": {
     "area": "ProcessArea1",
@@ -363,13 +349,11 @@ Configuration with decomposition for all channels:
 
 ```json
 {
-  "Channels": [
-    {
-      "Name": "BatchData",
-      "DataType": "JSON",
-      "ScanRate": 5000
-    }
-  ],
+  "Name": "BatchProcess",
+  "ProtocolAdapter": "PlcAdapter",
+  "Channels": {
+    "BatchData": {}
+  },
   "Decompose": true,
   "ChangeFilter": "JsonFilter",
   "Description": "Batch process data collection"

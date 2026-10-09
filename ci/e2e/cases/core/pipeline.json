@@ -1,0 +1,801 @@
+{
+  "cases": [
+    {
+      "id": "CORE-PIPE-TRACE-01",
+      "title": "At TRACE level the same transformation failure is caught and the raw value passes through",
+      "tier": "core",
+      "intent": "The counterpart of CORE-PIPE-WEDGE-01's transformation trigger, run with -trace (cliLogLevel; the CLI level overrides the config LogLevel, MainControllerService.kt:485). At TRACE level ScheduleReader runs the transformation synchronously inside the try (ScheduleReader.kt:714-726), so the TransformationException is caught, 'Error applying transformation \"RT\"' is logged and the untransformed value is kept. The identical configuration that produces zero Xform records at -info therefore produces a record per read here, carrying the raw bytes [18, 52]: error containment depends on the log level.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:714-726",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:485"
+      ],
+      "timeoutSeconds": 90,
+      "modeParity": false,
+      "cliLogLevel": "trace",
+      "sinks": {
+        "main": {},
+        "ctl": {}
+      },
+      "gates": [
+        {
+          "sink": "ctl",
+          "records": 30
+        },
+        {
+          "sink": "main",
+          "records": 10
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "sink": "main",
+          "min": 10
+        },
+        {
+          "kind": "channelSequence",
+          "sink": "main",
+          "source": "srcXf",
+          "channel": "clean",
+          "step": 1
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "main",
+          "path": "sources.srcXf.values.pair.value",
+          "equals": [
+            18,
+            52
+          ],
+          "strictTypes": true,
+          "comment": "raw, untransformed"
+        },
+        {
+          "kind": "logContains",
+          "text": "Error applying transformation \"RT\""
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error processing data from reader"
+          ]
+        }
+      ],
+      "priority": "P2",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-PIPE-TRACE-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Transformations": {
+          "RT": [
+            {
+              "Operator": "BytesToInt16"
+            },
+            {
+              "Operator": "Int16ToBytes"
+            }
+          ]
+        },
+        "Schedules": [
+          {
+            "Name": "Control",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "srcCtl": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileCtl"
+            ]
+          },
+          {
+            "Name": "Xform",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "srcXf": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "srcCtl": {
+            "Name": "srcCtl",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          },
+          "srcXf": {
+            "Name": "srcXf",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "clean": {
+                "Name": "clean",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "pair": {
+                "Name": "pair",
+                "Transformation": "RT",
+                "Simulation": {
+                  "SimulationType": "List",
+                  "DataType": "Byte",
+                  "Items": [
+                    {
+                      "SimulationType": "Constant",
+                      "DataType": "Byte",
+                      "Value": 18
+                    },
+                    {
+                      "SimulationType": "Constant",
+                      "DataType": "Byte",
+                      "Value": 52
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileCtl": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_CTL}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "FileCtlServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "FileCtl": {
+            "TargetServer": "FileCtlServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileCtlServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-PIPE-WEDGE-01",
+      "title": "One processing exception permanently stops a schedule's output (value-filter type mismatch, transformation failure) (known defect)",
+      "tier": "core",
+      "intent": "processReceivedData() clears combinedReaderResults/readersDone only after every slice was processed (ScheduleReader.kt:190-206). When processing throws, the catch at :237-239 logs 'Error processing data from reader' and the stale data stays; on the next result the reader is already in readersDone, so the stale data is reprocessed first (:225-226), throws again, and the new result is never stored. The schedule is wedged for good. Two triggers that pass validation: (a) a value filter on a non-numeric value - applyValueFilter has no catch (:645-650) and numericCompare throws for a String (DataTypes.kt:66-71); (b) at non-TRACE level transformations run in async and the exception surfaces at await (:731), outside the try at :713-726 - here [BytesToInt16, Int16ToBytes], which validation accepts (any numeric type is 'assignable', DataTypes.kt:43) but which fails the strict runtime type check (TransformationImpl.kt:124: Short is not Int). 'Once' runs healthy until an Interval simulation first emits a String after ~3 s. A Control schedule on its own sink is the gate and must stay healthy throughout.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:190-206",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:225-226",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:237-239",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:645-650",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:713-731",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/DataTypes.kt:66-73",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/transformations/TransformationImpl.kt:116-125",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/transformations/Transformation.kt:112-125"
+      ],
+      "timeoutSeconds": 90,
+      "modeParity": false,
+      "sinks": {
+        "main": {},
+        "ctl": {}
+      },
+      "gates": [
+        {
+          "sink": "ctl",
+          "records": 80
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "sink": "ctl",
+          "min": 80
+        },
+        {
+          "kind": "channelSequence",
+          "sink": "ctl",
+          "source": "srcCtl",
+          "channel": "ctr",
+          "step": 1,
+          "comment": "A healthy schedule in the same process is unaffected: the wedge is per schedule"
+        },
+        {
+          "kind": "logCount",
+          "text": "Error processing data from reader",
+          "min": 10
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:198",
+        "summary": "An exception escaping processReceivedData leaves the failing data in combinedReaderResults; every later read reprocesses it, throws again and is discarded, so the schedule never outputs again",
+        "assertCurrent": [
+          {
+            "kind": "recordCount",
+            "sink": "main",
+            "where": {
+              "schedule": "Always"
+            },
+            "equals": 0
+          },
+          {
+            "kind": "recordCount",
+            "sink": "main",
+            "where": {
+              "schedule": "Xform"
+            },
+            "equals": 0
+          },
+          {
+            "kind": "recordCount",
+            "sink": "main",
+            "where": {
+              "schedule": "Once"
+            },
+            "max": 50,
+            "comment": "Healthy only until the first 'x' (~3 s after the adapter starts; immediately in IPC, where reads start ~10 s late), then never again"
+          },
+          {
+            "kind": "logContains",
+            "text": "Can not compare value RUNNING"
+          },
+          {
+            "kind": "logContains",
+            "text": "Int16ToBytes"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "sink": "main",
+            "where": {
+              "schedule": "Always"
+            },
+            "min": 40
+          },
+          {
+            "kind": "keysAbsent",
+            "paths": [
+              "sources.srcAlways.values.s"
+            ],
+            "sink": "main",
+            "where": {
+              "schedule": "Always"
+            }
+          },
+          {
+            "kind": "recordCount",
+            "sink": "main",
+            "where": {
+              "schedule": "Xform"
+            },
+            "min": 40
+          },
+          {
+            "kind": "recordCount",
+            "sink": "main",
+            "where": {
+              "schedule": "Once"
+            },
+            "min": 60
+          },
+          {
+            "kind": "keysAbsent",
+            "paths": [
+              "sources.srcOnce.values.late"
+            ],
+            "sink": "main",
+            "where": {
+              "schedule": "Once"
+            }
+          }
+        ]
+      },
+      "priority": "P0",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-PIPE-WEDGE-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Gt0": {
+            "Operator": "gt",
+            "Value": 0
+          }
+        },
+        "Transformations": {
+          "RT": [
+            {
+              "Operator": "BytesToInt16"
+            },
+            {
+              "Operator": "Int16ToBytes"
+            }
+          ]
+        },
+        "Schedules": [
+          {
+            "Name": "Control",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "srcCtl": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileCtl"
+            ]
+          },
+          {
+            "Name": "Always",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "srcAlways": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          },
+          {
+            "Name": "Once",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "srcOnce": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          },
+          {
+            "Name": "Xform",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "srcXf": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "srcCtl": {
+            "Name": "srcCtl",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          },
+          "srcAlways": {
+            "Name": "srcAlways",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "clean": {
+                "Name": "clean",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "s": {
+                "Name": "s",
+                "ValueFilter": "Gt0",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "RUNNING"
+                }
+              }
+            }
+          },
+          "srcOnce": {
+            "Name": "srcOnce",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "late": {
+                "Name": "late",
+                "ValueFilter": "Gt0",
+                "Simulation": {
+                  "SimulationType": "Interval",
+                  "Interval": 3000,
+                  "Item": {
+                    "SimulationType": "Constant",
+                    "DataType": "String",
+                    "Value": "x"
+                  }
+                }
+              }
+            }
+          },
+          "srcXf": {
+            "Name": "srcXf",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "clean": {
+                "Name": "clean",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "pair": {
+                "Name": "pair",
+                "Transformation": "RT",
+                "Simulation": {
+                  "SimulationType": "List",
+                  "DataType": "Byte",
+                  "Items": [
+                    {
+                      "SimulationType": "Constant",
+                      "DataType": "Byte",
+                      "Value": 18
+                    },
+                    {
+                      "SimulationType": "Constant",
+                      "DataType": "Byte",
+                      "Value": 52
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileCtl": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_CTL}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "FileCtlServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "FileCtl": {
+            "TargetServer": "FileCtlServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileCtlServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "any": [
+              {
+                "log": "Int16ToBytes"
+              },
+              {
+                "sink": "main",
+                "records": 40,
+                "where": {
+                  "schedule": "Xform"
+                }
+              }
+            ],
+            "comment": "Xform has read and failed (today) or delivered (fixed) - in IPC its first read can come 10 s late"
+          }
+        },
+        {
+          "wait": {
+            "any": [
+              {
+                "log": "Can not compare value RUNNING"
+              },
+              {
+                "sink": "main",
+                "records": 40,
+                "where": {
+                  "schedule": "Always"
+                }
+              }
+            ],
+            "comment": "Always has read and failed (today) or delivered (fixed) - in IPC its first read can come 10 s late"
+          }
+        }
+      ]
+    }
+  ]
+}

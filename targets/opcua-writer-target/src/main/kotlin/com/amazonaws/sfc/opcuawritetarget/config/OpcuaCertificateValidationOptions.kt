@@ -55,7 +55,9 @@ class OpcuaCertificateValidationOptions {
             if (validity) set.add(ValidationCheck.VALIDITY)
             if (keyUsageEndEntity) set.add(ValidationCheck.KEY_USAGE_END_ENTITY)
             if (extKeyUsageEndEntity) set.add(ValidationCheck.EXTENDED_KEY_USAGE_END_ENTITY)
-            if (keyUsageIssuer) set.add(ValidationCheck.KEY_USAGE_ISSUER)
+            // milo has no optional issuer key-usage check, issuer keyCertSign is enforced
+            // unconditionally by the PKIX chain validation, so this config key maps to no check.
+            // It is accepted when true and rejected when false, see the enclosing configuration.
             if (revocation) set.add(ValidationCheck.REVOCATION)
             if (applicationUri) set.add(ValidationCheck.APPLICATION_URI)
             return ImmutableSet.copyOf(set)
@@ -86,7 +88,6 @@ class OpcuaCertificateValidationOptions {
                 _extKeyUsageEndEntity = extKeyUsageEndEntityPresent
                 _keyUsageIssuer = keyUsageIssuerPresent
                 _revocation = revocation
-                _keyUsageIssuer = keyUsageIssuerPresent
                 _applicationUri = applicationUri
 
             }

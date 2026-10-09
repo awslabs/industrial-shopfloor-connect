@@ -4,12 +4,19 @@ The file `in-process-opcua-msk.json` contains an example template for
 reading data from an OPCUA server and sending the data to an AWS MSK topic. Both the adapter 
 and targets are configured to run in the sfc-main process. 
 
+> **Known limitation:** in-process, this pipeline does not deliver data today. When `sfc-main` loads the MSK target
+> from its `JarFiles`, the target's IAM authentication classes are loaded from the libraries of `sfc-main`, which do
+> not contain the Kafka client, so the first record fails with a `NoClassDefFoundError` and nothing is written to the
+> topic. Run the same pipeline over IPC with [ipc-opcua-msk](../ipc-opcua-msk/README.md), or run this configuration
+> from the uberjar as described under [Deployment directory](#deployment-directory).
+
 The AWS MSK target is a target adapter optimized to write data to AWS Managed Kafka, using
 AWS_MSK_IAM for authorization and authentication, for which it can use the SFC functionality to
-use X505 certificated to obtain the credentials to access the service.
+use X.509 certificates to obtain the credentials to access the service.
 
 In order to use the configuration, make the changes described below, and
-use it as the value of the --config parameter when starting sfc-main.
+use it as the value of the `-config` parameter when starting sfc-main, as
+shown under [Deployment directory](#deployment-directory).
 
 A debug target is included in the example to optionally write the output
 to the console.
@@ -18,19 +25,48 @@ to the console.
 
 ## Deployment directory
 
-A Placeholder ${SFC_DEPLOYMENT_DIR} is used in the configuration. SFC
-dynamically replaces these placeholders with the value of the
-environment variable from the placeholder. In this example it should
-have the value of the pathname of the directory where scf-main, the used
-adapters and targets are deployed with the following directory
-structure. (This structure can be changed by setting the pathnames in
-the AdapterTypes and TargetTypes sections)
+The `JarFiles` entries of the configuration use the placeholder
+`${SFC_DEPLOYMENT_DIR}`, which SFC replaces with the value of the
+environment variable `SFC_DEPLOYMENT_DIR`. Point it at the directory into
+which you unpack the module bundles `sfc-main`, `debug-target`,
+`aws-msk-target` and `opcua` of the
+[latest release](https://github.com/awslabs/industrial-shopfloor-connect/releases/latest)
+(for another layout, change the `JarFiles` paths). `sfc-main` needs a
+Java 17 (or newer) runtime (Windows: `winget install EclipseAdoptium.Temurin.17.JDK`).
+More about this mode: [In-process](../../docs/sfc-deployment.md#in-process).
 
-${SFC_DEPLOYMENT_DIR}  
-&nbsp;&nbsp;&nbsp;|-sfc-main  
-&nbsp;&nbsp;&nbsp;|-debug-target    
-&nbsp;&nbsp;&nbsp;|-aws-msk-target  
-&nbsp;&nbsp;&nbsp;|-opcua  
+Unpack the bundles, set the variable and, once you have made the changes
+described below, start `sfc-main` from this example's folder:
+
+**Linux / macOS**
+
+```shell
+export SFC_DEPLOYMENT_DIR="$HOME/sfc"
+mkdir -p "$SFC_DEPLOYMENT_DIR"
+for m in sfc-main debug-target aws-msk-target opcua; do
+  curl -fsSL "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz" | tar -xzf - -C "$SFC_DEPLOYMENT_DIR"
+done
+"$SFC_DEPLOYMENT_DIR/sfc-main/bin/sfc-main" -config in-process-opcua-msk.json
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$env:SFC_DEPLOYMENT_DIR = "C:/sfc"
+New-Item -ItemType Directory -Force C:\sfc | Out-Null
+foreach ($m in "sfc-main", "debug-target", "aws-msk-target", "opcua") {
+    curl.exe -fsSL -o "C:\sfc\$m.tar.gz" "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz"
+    tar -xf "C:\sfc\$m.tar.gz" -C C:\sfc
+}
+java -cp "C:\sfc\sfc-main\lib\*" com.amazonaws.sfc.MainController -config in-process-opcua-msk.json
+```
+
+On Windows start `sfc-main` with `java -cp` as shown, not with
+`bin\sfc-main.bat` ([Platform support](../../docs/README.md#platform-support)).
+With the uberjar from [sfcup](../../README.md#1-install), remove the
+`JarFiles` entries and run `sfcx -config in-process-opcua-msk.json`; the
+uberjar contains the Kafka client, so the known limitation above does not
+apply there.
 &nbsp;  
 
 ## Target section
@@ -61,6 +97,7 @@ uncomment the DebugTarget by deleting the '#'.
     ],
     "TopicName": "< TOPIC >",
     "Key": "< KEY >",
+    "Interval": 1000,
     "Compression": "gzip",
     "Serialization": "json",
     "Acknowledgements": "all"
@@ -69,23 +106,32 @@ uncomment the DebugTarget by deleting the '#'.
 
 ```
 &nbsp;
--   < HOSTNAME-1.,HOST-NAME-3 >, host names for the MSK brokers
+-   < HOSTNAME-1 > ... < HOSTNAME-3 >, host names for the MSK brokers
 
--   < TOPIC NAME >, name of the MSK topic. Note that the role that is used by the referred CredentialProviderClient, or the credentials provided by the default credentials chain, must allow the required permission to write data to this topic
+-   < TOPIC >, name of the MSK topic. Note that the role that is used by the referred CredentialProviderClient, or the credentials provided by the default credentials chain, must allow the required permission to write data to this topic
 
 -   < KEY >, optional key for the written records
 
     &nbsp;
+-   `Interval` is the interval in milliseconds in which the target flushes the producer
 -   `Compression` is set to gzip
 -   `Serialization` is set to JSON (other option is protobuf)
--   `Acks` is set to "all" (other options are "leader" and "none")
+-   `Acknowledgements` is set to "all" (other options are "leader" and "none")
 -  `CredentialProviderClient` specifies the credentials provider which is
   used to give access to the used AWS service. For more information see
   section AwsIotCredentialProviderClients below. If this element is not set then
   the default credentials chain is used. (https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html)
   Note that the used role/credentials must allow writing to the configured topic.
 
-See the SFC documentation for all available settings and values of the AWS MSK adapter.
+Port 9198 is the port of an MSK cluster's public endpoints with IAM
+authentication; `aws kafka get-bootstrap-brokers --cluster-arn <CLUSTER ARN>`
+lists them as `BootstrapBrokerStringPublicSaslIam`. The topic must exist,
+unless the cluster creates topics automatically. The IAM permissions,
+including `kafka-cluster:WriteDataIdempotently` for `Acknowledgements`
+"all", are listed in the [AWS MSK target](../../docs/targets/aws-msk.md#awsmsktargetconfiguration)
+documentation.
+
+See the [AWS MSK target](../../docs/targets/aws-msk.md) for all available settings and values of the AWS MSK target.
 &nbsp;
 ## Sources section
 
@@ -110,32 +156,40 @@ See the SFC documentation for all available settings and values of the AWS MSK a
         "SimulationCounter": {
           "Name": "Counter",
           "NodeId": "ns=3;i=1001"
-        },
+        }
+      }
+    }
+}
 ```
 
-The sources section configures an OPCUA source. It is set up to use the OPCUA adapter (`"OPCUA"`) to read in 
+The sources section configures an OPCUA source (the snippet shows its first channels). It is set up to use the
+protocol adapter `"OPC-UA"` (adapter type `"OPCUA"`) to read in 
 subscription mode from the server `"OPCUA-SERVER"` defined in that adapter. The nodes/events from which to read 
 data from are defined in the channels for this source. These channels contain the NodeId and an optional name to explicitly set the name of the value in the output data.
+The `LevelAlarm` channel reads alarm events, see
+[OPC UA alarm and event types](../../docs/adapters/opcua.md#opcua-alarm-and-event-types).
 
 ## ProtocolAdapters section
 
 ```json
 "ProtocolAdapters": {
-    "OPC-UA": {
+  "OPC-UA": {
     "AdapterType": "OPCUA",
     "OpcuaServers": {
-        "OPCUA-SERVER": {
+      "OPCUA-SERVER": {
         "Address": "opc.tcp://localhost",
         "Path": "OPCUA/SimulationServer",
         "Port": 53530
+      }
     }
   }
-},
-
+}
 ```
 
 This section contains a single OPCUA adapter from which the data is read. It is set up to read from a local OPCUA 
-simulation server. The type of the source ("OPC-UA") and the actual server ("OPCUA-SERVER") are referred by the OPCUA source ("OPCUA-SOURCE").
+simulation server, a Prosys OPC UA Simulation Server at `opc.tcp://localhost:53530/OPCUA/SimulationServer`, whose
+nodes the channels read; for another server change `Address`, `Path` and `Port` and the NodeIds of the channels.
+The protocol adapter ("OPC-UA") and the server ("OPCUA-SERVER") are referred to by the source ("OPCUA-SOURCE").
 &nbsp;
 ## TargetTypes section
 
@@ -153,13 +207,13 @@ simulation server. The type of the source ("OPC-UA") and the actual server ("OPC
       ],
       "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter"
     }
-  },
+  }
 ```
 
 
 This section configured the target types loaded by the SFC main process. The `JarFiles` setting includes the location where the 
 jar files which implement the target, are located. The `FactoryClassName` is used by SFC to create instances of the target.
-The names `DEBUG-TARGET` and `MSK-TARGET` are used in the `TargetType` setting of the adapter configuration.
+The names `DEBUG-TARGET` and `AWS-MSK` are used in the `TargetType` setting of the targets.
 
 ```json
 "AdapterTypes": {
@@ -174,58 +228,27 @@ The names `DEBUG-TARGET` and `MSK-TARGET` are used in the `TargetType` setting o
 
 This section configured the adapters types loaded by the SFC main process. The `JarFiles` setting includes the location where the
 jar files which implement the adapter, are located. The `FactoryClassName` is used by SFC to create instances of the adapters.
-The name `OPCUA` are used in the `ProtocolAdapter` setting of the configuration of the source.
+The name `OPCUA` is used in the `AdapterType` setting of the `OPC-UA` protocol adapter.
 
 ## AwsIotCredentialProviderClients
 
-This section configures one or more clients which can be referred to by
-targets which need access to AWS services.
+The client `AwsIotClient` in this section obtains temporary credentials for
+the MSK target from the AWS IoT credentials provider, using the certificate
+of a Thing in AWS IoT. Fill in `IotCredentialEndpoint`, `RoleAlias`,
+`ThingName`, `CertificateFile`, `PrivateKeyFile` and `RootCa`. On a
+Greengrass V2 core device you can instead remove the `#` from
+`GreenGrassDeploymentPath`, set it to the Greengrass root folder, e.g.
+`/greengrass/v2`, and delete the other settings. The role that
+`RoleAlias` points to must allow the MSK permissions named above. On
+Windows write the file paths with forward slashes, e.g.
+`"C:/sfc/certs/device.crt"`.
 
-A credential provider will make use of the AWS IoT Credentials service
-to obtain temporary credentials. This process is described at
-<https://aws.amazon.com/blogs/security/how-to-eliminate-the-need-for-hardcoded-aws-credentials-in-devices-by-using-the-aws-iot-credentials-provider/>
+All settings:
+[AwsIotCredentialProviderClients](../../docs/core/aws-iot-credential-provider-configuration.md).
+To use the AWS SDK default credentials chain instead, delete this section
+and the target's `CredentialProviderClient`; see
+[AWS service credentials](../../docs/sfc-aws-service-credentials.md). For
+production environments the temporary credentials of a credential provider
+client are strongly recommended.
 
-The resources used in the configuration can easily be setup by creating
-a Thing in the AWS IoT service. The role that `RoleAlias` points to, must
-give access to the services used by the target which uses the client.
-
-```json
-"AwsIotCredentialProviderClients" : {
-  "AwsIotClient": {
-    "IotCredentialEndpoint": "<ID>.credentials.iot.<YOUR REGION>.amazonaws.com",
-    "RoleAlias": "< ROLE EXCHANGE ALIAS >”,
-    "ThingName": "< THING NAME > ",
-    "Certificate": "< PATH TO DEVICE CERTIFICATE .crt FILE >",
-    "PrivateKey": "< PATH TO PRIVATE KEY .key FILE >",
-    "RootCa": "< PATH TO ROOT CERTIFICATE .pem FILE >",
-  }
-}
-```
-If there is a GreenGrass V2 deployment on the same machine, instead of
-all settings a setting named GreenGrassDeploymentPath can be used to
-point to that deployment. SFC will use the GreenGrass V2 configurations
-setting. Specific setting can be overridden by setting a value for that
-setting, which will replace the value from the GreenGrass V2
-Configuration. Note that although SFC can be deployed as a GreenGrass
-component, it can also run as a standalone process or in a docker
-container and still use a GreenGrass configuration.
-&nbsp;  
-&nbsp;  
-
-```json
-"AwsIotCredentialProviderClients": {
-  "AwsIotClient": {
-    "GreenGrassDeploymentPath": "< GREENGRASS DEPLOYMENT DIR >/v2"
-  }
-}
-```
-
-When the AWS service credentials are provided using one of the options
-in the AWS SDK credentials provider chain
-(<https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html>)
-AwsIotCredentialProviderClients and any references in the targets can be
-deleted. Using the temporary credentials provided through a configured
-AwsIotCredentialProviderClient for production environment is strongly
-recommended.
-
-[Examples](../../docs/examples/README.md)
+Docs used: [OPC UA adapter: alarm and event types](../../docs/adapters/opcua.md#opcua-alarm-and-event-types) · [AWS MSK target](../../docs/targets/aws-msk.md) · [Debug target](../../docs/targets/debug.md) · [AWS service credentials](../../docs/sfc-aws-service-credentials.md) · [In-process mode](../../docs/sfc-deployment.md#in-process) · [All examples](../../docs/examples/README.md)

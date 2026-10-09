@@ -7,7 +7,7 @@
 ```
 [schedule]  -- schedule name
 [serial]    -- serial number
-[timestamp] -– processing timestamp
+[timestamp] -- processing timestamp
 [sources]   -- source name* --- [values] -- value name* --- [value]-- value
                             |                           |- [metadata]--name* -- meta value
                             |                           |- [timestamp]-- value timestamp
@@ -17,6 +17,25 @@
 [metadata] --name* -- value
 ```
 
+One message, from a schedule with `"TimestampLevel": "Channel"`:
+
+```json
+{
+  "schedule": "OpcuaToS3",
+  "serial": "5b0f6c1e-8d2a-4c47-9a53-2f1e7b9d0c64",
+  "timestamp": "2026-10-07T11:07:47.946143Z",
+  "sources": {
+    "OPCUA-SOURCE": {
+      "values": {
+        "FeedSpeed": { "value": 21.5, "timestamp": "2026-10-07T11:07:47.901Z" }
+      }
+    }
+  }
+}
+```
+
+See it live: [Uberjar PLC simulator](../examples/uberjar-plc-sim-s3tables/README.md#4-look-at-the-data) and [Simulator to S3 Tables](../examples/in-process-sim-s3tables/README.md) (JMESPath `ValueQuery` over this shape).
+
 
 
 ## Aggregated output data format 
@@ -25,7 +44,8 @@
 
 [schedule]  -- schedule name
 [serial]    -- serial number
-[sources]   -- source name* --- [values] -- value name* --- [value]-- **aggregation name*** --  [value] --- value
+[timestamp] -- processing timestamp
+[sources]   -- source name* --- [values] -- value name* --- [value]-- aggregation name* --  [value] --- value
                             |                           |                                       [timestamp] -timestamp
                             |                           |- [metadata] -- name* -- meta value
                             |                           
@@ -33,11 +53,14 @@
 [metadata] --name* -- value
 ```
 
-Custom element names in brackets can be set for all elements above in brackets using the [ElementNames](../docs/core/sfc-configuration.md#elementnames) configuration
+Custom element names in brackets can be set for all elements above in brackets using the [ElementNames](./core/sfc-configuration.md#elementnames) configuration
 setting. The name keys for the sources and value maps get the value of the "Name" element for the source and channel in
 their configuration (default is the key used as the id for the source/value in the configuration).
 
-The root contains 6 elements
+> **IPC deployments, current limitations:** target services write the default element names, and adapter services
+> replace channel timestamps with the time the source data was sent.
+
+The root contains 5 elements
 
 - **schedule**: This element contains the name of the schedule that outputs the data
 - **serial**: A unique serial number for the target data
@@ -49,13 +72,16 @@ The root contains 6 elements
     
         - **metadata**: This node contains a map with (optional) metadata for a channel
     
-        - **timestamp**: Timestamp for the value (only if timestamp level = "value" or "both")
-          For aggregated data the timestamp is only available for the aggregation outputs first, last and values.
+        - **timestamp**: Timestamp for the value (only if the schedule's [TimestampLevel](./core/schedule-configuration.md#timestamplevel) is `Channel` or `Both`)
+          For aggregated data TimestampLevel has no effect: there are no source or channel timestamps; first and last always carry a timestamp and each item of values carries its own.
+
+    - **timestamp**: source read time (TimestampLevel `Source` or `Both`)
+    - **metadata**: the source Metadata
 
 
-- **metadata**: This node contains a map with (optional) metadata for a schedule
+- **metadata**: top-level Metadata merged with the schedule Metadata (schedule values win); omitted when empty
 
-When using output transformations using a [velocity template](./core/target-configuration.md#template) for a target additional epoch timestamp fields, at message can be used in the transformation by setting the [TemplateEpochTimestamp](./core/target-configuration.md#templateepochtimestamp) property for the configuration of that target to true.
+When a target transforms its output with a [velocity template](./core/target-configuration.md#template), set [TemplateEpochTimestamp](./core/target-configuration.md#templateepochtimestamp) to true on that target to add `timestamp_epoch_sec` and `timestamp_epoch_offset_nanosec` (named after the Timestamp element) next to every source, channel and aggregation timestamp in the template data. The message-level pair is currently not reachable from a template.
 
 
 
@@ -66,6 +92,8 @@ When using output transformations using a [velocity template](./core/target-conf
 When target adapters write data in JSON format, the following schema is employed to structure the data of a  message or a list of messages if batching is enabled. 
 
 Note that the names for the properties can be customized using the [ElementNames](./core/sfc-configuration.md#elementnames) property in the SFC Configuration.
+
+Unsigned 8/16/32-bit values are written as JSON strings; set [UnquoteNumericJsonValues](./core/target-configuration.md#unquotenumericjsonvalues) on the target to emit numbers.
 
 ```json
 {
@@ -80,7 +108,7 @@ Note that the names for the properties can be customized using the [ElementNames
       "type": "array",
       "description": "Array of SFC Target data items",
       "items": {
-        "$ref": "#/definitions/sfcTarget"
+        "$ref": "#/definitions/targetdata"
       }
     }
   ],
@@ -103,7 +131,7 @@ Note that the names for the properties can be customized using the [ElementNames
         },
         "timestamp": {
           "$ref": "#/definitions/timestamp",
-          "description": "Timestamp when the data was collected"
+          "description": "Timestamp when the target data message was created"
         },
         "sources": {
           "type": "object",
@@ -124,7 +152,6 @@ Note that the names for the properties can be customized using the [ElementNames
                   "required": ["value"],
                   "properties": {
                     "value": {
-                      "type" : "any",
                       "$ref": "#/definitions/any"
                     },
                     "metadata": {
@@ -153,7 +180,7 @@ Note that the names for the properties can be customized using the [ElementNames
     },
     
     "any": {
-      "description": "Value which can be of any JSON type (string, number, boolean, array or object)""
+      "description": "Value which can be of any JSON type (string, number, boolean, array or object)"
     },
     
     "metadata": {
@@ -187,19 +214,19 @@ When [aggregation](./core/aggregation-configuration.md) is enabled for a schedul
   
   "oneOf": [
     {
-      "$ref": "#/definitions/aggrgatedData"
+      "$ref": "#/definitions/aggregatedData"
     },
     {
       "type": "array",
       "description": "Array of aggregated SFC Target data items",
       "items": {
-        "$ref": "#/definitions/sfcTarget"
+        "$ref": "#/definitions/aggregatedData"
       }
     }
   ],
   
   "definitions": {
-    "aggrgatedData": {
+    "aggregatedData": {
       "type": "object",
       "required": [
         "schedule",
@@ -222,7 +249,7 @@ When [aggregation](./core/aggregation-configuration.md) is enabled for a schedul
         
         "timestamp": {
           "$ref": "#/definitions/timestamp",
-          "description": "Timestamp when the data was aggregated"
+          "description": "Timestamp when the target data message was created"
         },
         
         "sources": {
@@ -257,7 +284,7 @@ When [aggregation](./core/aggregation-configuration.md) is enabled for a schedul
                         },
                         
                         "count": {
-                          "type": "integer"
+                          "$ref": "#/definitions/aggregatedValue"
                         },
                         
                         "max": {
@@ -309,7 +336,18 @@ When [aggregation](./core/aggregation-configuration.md) is enabled for a schedul
                               "type": "array",
                               "minItems": 1,
                               "items": {
-                                "$ref": "#/definitions/any"
+                                "type": "object",
+                                "required": [
+                                  "value"
+                                ],
+                                "properties": {
+                                  "value": {
+                                    "$ref": "#/definitions/any"
+                                  },
+                                  "timestamp": {
+                                    "$ref": "#/definitions/timestamp"
+                                  }
+                                }
                               }
                             }
                           }
@@ -361,29 +399,27 @@ When [aggregation](./core/aggregation-configuration.md) is enabled for a schedul
         "metadata": {
           "$ref": "#/definitions/metadata"
         }
-      },
-
-  
-      "aggregatedValue": {
-        "type": "object",
-         "description": "Numeric value or array of numeric values representing an aggregation result",
-        "required": [
-          "value"
-        ],
-        "properties": {
-          "value": {
-            "oneOf": [
-              {
+      }
+    },
+    "aggregatedValue": {
+      "type": "object",
+      "description": "Numeric value or array of numeric values representing an aggregation result",
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "array",
+              "items": {
                 "type": "number"
-              },
-              {
-                "type": "array",
-                "items": {
-                  "type": "number"
-                }
               }
-            ]
-          }
+            }
+          ]
         }
       }
     },
@@ -410,9 +446,8 @@ When [aggregation](./core/aggregation-configuration.md) is enabled for a schedul
 
 The following targets serialize the SFC data, except when a transformation template is applied to the target, resulting in JSON format.
 
-- [**AWS IoT Analytics Target**](./targets/aws-iot-analytics.md)
-
 - **[AWS IoT Core Service Target](./targets/aws-iot-core.md)**
+- **[AWS Kinesis Target](./targets/aws-kinesis.md)**
 - **[AWS Kinesis Firehose Target](./targets/aws-kinesis-firehose.md)**
 - [**AWS Lambda  Target**](./targets/aws-lambda.md)
 - **[AWS MSK Target](./targets/aws-msk.md)**
@@ -423,3 +458,5 @@ The following targets serialize the SFC data, except when a transformation templ
 - **[File Target](./targets/file.md)**
 - **[MQTT Target](./targets/mqtt.md)**
 - **[NATS Target](./targets/nats.md)**
+
+A [Template](./sfc-target-templates.md) replaces the JSON on any of these targets; all of them except the AWS Lambda target can use a custom [Formatter](./sfc-extending.md#custom-formatters) instead (a target cannot have both). The AWS IoT Core, AWS Lambda, AWS S3, MQTT and NATS targets send buffered messages as one JSON array unless the target sets [AsArrayWhenBuffered](./core/target-configuration.md#asarraywhenbuffered) to false.

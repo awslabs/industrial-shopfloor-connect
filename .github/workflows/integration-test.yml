@@ -1,0 +1,194 @@
+---
+# SFC integration tests: builds the pushed tree in CodeBuild and runs the end-to-end suite in all three
+# deployment modes against real AWS destinations and in-container counterparts.
+#
+# Runs on EVERY branch. No long-lived AWS credentials: the job exchanges its GitHub OIDC token for the
+# CI role created by ci/cdk, which may only upload source, start/inspect/stop this one project and read
+# its evidence.
+#
+# Pull requests from forks run someone else's code with access to the test account, so each of their
+# runs waits until a reviewer of the GitHub environment "fork-pr-approval" approves it. Setup: ci/README.md
+# section 2.2. PRs from branches of this repository are not run again: the push of the branch was.
+#
+# Setup, once per repository, from the stack outputs:
+#   gh variable set SFC_IT_ROLE_ARN --body <CiRoleArn>
+#   gh variable set SFC_IT_BUCKET   --body <ArtifactsBucket>
+#   gh variable set SFC_IT_REGION   --body <region>
+name: Integration-Tests
+
+on:
+  push:
+    branches: ['**']
+  # Uses the workflow file of the default branch, never the PR's own version of it.
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'push (P0+P1) or full (everything)'
+        required: false
+        default: 'push'
+        type: choice
+        options: ['push', 'full']
+  schedule:
+    # Nightly full run on the default branch.
+    - cron: '17 2 * * *'
+
+# Per ref, or per pull request: a new push cancels the previous run of the same branch or PR. That is
+# safe only because the "stop the build" step below runs on cancellation and stops the CodeBuild build
+# it started.
+concurrency:
+  group: sfc-it-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  # The gate. A fork PR's run waits here until a reviewer approves it in the Actions tab. Every new push
+  # to the PR starts a new run that needs a new approval.
+  approve-fork-pr:
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    environment: fork-pr-approval
+    permissions:
+      actions: read
+    steps:
+      # GitHub creates a missing environment without protection, and then this job would not wait for
+      # anyone. Fail instead, so a fork PR never runs unapproved.
+      - name: Check that the environment requires a reviewer
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          RULES=$(gh api "repos/$REPO/environments/fork-pr-approval" \
+                    --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length')
+          if [ "$RULES" = "0" ]; then
+            echo "::error::The environment fork-pr-approval has no required reviewers - see ci/README.md section 2.2."
+            exit 1
+          fi
+
+  integration:
+    needs: approve-fork-pr
+    # Pushes, the schedule and Run workflow always run; a pull request only after its approval.
+    # !cancelled() rather than always(): an always() job ignores cancel-in-progress.
+    if: ${{ !cancelled() && (github.event_name != 'pull_request_target' || needs.approve-fork-pr.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    outputs:
+      build_id: ${{ steps.start.outputs.build_id }}
+    env:
+      SFC_IT_BUCKET: ${{ vars.SFC_IT_BUCKET }}
+      # full on the nightly schedule and on pushes to main, push (P0+P1) everywhere else - including
+      # pull requests, whose github.ref is the base branch.
+      SFC_IT_PROFILE: ${{ inputs.profile || ((github.event_name == 'schedule' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && 'full') || 'push' }}
+    steps:
+      - name: Check configuration
+        id: config
+        # Without the variables (a fork, or a clone with no stack) the job says so plainly instead of
+        # failing on credentials. No repository name is hard-coded.
+        run: |
+          if [ -z "${{ vars.SFC_IT_ROLE_ARN }}" ] || [ -z "${{ vars.SFC_IT_BUCKET }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### SFC integration tests: not configured"
+              echo "Set the repository variables SFC_IT_ROLE_ARN, SFC_IT_BUCKET and SFC_IT_REGION from the ci/cdk stack outputs."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.config.outputs.configured == 'true'
+        with:
+          # A pull request: exactly the approved head commit, which GitHub also keeps in this repository.
+          # Anything else: empty, which is the default, the commit that triggered the run.
+          ref: ${{ github.event.pull_request.head.sha }}
+          # The checked-out code must not find this repository's token in .git/config.
+          persist-credentials: false
+          # settings.gradle.kts derives the version from `git describe --tags`, and start-build.sh ships
+          # .git so CodeBuild sees the same tags.
+          fetch-depth: 0
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        if: steps.config.outputs.configured == 'true'
+        with:
+          role-to-assume: ${{ vars.SFC_IT_ROLE_ARN }}
+          aws-region: ${{ vars.SFC_IT_REGION }}
+          role-session-name: sfc-it-${{ github.run_id }}
+          # A build can queue 10 minutes and run 5 hours; the session (the role allows 6 h) has to outlive both.
+          role-duration-seconds: 21600
+
+      - name: Start the build
+        id: start
+        if: steps.config.outputs.configured == 'true'
+        env:
+          SFC_E2E_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          SFC_E2E_REF: ${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+          SFC_E2E_DIRTY: '0'
+        # Writes build_id to $GITHUB_OUTPUT immediately, so the steps below can stop and fetch even when
+        # the wait fails or the job is cancelled.
+        run: ci/start-build.sh --no-wait --profile "$SFC_IT_PROFILE"
+
+      - name: Wait for the build
+        if: steps.config.outputs.configured == 'true' && steps.start.outputs.build_id != ''
+        run: ci/wait-build.sh "${{ steps.start.outputs.build_id }}"
+
+      - name: Stop the build if it is still running
+        if: always() && steps.start.outputs.build_id != ''
+        run: |
+          STATUS=$(aws codebuild batch-get-builds --ids "${{ steps.start.outputs.build_id }}" \
+                     --query 'builds[0].buildStatus' --output text 2>/dev/null || echo UNKNOWN)
+          if [ "$STATUS" = "IN_PROGRESS" ]; then
+            aws codebuild stop-build --id "${{ steps.start.outputs.build_id }}" >/dev/null && echo "stopped"
+          fi
+
+      - name: Fetch the report and evidence
+        if: always() && steps.start.outputs.build_id != ''
+        run: |
+          RUN="${{ steps.start.outputs.build_id }}"; RUN="${RUN##*:}"
+          mkdir -p report
+          aws s3 cp "s3://${SFC_IT_BUCKET}/evidence/${RUN}/" report/ --recursive --exclude 'artifacts/*' --only-show-errors || true
+
+      - name: Publish the report to the run summary
+        if: always() && steps.start.outputs.build_id != ''
+        run: |
+          RESULTS=$(find report -maxdepth 1 -name results.json | head -1)
+          if [ -n "$RESULTS" ]; then
+            # $GITHUB_STEP_SUMMARY truncates silently at 1 MiB; the renderer keeps within a byte budget.
+            python3 ci/e2e/lib/report.py "$RESULTS" --budget 900000 >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### SFC integration tests: no report produced - see the CodeBuild logs" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the report and evidence
+        if: always() && steps.start.outputs.build_id != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: sfc-it-${{ github.run_id }}-${{ github.run_attempt }}
+          path: report/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # The commit status "sfc-integration-tests" that the ruleset on main requires (ci/README.md section
+  # 2.3), set on the commit that was tested. Not the job's own check: a fork PR's checks belong to the
+  # default branch's commit, and a skipped job counts as passed. A separate job, so the tested code
+  # never runs next to a token that can set statuses. No status when no build ran, or the run was
+  # cancelled: the PR then stays blocked.
+  status:
+    needs: integration
+    if: ${{ !cancelled() && needs.integration.outputs.build_id != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          STATE: ${{ needs.integration.result == 'success' && 'success' || 'failure' }}
+          URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          gh api "repos/$REPO/statuses/$SHA" -f state="$STATE" -f context=sfc-integration-tests \
+            -f target_url="$URL" -f description="SFC integration tests: $STATE" >/dev/null

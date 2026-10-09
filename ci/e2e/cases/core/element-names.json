@@ -1,0 +1,755 @@
+{
+  "cases": [
+    {
+      "id": "CORE-ENAMES-COLLISION-01",
+      "title": "Colliding ElementNames (Values == Metadata) are accepted and silently replace every channel value by the source metadata",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "ElementNamesConfiguration has no validate(), so two element names may be equal. SourceOutputDataSerializer adds the values node under the Values name and then the source metadata node under the Metadata name on the same JsonObject; with both named 'm' the metadata replaces the values and every reading is lost while SFC reports success. The partial rename also shows that unspecified names keep their defaults (schedule, serial, timestamp, sources). 1234.5678 is used because it cannot occur inside an ISO timestamp or a UUID, so the raw scan is unambiguous. In-process and uberjar only: IPC target services ignore ElementNames altogether (pinned by CORE-ENAMES-RENAME-02), which hides this collision there.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ElementNamesConfiguration.kt:14-79",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourceOutputDataSerializer.kt:35-40",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourceOutputDataSerializer.kt:48-53"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "ConfigurationException",
+            "ElementNames"
+          ]
+        },
+        {
+          "kind": "keyOrder",
+          "keys": [
+            "schedule",
+            "serial",
+            "timestamp",
+            "sources"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourceOutputDataSerializer.kt:39",
+        "summary": "ElementNames are never validated; with Values == Metadata the source metadata node replaces the values node (SourceOutputDataSerializer.kt:36 then :39), so every channel value is dropped without an error",
+        "assertCurrent": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.Src",
+            "equals": {
+              "m": {
+                "machine": "M42"
+              }
+            },
+            "strictTypes": true
+          },
+          {
+            "kind": "rawAbsent",
+            "texts": [
+              "1234.5678"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "rawContains",
+            "text": "1234.5678",
+            "min": 3
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-ENAMES-COLLISION-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "ElementNames": {
+          "Values": "m",
+          "Metadata": "m"
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "Src",
+            "ProtocolAdapter": "SimAdapter",
+            "Metadata": {
+              "machine": "M42"
+            },
+            "Channels": {
+              "c1": {
+                "Name": "ChanName",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 1234.5678
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-ENAMES-RENAME-01",
+      "title": "All seven ElementNames renamed: plain and aggregated payloads carry only the configured names",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "ElementNames lets a deployment match an existing downstream schema, so a single key that keeps its default name breaks every consumer. TargetData passes the configured names to the root, source and channel serializers, and the aggregator's nested {min, values} outputs are ChannelOutputData serialized by the same serializer. The case renames all seven names and asserts both a plain and an aggregated document exactly (normalised serial and timestamps), then scans the raw files for any default name. 'values' is excluded from the scan on the aggregated sink only because it is the name of the aggregation function, not an element name. In-process and uberjar only: a target running as an IPC service never receives ElementNames (IpcTargetWriter.extractConfigurationForTarget copies only a few sections), which CORE-ENAMES-RENAME-02 pins in IPC mode.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ElementNamesConfiguration.kt:16-79",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/BaseConfiguration.kt:114-121",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/ChannelDataOutputSerializer.kt:29-43",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/aggregations/Aggregator.kt:497-506",
+        "targets/file-target/src/main/kotlin/com/amazonaws/sfc/filetarget/FileTargetWriter.kt:137"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "sinks": {
+        "plain": {
+          "kind": "file"
+        },
+        "agg": {
+          "kind": "file"
+        }
+      },
+      "gates": [
+        {
+          "sink": "plain",
+          "records": 3
+        },
+        {
+          "sink": "agg",
+          "records": 2
+        }
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "deepEquals",
+          "sink": "plain",
+          "index": 0,
+          "normalise": {
+            "serial": "<UUID>",
+            "isoTimestamps": "<ISO>"
+          },
+          "strictTypes": true,
+          "value": {
+            "sch": "Plain",
+            "sn": "<UUID>",
+            "ts": "<ISO>",
+            "srcs": {
+              "SrcName": {
+                "vals": {
+                  "ChanName": {
+                    "v": 42.5,
+                    "md": {
+                      "c": "3"
+                    },
+                    "ts": "<ISO>"
+                  }
+                },
+                "md": {
+                  "b": "2"
+                },
+                "ts": "<ISO>"
+              }
+            },
+            "md": {
+              "a": "1"
+            }
+          }
+        },
+        {
+          "kind": "keyOrder",
+          "sink": "plain",
+          "keys": [
+            "sch",
+            "sn",
+            "ts",
+            "srcs",
+            "md"
+          ]
+        },
+        {
+          "kind": "deepEquals",
+          "sink": "agg",
+          "index": 0,
+          "normalise": {
+            "serial": "<UUID>",
+            "isoTimestamps": "<ISO>"
+          },
+          "strictTypes": true,
+          "path": "srcs.sa.vals.k",
+          "value": {
+            "v": {
+              "min": {
+                "v": 1
+              },
+              "values": {
+                "v": [
+                  {
+                    "v": 1,
+                    "ts": "<ISO>"
+                  },
+                  {
+                    "v": 2,
+                    "ts": "<ISO>"
+                  },
+                  {
+                    "v": 3,
+                    "ts": "<ISO>"
+                  }
+                ]
+              }
+            }
+          },
+          "comment": "First window of Size 3 over a counter starting at 1."
+        },
+        {
+          "kind": "deepEquals",
+          "sink": "agg",
+          "index": 1,
+          "normalise": {
+            "serial": "<UUID>",
+            "isoTimestamps": "<ISO>"
+          },
+          "strictTypes": true,
+          "path": "srcs.sa.vals.k.v.min",
+          "value": {
+            "v": 4
+          }
+        },
+        {
+          "kind": "keyOrder",
+          "sink": "agg",
+          "keys": [
+            "sch",
+            "sn",
+            "ts",
+            "srcs",
+            "md"
+          ]
+        },
+        {
+          "kind": "rawAbsent",
+          "sink": "plain",
+          "texts": [
+            "\"schedule\"",
+            "\"serial\"",
+            "\"timestamp\"",
+            "\"sources\"",
+            "\"value\"",
+            "\"metadata\"",
+            "\"values\""
+          ]
+        },
+        {
+          "kind": "rawAbsent",
+          "sink": "agg",
+          "texts": [
+            "\"schedule\"",
+            "\"serial\"",
+            "\"timestamp\"",
+            "\"sources\"",
+            "\"value\"",
+            "\"metadata\""
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-ENAMES-RENAME-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Metadata": {
+          "a": "1"
+        },
+        "ElementNames": {
+          "Schedule": "sch",
+          "Serial": "sn",
+          "Timestamp": "ts",
+          "Sources": "srcs",
+          "Values": "vals",
+          "Value": "v",
+          "Metadata": "md"
+        },
+        "Schedules": [
+          {
+            "Name": "Plain",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sp": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FilePlain"
+            ]
+          },
+          {
+            "Name": "Agg",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Aggregation": {
+              "Size": 3,
+              "Output": {
+                "sa": {
+                  "k": [
+                    "min",
+                    "values"
+                  ]
+                }
+              }
+            },
+            "Sources": {
+              "sa": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileAgg"
+            ]
+          }
+        ],
+        "Sources": {
+          "sp": {
+            "Name": "SrcName",
+            "ProtocolAdapter": "SimAdapter",
+            "Metadata": {
+              "b": "2"
+            },
+            "Channels": {
+              "c1": {
+                "Name": "ChanName",
+                "Metadata": {
+                  "c": "3"
+                },
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 42.5
+                }
+              }
+            }
+          },
+          "sa": {
+            "Name": "sa",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "k": {
+                "Name": "k",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 1,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FilePlain": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_PLAIN}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileAgg": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_AGG}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-ENAMES-RENAME-02",
+      "title": "A target running as an IPC service ignores ElementNames and writes the default element names (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "The IPC-mode half of CORE-ENAMES-RENAME-01. sfc-main sends each IPC target service a reduced configuration built by IpcTargetWriter.extractConfigurationForTarget, which copies AWSVersion, LogWriter, Metrics, Targets, Transformations, ValueFilters, TargetTypes, TargetServers, credential clients and secrets, but not ElementNames. IpcTargetServer then serialises with the defaults, so the same configuration produces differently named documents depending on deployment mode. IPC only, because that is the only mode with the defect; the other modes are covered by -01.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetWriter.kt:203-267",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetServer.kt:143",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetServer.kt:254"
+      ],
+      "modes": [
+        "ipc"
+      ],
+      "records": 3,
+      "timeoutSeconds": 90,
+      "modeParity": false,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetWriter.kt:210",
+        "summary": "IpcTargetWriter.extractConfigurationForTarget does not forward ElementNames to the IPC target service, so IPC targets write schedule/serial/timestamp/sources/values/value/metadata whatever the configuration says",
+        "assertCurrent": [
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "normalise": {
+              "serial": "<UUID>",
+              "isoTimestamps": "<ISO>"
+            },
+            "strictTypes": true,
+            "value": {
+              "schedule": "Plain",
+              "serial": "<UUID>",
+              "timestamp": "<ISO>",
+              "sources": {
+                "SrcName": {
+                  "values": {
+                    "ChanName": {
+                      "value": 42.5,
+                      "metadata": {
+                        "c": "3"
+                      },
+                      "timestamp": "<ISO>"
+                    }
+                  },
+                  "metadata": {
+                    "b": "2"
+                  },
+                  "timestamp": "<ISO>"
+                }
+              },
+              "metadata": {
+                "a": "1"
+              }
+            }
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "normalise": {
+              "serial": "<UUID>",
+              "isoTimestamps": "<ISO>"
+            },
+            "strictTypes": true,
+            "value": {
+              "sch": "Plain",
+              "sn": "<UUID>",
+              "ts": "<ISO>",
+              "srcs": {
+                "SrcName": {
+                  "vals": {
+                    "ChanName": {
+                      "v": 42.5,
+                      "md": {
+                        "c": "3"
+                      },
+                      "ts": "<ISO>"
+                    }
+                  },
+                  "md": {
+                    "b": "2"
+                  },
+                  "ts": "<ISO>"
+                }
+              },
+              "md": {
+                "a": "1"
+              }
+            }
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-ENAMES-RENAME-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Metadata": {
+          "a": "1"
+        },
+        "ElementNames": {
+          "Schedule": "sch",
+          "Serial": "sn",
+          "Timestamp": "ts",
+          "Sources": "srcs",
+          "Values": "vals",
+          "Value": "v",
+          "Metadata": "md"
+        },
+        "Schedules": [
+          {
+            "Name": "Plain",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sp": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sp": {
+            "Name": "SrcName",
+            "ProtocolAdapter": "SimAdapter",
+            "Metadata": {
+              "b": "2"
+            },
+            "Channels": {
+              "c1": {
+                "Name": "ChanName",
+                "Metadata": {
+                  "c": "3"
+                },
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 42.5
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

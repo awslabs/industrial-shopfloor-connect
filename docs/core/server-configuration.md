@@ -4,9 +4,11 @@
 
 [SFC Configuration](./sfc-configuration.md) > [AdapterServers](./sfc-configuration.md#adapterservers) > [AdapterServer](./server-configuration.md) 
 
-[SFC Configuration](./sfc-configuration.md) > [Metrics](./sfc-configuration.md#metrics) > [Writer](./metrics-writer-configuration.md#metricswriter) > [MetricsServer](./metrics-writer-configuration.md#metricsserver)
+[SFC Configuration](./sfc-configuration.md) > [Metrics](./metrics-configuration.md) > [Writer](./metrics-configuration.md#writer) > [MetricsServer](./metrics-writer-configuration.md#metricsserver)
 
 Defines network connection settings for SFC servers including target, adapter, and metrics servers. Specifies essential parameters like address, port, security options (PlainText/TLS), and performance settings. Supports flexible configuration of connection security through different TLS modes and certificate management. Includes health monitoring capabilities for service availability tracking.
+
+See also: [adapter service options](../sfc-running-adapters.md#running-the-jvm-protocol-adapters-as-an-ipc-service), [target service options](../sfc-running-targets.md#running-targets-as-an-ipc-service), [securing traffic between SFC components](../sfc-securing-component-traffic.md), [IPC mode](../sfc-deployment.md#ipc), example [ipc-opcua-msk](../../examples/ipc-opcua-msk/README.md).
 
 - [Schema](#schema)
 - [Examples](#examples)
@@ -22,12 +24,16 @@ Defines network connection settings for SFC servers including target, adapter, a
 - [ExpirationWarningPeriod](#expirationwarningperiod)
 - [HealthProbe](#healthprobe)
 - [Port](#port)
+- [ServerCertificate](#servercertificate)
+- [ServerPrivateKey](#serverprivatekey)
 - [ServerResultsChannelSize](#serverresultschannelsize)
 - [ServerResultsChannelTimeout](#serverresultschanneltimeout)
 
 ---
 ### Address
 Specifies the network address where the server can be reached, either as an IP address (e.g., "192.168.1.100") or hostname (e.g., "server.example.com"). When set to the default value "localhost", the system automatically resolves to the machine's local IP address for proper network connectivity. 
+
+This applies to PlainText connections only. With ServerSideTLS and MutualTLS the configured value is used as it is, so set Address to the address the service listens on, which the service logs when it starts (`listening on <address>:<port>`). The server certificate must contain that address, see [Securing traffic between SFC components](../sfc-securing-component-traffic.md).
 
 **Type**: String
 
@@ -67,6 +73,8 @@ Defines the security level for network communications between SFC components.
 - MutualTLS : Encryption of network traffic between SFC core and protocol adapter or target server. Server and client provide certificate to each other.
   Requires servers to be started with parameters `-connection` set to MutualTLS, `-key` and `-cert` parameters set to the server's private key and certificate files and the `-ca` parameter set to the ca certificate file. For MutualTLS the client must configure the ClientCertificate, ClientPrivateKey and CaCertificate which are used for the connection with the server.
 
+> **Known limitations:** with MutualTLS the traffic is encrypted, but services currently do not request or verify the client certificate. A service that cannot set up TLS with its certificate and key logs an error and accepts PlainText connections instead; check the service log after starting it. IPC target services and the metrics writer service currently accept PlainText connections only, whatever `-connection` is set to, so use PlainText for `TargetServers` entries and the `MetricsServer`.
+
 **Type**: String
 
 Default is "PlainText"
@@ -94,8 +102,22 @@ Specifies the network port number where the server listens for incoming connecti
 **Type**: Integer
 
 ---
+### ServerCertificate
+Specifies the file path to the server's certificate. For connection type "ServerSideTLS" the SFC core trusts only this certificate when connecting to the service. If it is not set, the core retrieves the certificate from the server and trusts the certificate the server presents, so setting it is recommended. A service started with the `-config` parameter uses this file as its server certificate when the `-cert` parameter is not set.
+
+**Type**: String
+
+---
+### ServerPrivateKey
+Specifies the file path to the server's private key that pairs with the ServerCertificate. A service started with the `-config` parameter uses this file as its server private key when the `-key` parameter is not set. Only used by the service, the SFC core does not read it.
+
+**Type**: String
+
+---
 ### ServerResultsChannelSize
 Defines the size of the internal buffer used for Inter-Process Communication (IPC) when sending results from protocol adapters or target servers back to the SFC core. The default value of 1000 determines how many results can be queued before backpressure is applied. Increasing this value allows for more results to be buffered but consumes more memory.
+
+Currently not applied: a value set in an `AdapterServers` or `TargetServers` entry is ignored, target services always use 1000 items.
 
 **Type**: Int
 
@@ -104,6 +126,8 @@ Default is 1000
 ---
 ### ServerResultsChannelTimeout
 Specifies the maximum time (in milliseconds) allowed for sending data to the internal results buffer. If the buffer cannot accept new data within this timeout period (default 10000ms or 10 seconds), the operation will fail. This timeout prevents indefinite blocking when the buffer is full and helps manage backpressure scenarios.
+
+Currently not applied: a value set in an `AdapterServers` or `TargetServers` entry is ignored, target services always use 10000 milliseconds.
 
 **Type**: Int
 
@@ -152,7 +176,7 @@ Default is  10000
       "type": "integer",
       "minimum": 0,
       "default": 30,
-      "description": "Certificate expiration warning period in seconds (0 to disable)"
+      "description": "Certificate expiration warning period in days (0 to disable)"
     },
     "HealthProbe": {
       "$ref": "#/definitions/HealthProbeConfiguration",
@@ -164,6 +188,14 @@ Default is  10000
       "maximum": 65535,
       "description": "Server port number"
     },
+    "ServerCertificate": {
+      "type": "string",
+      "description": "Server certificate, trusted by the client for server side TLS, used by a service started with -config"
+    },
+    "ServerPrivateKey": {
+      "type": "string",
+      "description": "Server private key, used by a service started with -config"
+    },
     "ServerResultsChannelSize": {
       "type": "integer",
       "minimum": 1,
@@ -173,11 +205,11 @@ Default is  10000
     "ServerResultsChannelTimeout": {
       "type": "integer",
       "minimum": 1,
-      "default": 1000,
+      "default": 10000,
       "description": "Timeout for server results channel in milliseconds"
     }
   },
-  "required": ["Address", "Port"],
+  "required": ["Port"],
   "allOf": [
     {
       "if": {
@@ -186,7 +218,7 @@ Default is  10000
         }
       },
       "then": {
-        "required": ["CaCertificate", "ClientCertificate"]
+        "required": ["CaCertificate", "ClientCertificate", "ClientPrivateKey"]
       }
     }
   ],
@@ -198,13 +230,17 @@ Default is  10000
 
 ## Examples
 
+Runnable example: [ipc-slmp-s3](../../examples/ipc-slmp-s3/README.md) (its servers are defined in `servers.json` and included through `"AdapterServers": "@file:servers.json@Adapters"`).
+
+On Windows write the certificate and key paths with forward slashes, for example `"CaCertificate": "C:/sfc/certs/ca-cert.pem"`; a single backslash is a JSON escape.
+
 Basic PlainText configuration with compression enabled:
 
 ```json
 {
   "Address": "localhost",
   "Port": 8080,
-   "Compression": true,
+  "Compression": true
 }
 ```
 
@@ -217,8 +253,8 @@ Server with TLS:
   "Address": "server.example.com",
   "Port": 443,
   "ConnectionType": "ServerSideTLS",
-  "Compression": true,
-  "ServerResultsChannelTimeout": 2000
+  "ServerCertificate": "/path/to/server.crt",
+  "Compression": true
 }
 ```
 
@@ -249,9 +285,9 @@ Configuration with health probe:
   "Port": 9000,
   "ConnectionType": "PlainText",
   "HealthProbe": {
-      "Port": 8080,
-      "Path": "/health",
-    }
+    "Port": 8080,
+    "Path": "/health"
+  }
 }
 ```
 

@@ -1,24 +1,66 @@
 # OPCUA Protocol adapter
 
-The SFC OPC UA protocol adapter provides read-only access to OPC UA servers, supporting both synchronous data reads and asynchronous monitoring through subscriptions. The adapter can be configured to either poll data points on demand or subscribe to data changes and events, enabling efficient real-time data acquisition from industrial automation systems.
-
-Configuration types for the OPCUA protocol adapter and contains the extensions and specific configuration types.
+The SFC OPC UA protocol adapter provides read-only access to OPC UA servers, supporting both synchronous data reads and asynchronous monitoring through subscriptions. The adapter can be configured to either poll data points on demand or subscribe to data changes and events, enabling efficient real-time data acquisition from industrial automation systems. To write to an OPC UA server, use the [OPC UA Writer target](../targets/opcua-writer.md); to expose SFC data as an OPC UA server, use the [OPC UA target](../targets/opcua.md).
 
 - [OPCUA Alarm and Events types](#opcua-alarm-and-event-types)
 - [OPCUA security profiles and certificates](#opcua-security-profiles-and-certificates)
 
 
 
-In order to use this adapter as in [in-process](../sfc-running-adapters.md#running-protocol-adapters-in-process) type adapter the type must be added to the [AdapterTypes](../core/sfc-configuration.md#adaptertypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this adapter
+
+`AdapterType` is `OPCUA` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"AdapterTypes" :{
-  "OPCUA" : {
-    "JarFiles" : ["<location of deployment>/opcua/lib"]
-  },
-  "FactoryClassName" : "com.amazonaws.sfc.opcua.OpcuaAdapter"
+"AdapterTypes": {
+  "OPCUA": { "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter" }
 }
 ```
+
+**In-process** - module bundle `opcua` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"AdapterTypes": {
+  "OPCUA": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/opcua/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter"
+  }
+}
+```
+
+**IPC** - no `AdapterTypes`; the adapter runs as its own service:
+
+```json
+"ProtocolAdapters": {
+  "OPC-UA": {
+    "AdapterType": "OPCUA",
+    "AdapterServer": "OpcuaAdapterServer"
+  }
+},
+"AdapterServers": {
+  "OpcuaAdapterServer": { "Address": "localhost", "Port": 50000 }
+}
+```
+
+Start the service before SFC, on the port of its `AdapterServers` entry:
+
+**Linux / macOS**
+
+```shell
+opcua/bin/opcua -port 50000
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\opcua\lib\*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.opcua.OpcuaProtocolService -port 50000`).
+
+**Examples:** uberjar: [Quickstart step 3](../../README.md#3-a-more-serious-example---ingest-opc-ua-to-iceberg-aws-s3-tables), [uberjar-opcua-file](../../examples/uberjar-opcua-file/README.md) · in-process: [in-process-opcua-msk](../../examples/in-process-opcua-msk/README.md), [in-process-opcua-sitewise](../../examples/in-process-opcua-sitewise/README.md), [in-process-opcua-sitewiseedge](../../examples/in-process-opcua-sitewiseedge/README.md) · IPC: [ipc-opcua-msk](../../examples/ipc-opcua-msk/README.md) · all: [examples catalog](../examples/README.md)
 
 
 
@@ -32,6 +74,8 @@ In order to use this adapter as in [in-process](../sfc-running-adapters.md#runni
 - [OpcuaServerProfileConfiguration](#opcuaserverprofileconfiguration)
 - [OpcuaEventTypeConfiguration](#opcuaeventtypeconfiguration)
 - [OpcuaServerConfiguration](#opcuaserverconfiguration)
+- [OpcuaCertificateValidationConfiguration](#opcuacertificatevalidationconfiguration)
+- [OpcuaCertificateValidationOptions](#opcuacertificatevalidationoptions-type)
 
 
 
@@ -39,7 +83,7 @@ In order to use this adapter as in [in-process](../sfc-running-adapters.md#runni
 
 The OPCUA protocol adapter supports the collection of data from events and alarms. This can be done by adding the event name or identifier of the alarm or event type to a node channel configuration. The name of the event can be the name of the OPCUA alarms from the model at https://reference.opcfoundation.org/Core/Part9/v105/docs/5.8, or an OPCUA event from the model at https://reference.opcfoundation.org/Core/Part3/v104/docs/9.1
 
-The adapter will monitor nodes with a specified event type the adapter and add the received to the collected data for the OPCUA source, using the name for that node. The event data consist of a map of properties, which are based on the type of the event used for the node. As multiple events may be received during a read interval, the value of these event nodes is always of type array, containing one or more maps with the event data. The maximum number of items that can be collected is configurable. If more events are received the oldest event is omitted from the output.
+The adapter will monitor nodes with a specified event type the adapter and add the received to the collected data for the OPCUA source, using the name for that node. The event data consist of a map of properties, which are based on the type of the event used for the node. As multiple events may be received during a read interval, the value of these event nodes is always of type array, containing one or more maps with the event data. How many events are kept between two reads is limited by the adapter's [MaxEventRetainSize](#maxeventretainsize) (number of events) and [MaxEventRetainPeriod](#maxeventretainperiod) (age of the events). If more events are received the oldest event is omitted from the output.
 
 The OPCUA adapter can operate in Polling or Subscription mode to collect data values from the OPCUA server. For events the adapter will use a subscription with monitored event nodes, independent of in which mode the adapter collects the data nodes.
 
@@ -74,6 +118,8 @@ Example of mixed OPCUA source nodes for an alarm event and two data nodes.
 }
 ```
 
+The same `LevelAlarm` channel is used in the [in-process-opcua-msk](../../examples/in-process-opcua-msk/README.md) and [ipc-opcua-msk](../../examples/ipc-opcua-msk/README.md) examples.
+
 The collected data from the event and data nodes is shown below.
 
 ```json
@@ -95,10 +141,10 @@ The collected data from the event and data nodes is shown below.
             "HighLimit": 70.0,
             "LowLimit": 30.0,
             "LowLowLimit": 10.0,
-            "InputNode": "ns=0;i=0",
+            "InputNode": "i=0",
             "Retain": true,
             "EventId": [0, 0, 0, 0, 0, 0, 6, 72, 0, 0, 0, 0, 0, 0, 6, 71],
-            "EventType": "ns=0;i=9482",
+            "EventType": "i=9482",
             "SourceNode": "ns=6;s=MyLevel",
             "SourceName": "MyLevel",
             "Time": "2023-03-15T11:34:42.328Z",
@@ -117,9 +163,9 @@ The collected data from the event and data nodes is shown below.
 
 [^top](#opcua-protocol-adapter)
 
-The snippet below shows the configuration of an OPCUA adapter with a profile named "CustomEventsProfile" that defines two additional event types, "CustomEventType1" and "CustomEventType2", each with two properties. CustomEventType1 inherits from the OPCUA defined BaseEventType type and will contain all properties from that class in addition to the two properties defined for the event. CustomEventType2 will inherit from and therefore contain all properties from CustomEventTYpe1 and the two properties defined for the event.
+The snippet below shows the configuration of an OPCUA adapter with a profile named "CustomEventsProfile" that defines two additional event types, "CustomEventType1" and "CustomEventType2", each with two properties. CustomEventType1 inherits from the OPCUA defined BaseEventType type and will contain all properties from that class in addition to the two properties defined for the event. CustomEventType2 will inherit from and therefore contain all properties from CustomEventType1 and the two properties defined for the event.
 
-Sources are configured to read from adapter "OPCUA" and server "OPCUA-SERVER", which has a service profile set to " CustomEventsProfile", can use both defined event types in addition to all OPCUA defined event types, as event type for their nodes to collect the data in the properties for these events.
+Sources are configured to read from adapter "OPCUA" and server "OPCUA-SERVER", which has a service profile set to "CustomEventsProfile", can use both defined event types in addition to all OPCUA defined event types, as event type for their nodes to collect the data in the properties for these events.
 
 ```json
 {
@@ -164,43 +210,45 @@ Sources are configured to read from adapter "OPCUA" and server "OPCUA-SERVER", w
 
 
 
-# OPCUA security profiles and certificates
+## OPCUA security profiles and certificates
 
 In order to secure the traffic between the OPCUA protocol adapter and the OPCUA Server it can be signed and encrypted using certificates.
 
 In the configuration for the OPCUA server in the adapter the security policies can be used by setting the [SecurityPolicy](#securitypolicy) of the server to any of the following policy names:
 
-| Name                | Sign / Encrypt   | Security Policy                                                  |
-|---------------------|------------------|------------------------------------------------------------------|
-| None                |                  |                                                                  |
-| Basic128Rsa15       | Sign             | http://opcfoundation.org/UA/SecurityPolicy#Basic128Rsa15         |
-| Basic256            | Sign and encrypt | http://opcfoundation.org/UA/SecurityPolicy#Basic256              |
-| Basic256Sha256      | Sign and encrypt | http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha25         |
-| Aes128Sha256RsaOaep | Sign             | http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep |
+| Name                | Security Policy                                                  |
+|---------------------|------------------------------------------------------------------|
+| None                | http://opcfoundation.org/UA/SecurityPolicy#None                  |
+| Basic128Rsa15       | http://opcfoundation.org/UA/SecurityPolicy#Basic128Rsa15         |
+| Basic256            | http://opcfoundation.org/UA/SecurityPolicy#Basic256              |
+| Basic256Sha256      | http://opcfoundation.org/UA/SecurityPolicy#Basic256Sha256        |
+| Aes128Sha256RsaOaep | http://opcfoundation.org/UA/SecurityPolicy#Aes128_Sha256_RsaOaep |
 
-The Certificate section of the OPCUA Server contains the settings for the certificate used by the client of the adapter.
+SFC has no security-mode setting. The adapter connects to the first endpoint of the server that uses the configured policy and accepts the user token type in use: Anonymous, UserName when [Username](#username) is set, or Certificate when [UserCertificate](#usercertificate) is set. Whether messages are only signed, or signed and encrypted, therefore depends on the endpoints the server offers. With `-info` the adapter logs the endpoint and security mode it selected; with `-trace` it logs every endpoint the server offers.
 
-The CertificateName contains the filename of the client certificate, which can be in pem or Pkcs12 format. If a pem format file is used, additionally the name of the corresponding private key file must be set in PrivateKeyFile. This is not required for PFX certificates as this type of file is a container which holds the certificate and private key. If the PFX file is password protected then the Password attribute must be set. (Avoid clear passwords in the configuration, use placeholders for secrets obtained from AWS Secrets manager instead). If an alias is used in the PFX container the value of that alias must be set in the Alias attribute of the configuration.
+The Certificate section of the OPCUA Server contains the settings for the certificate used by the client of the adapter. All settings are described in [CertificateConfiguration](../core/certificate-configuration.md) and [SelfSignedCertificateConfiguration](../core/self-signed-certificate-configuration.md). Certificate files and the CertificateValidation directory are read on the machine that runs the adapter: the SFC host in the uberjar and in-process modes, the host of the adapter service in IPC mode. Relative paths resolve against the directory that process is started from.
 
-The type of the certificate can be determined by the prefix of the filename (either ".pem" or ".pfx") optionally followed by ".cer", ".cert" or ".crt". If another extension is used then the type can be explicitly set by setting the server configuration's Format attribute to either "Pem" or "Pkcs12".
+The CertificateFile contains the filename of the client certificate, which can be in pem or Pkcs12 format. If a pem format file is used, additionally the name of the corresponding private key file must be set in PrivateKeyFile. This is not required for PFX certificates as this type of file is a container which holds the certificate and private key. If the PFX file is password protected then the Password attribute must be set. (Avoid clear passwords in the configuration, use placeholders for secrets obtained from AWS Secrets manager instead). If an alias is used in the PFX container the value of that alias must be set in the Alias attribute of the configuration.
+
+The format is taken from the file extension: ".pem" or ".pfx", optionally followed by ".cer", ".cert" or ".crt" (e.g. client.pem.crt). For other names, such as client.crt, set the Format attribute of the Certificate section to either "Pem" or "Pkcs12"; otherwise the adapter logs an error that the type of the certificate could not be determined and does not use the certificate.
 
 If either the PEM or PFX certificate file does not exist, it is possible to let the OPCUA adapter generate a self-signed certificate and store that certificate in the specified file name. For PEM format certificates the name of the private key file must be set as well. If the private key file does exist it will be used to generate a pem or Pkcs12 formatted certificate. If it does not exist the keypair is generated and, if a pem formatted certificate is generated, stored in the specified file. For Pkcs12 formatted certificates the key will be stored with the certificate in the pfx file.
 
-To enable the generation of these self-signed certificates the SelfSignedCertificate section must be present in the server configuration. In this section the CommonName of the certificate must be set and optionally the X.509Name fields for Organization, OrganizationalUnit, LocalityName, StateName and CountryCode. The default period in which the generated certificate is valid start from (notBefore) the current date to an end date (notAfter) of the current date plus 3 years. The duration in which the certificate is valid can be modified by setting the ValidPeriodDays attribute.
+To enable the generation of these self-signed certificates the SelfSignedCertificate section must be present in the server configuration. In this section the CommonName of the certificate must be set and optionally the X.509Name fields for Organization, OrganizationalUnit, LocalityName, StateName and CountryCode. The default period in which the generated certificate is valid start from (notBefore) the current date to an end date (notAfter) of the current date plus 1000 days. The duration in which the certificate is valid can be modified by setting the ValidPeriodDays attribute.
 
-A number of days can be set in ExpirationWarningPeriod. At startup and at midnight the OPCUA adapter will check if the client certificate will expire within that period and generate a warning and metric for an expiring (or expired) certificate.
+A number of days can be set in ExpirationWarningPeriod (default 30; 0 disables the warning). At startup and at midnight the OPCUA adapter will check if the client certificate will expire within that period and generate a warning and metric for an expiring (or expired) certificate.
 
 If the OPCUA server does validate the DNS name or the DNS name and IP addresses of the client must be present in the certificate Subject Alternative Names. A list of IP Addresses and DNS names can be set in the SelfSignedCertificate IpAddresses and DnsNames attributes. If these are not set then all known IP addresses and DNS name of the host on which the OPCUA adapter generates the certificate will be set as Subject Alternative Names. To exclude the IP addresses and DNS names from the generated certificate, specify an empty list for these attributes.
 
-If the certificate contains an ApplicationUri as an Alternative Subject Name, the Application Description used by the OPCUA client will be the name part from that URI. For self-signed certificates the alternative subject name for the application uri will be set to urn:aws-sfc-opcua@[hostname]. (Application Name used by client is aws-sfc-opcua@[hostname]). OPCUA servers van validate the application name used by the client against the ApplicationUri from the certificate.
+If the certificate contains an ApplicationUri as an Alternative Subject Name, the Application Description used by the OPCUA client will be the name part from that URI. For self-signed certificates the alternative subject name for the application uri will be set to urn:aws-sfc-opcua@[hostname], unless SelfSignedCertificate.ApplicationUri is set. (Application Name used by client is aws-sfc-opcua@[hostname]). OPCUA servers can validate the application name used by the client against the ApplicationUri from the certificate.
 
-*NOTE: The certificate used by the client must be trusted by the OPCUA server, for which the procedure depends on the used sever. As an example, when a ProSys OPCUA (simulation) server is used, an unknown certificate is rejected but stored on the server, where it can be manually marked through the UI as trusted.*
+*NOTE: The certificate used by the client must be trusted by the OPCUA server, for which the procedure depends on the used server. As an example, when a ProSys OPCUA (simulation) server is used, an unknown certificate is rejected but stored on the server, where it can be manually marked through the UI as trusted.*
 
-The OPCUA adapter can also validate the certificate it receives from the OPCUA server. It will validate it using a set of know trusted certificates and issuers and certificate revocation lists (CRL). To enable the validation a CertificateValidation section must be present in the configuration. The Directory attribute in this section is set to the location where the certificates and revocation lists are stored in a number of subdirectories, which will be created by the adapter if these do not exist. 
+The OPCUA adapter can also validate the certificate it receives from the OPCUA server. It will validate it using a set of known trusted certificates and issuers and certificate revocation lists (CRL). To enable the validation a CertificateValidation section must be present in the configuration. The Directory attribute in this section is set to the location where the certificates and revocation lists are stored in a number of subdirectories, which will be created by the adapter if these do not exist. 
 
-**In the event of an initial connection failure to a server, the corresponding certificate for that server must be manually transferred from the rejected directory to the trusted/certs directory.**
+**Server certificates are validated only when SecurityPolicy is not None, a CertificateValidation section is present and active (Active defaults to true), its Directory exists, and trusted/certs contains at least one certificate. Otherwise, including an empty trusted/certs (logged as a warning), any server certificate is accepted.** To trust a server, copy its certificate into trusted/certs; CA certificates needed to validate its chain go into issuers/certs. With [Username](#username) and [Password](#password), the trust lists of a CertificateValidation section are also used to check the server certificate for the login, even when its Active is false, see [OpcuaServerConfiguration](#opcuaserverconfiguration).
 
-```sh
+```text
 [Configured directory name]
 |----- issuers
 |        |---- certs
@@ -223,21 +271,33 @@ This structure shows:
     - crl/ - For trusted certificate revocation lists
   - rejected/ - For rejected certificates
 
-The certs directories contain trusted certificates and certificates of issuers in order to validate signed certificates. The crl directories contain the certification revocation lists. When a server certificate does not pass the validation it will be stored in PEM format in the rejected directory, from where it can after inspection be moved into the trusted certificate directory.
+The certs directories contain trusted certificates and certificates of issuers in order to validate signed certificates. The crl directories contain the certification revocation lists. When validation is active and a server certificate does not pass the validation, it will be stored in PEM format in the rejected directory, from where it can after inspection be moved into the trusted certificate directory. The adapter watches the issuers and trusted directories and reconnects when their content changes. For the Directory of the example below:
 
-A number of optional checks (see https://reference.opcfoundation.org/v104/Core/docs/Part4/6.1.3/) can be configured in a ValidationOptions section in the CertificateValidation section. It can contain the following attributes that can be set to a value of false to disable the optional validation, which by default are all enabled.
+**Linux / macOS**
+
+```shell
+mv /etc/certificates/opcua1/rejected/* /etc/certificates/opcua1/trusted/certs/
+```
+
+**Windows (PowerShell)**
+
+```powershell
+Move-Item -Path C:\sfc\certificates\opcua1\rejected\* -Destination C:\sfc\certificates\opcua1\trusted\certs\
+```
+
+A number of optional checks (see https://reference.opcfoundation.org/v104/Core/docs/Part4/6.1.3/) can be configured in a ValidationOptions section in the CertificateValidation section. It can contain the following attributes that can be set to a value of false to disable the optional validation, which by default are all enabled. The exception is KeyUsageIssuer: issuer key usage is always checked as part of the certificate chain validation, so omit it or set it to true.
 
 Validation options:
 
 - HostOrIP: End certificates must contain their host name or IP address in the Subject Alternate Names which will be validated
 - Validity: Checks certificate expiry
 - KeyUsageEndEntity: Key usage extensions for end entity certificates must be present and will be checked.
-- ExtKeyUsageEndEntity: : Extended key usage extensions for end entity certificates must be present and will be checked.
-- KeyUsageIssuer: Key usage extensions must be present and will be checked for CA certificates.
-- Revocation: Revocation will be checked against CLRs.
+- ExtKeyUsageEndEntity: Extended key usage extensions for end entity certificates must be present and will be checked.
+- KeyUsageIssuer: Key usage extensions of CA certificates are always checked; this check cannot be disabled.
+- Revocation: Revocation will be checked against CRLs.
 - ApplicationUri: Checks the Application name in the Subject Alternative Names against the Application description.
 
-Example of OPCUA server configuration using Basic256Sha256 security profile for signed and encrypted traffic using an X.509 certificate and private key, which can be generated by the adapter as a self-signed certificated which is valid for 365 days. A daily warning and metric value will be generated staring 30 days before the certificate expires. Server certificates will be checked using certificates and certificate revocation lists stored in subdirectories under the specified base directory for that server.
+Example of OPCUA server configuration using the Basic256Sha256 security policy with an X.509 certificate and private key, which can be generated by the adapter as a self-signed certificate which is valid for 365 days. A daily warning and metric value will be generated starting 30 days before the certificate expires. Server certificates will be checked using certificates and certificate revocation lists stored in subdirectories under the specified base directory for that server.
 
 ```json
   "OPCUA-SERVER-1": {
@@ -246,7 +306,7 @@ Example of OPCUA server configuration using Basic256Sha256 security profile for 
     "Port": 53530,
     "SecurityPolicy": "Basic256Sha256",
     "CertificateValidation": {
-      "Directory": "/etc/certificates/opcua1 ",
+      "Directory": "/etc/certificates/opcua1",
       "ValidationOptions": {
         "HostOrIP": true,
         "Validity": true,
@@ -259,7 +319,7 @@ Example of OPCUA server configuration using Basic256Sha256 security profile for 
     },
     "Certificate": {
       "CertificateFile": "/etc/certificates/certificate.pem",
-      "PrivateKeyFile": "/etc/certificates/ /private-key.pem",
+      "PrivateKeyFile": "/etc/certificates/private-key.pem",
       "ExpirationWarningPeriod": 30,
       "SelfSignedCertificate": {
         "CommonName": "OPCUA-CONNECTOR",
@@ -273,6 +333,32 @@ Example of OPCUA server configuration using Basic256Sha256 security profile for 
     }
   }
 
+```
+
+The base directory must exist before the adapter starts:
+
+**Linux / macOS**
+
+```shell
+mkdir -p /etc/certificates/opcua1
+```
+
+**Windows (PowerShell)**
+
+```powershell
+New-Item -ItemType Directory -Force C:\sfc\certificates\opcua1 | Out-Null
+```
+
+On Windows write these paths with forward slashes; a single backslash is a JSON escape:
+
+```json
+"CertificateValidation": {
+  "Directory": "C:/sfc/certificates/opcua1"
+},
+"Certificate": {
+  "CertificateFile": "C:/sfc/certificates/certificate.pem",
+  "PrivateKeyFile": "C:/sfc/certificates/private-key.pem"
+}
 ```
 
 
@@ -307,13 +393,13 @@ The AdapterOpcuaServer property specifies the server identifier for the OPC UA s
 
 The Channels property is a map of channel configurations, where each key is a unique channel identifier that maps to its corresponding channel settings
 
-**Type**: Map[String,[OpcuaNodeChannelConfiguration](#opcuanodechannelconfiguration)
+**Type**: Map[String,[OpcuaNodeChannelConfiguration](#opcuanodechannelconfiguration)]
 
 At least 1 channel must be configured.
 
 ---
 ### EventQueueSize
-The EventQueueSize property defines the maximum number of events that can be queued during a reading interval. When this limit is exceeded, older events are discarded to make room for new ones.
+The EventQueueSize property sets the server-side queue size of each event monitored item, i.e. the number of events the server buffers per publishing interval. When this limit is exceeded, older events are discarded to make room for new ones. How many events the adapter keeps between two reads is limited by the adapter's [MaxEventRetainSize](#maxeventretainsize) and [MaxEventRetainPeriod](#maxeventretainperiod).
 
 **Type**: Integer
 
@@ -327,7 +413,9 @@ The EventSamplingInterval property specifies the sampling interval for events in
 
 ---
 ### SourceReadingMode
-The SourceReadingMode property determines how values are read from the OPC UA server. In `"Subscription"` mode (default), the connector monitors configured node items and returns only changed values between schedule intervals, except for the initial read which returns all items. In `"Polling"` mode, the connector performs batch reads of all configured nodes at the scheduled interval. Note that nodes collecting alarm or event data always use subscription mode regardless of this setting, while data nodes follow the specified mode
+The SourceReadingMode property determines how values are read from the OPC UA server. In `"Subscription"` mode (default), the connector monitors configured node items and returns only changed values between schedule intervals, except for the initial read which returns all items. In `"Polling"` mode, the connector performs batch reads of all configured nodes at the scheduled interval. Note that nodes collecting alarm or event data always use subscription mode regardless of this setting, while data nodes follow the specified mode.
+
+In Subscription mode each read returns the latest value of every node that changed since the previous read; intermediate changes are not kept. Use a shorter schedule Interval if you need them.
 
 
 **Type**: String
@@ -427,16 +515,18 @@ The SubscribePublishingInterval property sets the publishing interval in millise
 
 [SFC Configuration](../core/sfc-configuration.md) > [Sources](../core/sfc-configuration.md#sources) > [Source](../core/source-configuration.md)  > [Channels](../core/source-configuration.md#channels) > [Channel](../core/channel-configuration.md)
 
-The OpcuaNodeChannelConfiguration class defines the configuration for OPC UA nodes to read from or subscribe to, based on the[ SourceReadingMode](#sourcereadingmode) setting.
+The OpcuaNodeChannelConfiguration class defines the configuration for OPC UA nodes to read from or subscribe to, based on the [SourceReadingMode](#sourcereadingmode) setting.
 
 The OpcuaNodeChannelConfiguration type extends the [ChannelConfiguration](../core/channel-configuration.md) class with channel properties for the OPCUA protocol adapter.
+
+To generate the channels of a source by browsing the server instead of listing the nodes, see the [opcua-auto-discovery](../../examples/opcua-auto-discovery/README.md) example.
 
 - [Schema](#opcuanodechannelconfiguration-schema)
 - [Examples](#opcuanodechannelconfiguration-examples)
 
 
 **Properties:**
-- [EventSamplingInterval](#eventsamplinginterval)
+- [EventSamplingInterval](#eventsamplinginterval-1)
 - [EventType](#eventtype)
 - [IndexRange](#indexrange)
 - [NodeChangeFilter](#nodechangefilter)
@@ -449,21 +539,21 @@ The EventSamplingInterval property specifies the sampling interval in millisecon
 
 **Type**: Integer
 
-Default is 0
+If not set, the source's [EventSamplingInterval](#eventsamplinginterval) is used.
 
 ---
 ### EventType
-For collecting data from event or alarm nodes the type of the event must be specified. This can either be the name of the event (e.g., BaseEventType) or the node identifier (e.g., ns=0;i=17).
+For collecting data from event or alarm nodes the type of the event must be specified. This can either be the name of the event (e.g., BaseEventType) or the node identifier (e.g., i=2041 for BaseEventType).
 
 **Type**: String (name of the event or node identifier)
 
 Valid OPCUA defined event and alarm names can be found at https://reference.opcfoundation.org/Core/Part9/v105/docs/5.8, and https://reference.opcfoundation.org/Core/Part3/v104/docs/9.1
 
-If an event type is not an OPCUA or server profile-defined event type, a warning is generated, and the OPCUA-defined "BaseEventType" is utilized.
+If an event type is not an OPCUA or server profile-defined event type, a warning listing the valid types is logged, and the channel then receives events of every type, with the properties of the OPCUA-defined "BaseEventType".
 
 If a server profile has been defined and used for the server the source for the channel is reading from, the names and identifiers for event types in that profile can be used as well.
 
-The event type is used to filter the events that are raised by a node and to determine the values that can be read from the event. To receive multiple event types from a node, separate channels need to be configured for each event type.
+The event type is used to filter the events that are raised by a node and to determine the values that can be read from the event. To receive multiple event types from a node, separate channels need to be configured for each event type. Matching is exact: events whose type is a subtype of the configured type are not received, so configure one channel per concrete type (e.g. ExclusiveLevelAlarmType).
 
 ---
 ### IndexRange
@@ -476,6 +566,8 @@ If not set all values from an array are read. For syntax see https://reference.o
 ---
 ### NodeChangeFilter
 The NodeChangeFilter property defines the conditions that determine when a value change should be reported in subscription mode for the node.
+
+The filter is evaluated by the server as an OPC UA deadband, in Subscription mode only. Absolute reports a change when the absolute difference between the new and the last reported value is greater than Value. Percent requires the node to have an EURange (AnalogItemType); otherwise the server rejects the monitored item, which the adapter logs as an error and does not monitor.
 
 In addition to this, a  non-OPCUA-specific SFC [ValueFilter](../core/channel-configuration.md#valuefilter), [ChangeFilter](../core/channel-configuration.md#changefilter), and [ConditionFilter](../core/channel-configuration.md#conditionfilter) can be applied 
 
@@ -490,19 +582,21 @@ The NodeId property specifies a string containing the identifier of the node to 
 **Type**: String
 
 The id must have the format:
-`ns=<namespaceIndex>;<identifiertype>=<identifier>`
+`[ns=<namespaceIndex>;]<identifiertype>=<identifier>`
 
 with the fields:
 
-`<namespace index>`: The namespace index formatted as a number.
-`<identifier type>`: A flag that specifies the identifier type. The flag has the following values:
+`<namespace index>`: The namespace index formatted as a number. Optional, the default is 0. Namespace URIs (`nsu=`) are not supported.
+`<identifier type>`: A lowercase flag that specifies the identifier type. The flag has the following values:
 
-- I: Integer
-- S: String
-- G: Guid
-- B: ByteString
+- i: Integer (numeric)
+- s: String
+- g: Guid
+- b: ByteString (Base64 encoded)
 
 `<identifier>`: The identifier encoded as string.
+
+Examples: `i=2258`, `ns=3;s=Pressure_Sensor_01`.
 
 
 ---
@@ -597,7 +691,7 @@ Event monitoring configuration:
 {
   "Name": "AlarmEvent",
   "NodeId": "ns=2;i=1000",
-  "EventType": "AlarmType",
+  "EventType": "AlarmConditionType",
   "EventSamplingInterval": 1000,
   "Description": "Equipment alarm monitoring"
 }
@@ -716,7 +810,7 @@ Explicit absolute change filter:
 
 The OpcuaAdapterConfiguration class defines adapter-wide settings and contains definitions of OPC UA server configurations that can be used by the configured OPC UA sources.
 
-OpcuaAdapterConfiguration extension the [AdapterConfiguration](../core/protocol-adapter-configuration.md) with properties for the OPCUA Protocol adapter.
+OpcuaAdapterConfiguration extends the [AdapterConfiguration](../core/protocol-adapter-configuration.md) with properties for the OPCUA Protocol adapter. Its [AdapterType](../core/protocol-adapter-configuration.md#adaptertype) must be `OPCUA` in every deployment mode; the adapter ignores entries of any other type.
 
 - [Schema](#opcuaadapterconfiguration-schema)
 - [Examples](#opcuaadapterconfiguration-examples)
@@ -768,12 +862,15 @@ The ServerProfiles property defines the profiles configured for this adapter. OP
   "description": "Configuration for OPC UA adapter",
   "allOf": [
     {
-      "$ref": "#/definitions/TargetAdapterConfiguration"
+      "$ref": "#/definitions/AdapterConfiguration"
     },
     {
       "type": "object",
       "properties": {
-        "AdapterType" : "OpcusAdapterType",
+        "AdapterType": {
+          "type": "string",
+          "const": "OPCUA"
+        },
         "OpcuaServers": {
           "type": "object",
           "description": "Map of OPC UA server configurations",
@@ -782,15 +879,15 @@ The ServerProfiles property defines the profiles configured for this adapter. OP
           },
           "minProperties": 1
         },
-        "MaRetainEventsPeriod" :{
+        "MaxEventRetainPeriod" :{
           "type" : "integer",
-          "description": "Max events retain period",
-          "default" : 0
+          "description": "Max events retain period in milliseconds, 0 for no limit",
+          "default" : 3600000
         },
-        "MaxEventsRetainSize" :{
+        "MaxEventRetainSize" :{
           "type" : "integer",
-          "description": "Max events retain size",
-          "default" : 0
+          "description": "Max events retain size, 0 for no limit",
+          "default" : 10000
         },
         "ServerProfiles": {
           "type": "object",
@@ -813,16 +910,16 @@ The ServerProfiles property defines the profiles configured for this adapter. OP
 
 ```json
 {
-  "AdapterType" : "OPCUA-TARGET",
+  "AdapterType" : "OPCUA",
   "OpcuaServers": {
     "Server1": {
-      "Address": "site1.company.com",
+      "Address": "opc.tcp://site1.company.com",
       "Port": 4840
     },
     "Server2": {
-      "Address": "site2.company.com",
+      "Address": "opc.tcp://site2.company.com",
       "Port": 4840
-    },
+    }
   }
 }
 
@@ -831,29 +928,29 @@ The ServerProfiles property defines the profiles configured for this adapter. OP
 
 ```json
 {
-  AdapterType" : "OpcuaAdapterType",
+  "AdapterType" : "OPCUA",
   "OpcuaServers": {
     "Server1": {
-      "Address": "site1.company.com",
+      "Address": "opc.tcp://site1.company.com",
       "Port": 4840,
       "ServerProfile" : "StandardProfile"
     },
     "Server2": {
-      "Address": "site2.company.com",
+      "Address": "opc.tcp://site2.company.com",
       "Port": 4840,
       "ServerProfile" : "StandardProfile"
-    },
+    }
   },
   "ServerProfiles": {
     "StandardProfile": {
       "EventTypes": {
         "ProcessEvent": {
           "NodeId": "ns=2;s=ProcessEventType",
-          "Properties": ["ProcessId", "Value", "Timestamp", "Quality"]
+          "Properties": ["2:ProcessId", "2:Value", "2:Timestamp", "2:Quality"]
         },
         "SystemEvent": {
           "NodeId": "ns=2;s=SystemEventType",
-          "Properties": ["EventId", "Severity", "Message"]
+          "Properties": ["2:EventId", "2:Severity", "2:Message"]
         }
       }
     }
@@ -870,9 +967,11 @@ The ServerProfiles property defines the profiles configured for this adapter. OP
 
 ## OpcuaServerProfileConfiguration
 
-[OpcuaAdapter](#opcuaadapterconfiguration) > [Servers](#opcuaservers) > [OpcuaServer](#opcuaserverconfiguration) > [OpcuaServer](#opcuaserverconfiguration) > [ServerProfile](#serverprofile)
+[OpcuaAdapter](#opcuaadapterconfiguration) > [ServerProfiles](#serverprofiles)
 
 The OpcuaServerProfileConfiguration class defines additional event types (from companion specifications) that can be used by OPC UA servers referencing this profile through their ServerProfile attribute.
+
+The [opcua-auto-discovery](../../examples/opcua-auto-discovery/README.md) example also uses the event types of a server profile to discover event and alarm nodes.
 
 - [Schema](#opcuaserverprofileconfiguration-schema)
 - [Examples](#opcuaserverprofileconfiguration-examples)
@@ -887,7 +986,7 @@ The OpcuaServerProfileConfiguration class defines additional event types (from c
 ### EventTypes
 The EventTypes property defines additional event types (from companion specifications) that can be used by OPC UA servers that reference this profile. These event types extend the standard event types available to the server.
 
-**Type**: Map[ String,  [OpcuaEvenTypeConfiguration](#opcuaeventtypeconfiguration)]
+**Type**: Map[ String,  [OpcuaEventTypeConfiguration](#opcuaeventtypeconfiguration)]
 
 ### OpcuaServerProfileConfiguration Schema
 
@@ -950,7 +1049,7 @@ The OpcuaEventTypeConfiguration class defines the configuration for an additiona
 
 **Properties:**
 - [Inherits](#inherits)
-- [NodeId](#nodeid)
+- [NodeId](#nodeid-1)
 - [Properties](#properties)
 
 ---
@@ -1038,7 +1137,7 @@ Required, an at least one property must be defined.
 
 The OpcuaServerConfiguration class defines the connection and security settings for an OPC UA server. This configuration can be referenced by OPC UA sources through their AdapterOpcuaServer attribute to establish communication with the server.
 
-When connecting to a server for the first time fails due to a certificate validation error or an error message indicating that *"the trustAnchors parameter must be non-empty,"* the server's certificate must be moved from the "rejected" subdirectory under the [directory](#directory) configured in the [CertificateValidation](#certificatevalidation) for the server to the "trusted/certs" directory.
+When connecting to a server fails due to a certificate validation error, the server's certificate must be moved from the "rejected" subdirectory under the [directory](#directory) configured in the [CertificateValidation](#certificatevalidation) for the server to the "trusted/certs" directory, see [OPCUA security profiles and certificates](#opcua-security-profiles-and-certificates). When [Username](#username) and [Password](#password) are used together with a CertificateValidation section, an empty "trusted/certs" directory can make the first connection fail with the error message *"the trustAnchors parameter must be non-empty"*; move the rejected server certificate into "trusted/certs" in the same way.
 
 - [Schema](#opcuaserverconfiguration-schema)
 - [Examples](#opcuaserverconfiguration-examples)
@@ -1052,7 +1151,7 @@ When connecting to a server for the first time fails due to a certificate valida
 - [MaxChunkCount](#maxchunkcount)
 - [MaxChunkSize](#maxchunksize)
 - [MaxMessageSize](#maxmessagesize)
-- [Password]()
+- [Password](#password)
 - [Path](#path)
 - [Port](#port)
 - [ReadBatchSize](#readbatchsize)
@@ -1066,7 +1165,7 @@ When connecting to a server for the first time fails due to a certificate valida
 
 ---
 ### Address
-The Address property specifies the network address or endpoint URL of the OPC UA server. This is used to establish the connection to the server.
+The Address property specifies the host of the OPC UA server including the scheme, e.g. `opc.tcp://localhost`. The adapter connects to `<Address>:<Port>/<Path>`; an address without the `opc.tcp://` scheme cannot be used to connect.
 
 **Type**: String
 
@@ -1090,12 +1189,7 @@ If the server doesn't initially trust the client's certificate, it will typicall
 
 ---
 ### CertificateValidation
-The CertificateValidation property specifies how server certificates should be validated when establishing a connection. This configuration determines how the client handles and validates certificates presented by the OPC UA server, including: 
-
-- Whether to accept untrusted certificates
-- Certificate validation rules and requirements
-- How to handle certificate validation failures
-- Trust chain validation settings
+The CertificateValidation property specifies how server certificates should be validated when establishing a connection. Server certificates are validated against the trust lists in its [Directory](#directory), using the checks in [ValidationOptions](#validationoptions). Set [Active](#active) to false to switch validation off. The conditions under which validation applies are described in [OPCUA security profiles and certificates](#opcua-security-profiles-and-certificates).
 
 This is an important security configuration that helps ensure connections are only established with legitimate and trusted servers.
 
@@ -1111,12 +1205,12 @@ The default value is 10000 milliseconds (10 seconds), and the minimum allowed va
 
 ---
 ### ConnectionWatchdogInterval
-The ConnectionWatchdogInterval property defines how frequently, in milliseconds, the client checks the server connection when operating in Subscription reading mode. The watchdog performs these checks by attempting to read the server status from the OPC UA server. This monitoring is particularly important because when using subscriptions, a lost connection to a stopped server might not be detected through normal subscription operations alone.
+The ConnectionWatchdogInterval property defines how frequently, in milliseconds, the client checks the server connection when the source uses a subscription (Subscription reading mode, or event channels in either mode). The watchdog performs these checks by attempting to read the server status from the OPC UA server. This monitoring is particularly important because when using subscriptions, a lost connection to a stopped server might not be detected through normal subscription operations alone.
 
 **Type** : Integer
 
 Default value is 1000 milliseconds (1 second)
-Setting the value to 0 will disable the watchdog functionality
+Do not set the value to 0: this does not disable the watchdog, it makes it check continuously.
 
 ---
 ### MaxChunkCount
@@ -1133,24 +1227,22 @@ The MaxChunkSize property defines the maximum size in bytes for a single chunk o
 **Type** : Integer
 
 Default value is 65535 (64KB)
-Minimum allowed value is 8196 (8KB)
-Maximum allowed value is 2,147,483,639 (MaxInt-8 is approximately 2048GB)
+The value must be greater than 8196 and at most 2,147,483,639 (about 2 GB), and less than [MaxMessageSize](#maxmessagesize).
 
 ---
 ### MaxMessageSize
-The MaxChunkSize property defines the maximum message size in bytes.
+The MaxMessageSize property defines the maximum message size in bytes.
 
 **Type** : Integer
 
 Default value is 2,097,152 (2MB)
-Minimum allowed value is 8196 (8KB)
-Maximum allowed value is 2,147,483,639 (MaxInt-8 is approximately 2048GB)
+The value must be greater than 8196 and at most 2,147,483,639 (about 2 GB), and greater than [MaxChunkSize](#maxchunksize).
 
 ---
 
 ### Password
 
-Password credential used for authentication with the OPC UA server. Username and password should not be included as clear text in the configuration. It is strongly recommended to use placeholders and use the SFC integration with the AWS secrets manager.
+Password credential used for authentication with the OPC UA server. Username and Password must be set together. Username and password should not be included as clear text in the configuration. It is strongly recommended to use placeholders and use the SFC integration with the [AWS secrets manager](../core/secrets-manager-configuration.md).
 
 **Type:** String
 
@@ -1160,7 +1252,7 @@ The Path property specifies the server path or name.
 
 **Type**: String
 
-The connection address that will be constructed is `<Address>:<Port>[/<Path>]`
+The connection address that will be constructed is `<Address>:<Port>/<Path>`. The `/` after the port is always added, so give Path without a leading slash (e.g. `OPCUA/SimulationServer`), or leave it out for a server at the root.
 
 Optional property
 
@@ -1170,11 +1262,11 @@ The Port property specifies the OPCUA server port.
 
 **Type** : Integer
 
-Default value is 53530
+Default value is 53530. The umati sample server used in [Quickstart step 3](../../README.md#3-a-more-serious-example---ingest-opc-ua-to-iceberg-aws-s3-tables) listens on 4840; set Port to the port of your server.
 
 ---
 ### ReadBatchSize
-The ReadBatchSize property specifies the maximum number of nodes to read in a single batch read.
+The ReadBatchSize property specifies the maximum number of nodes to read in a single request in Polling mode, and the maximum number of monitored items created per call in Subscription mode.
 
 **Type** : Integer
 
@@ -1182,7 +1274,7 @@ Default value is 500
 
 ---
 ### ReadTimeout
-The ReadTimeout property specifies the timeout in milliseconds when reading from the server. 
+The ReadTimeout property specifies the timeout in milliseconds for every request to the server (reads, subscription and monitored-item calls). 
 
 **Type** : Integer
 
@@ -1200,7 +1292,7 @@ Valid values are:
 - Basic128Rsa15: RSA15 key wrap algorithm with 128-bit encryption
 - Basic256: RSA PKCS#1 v1.5 with 256-bit encryption
 - Basic256Sha256: RSA with SHA256 and 256-bit encryption
-- Aes128ShaRsaOaep: AES-128 with RSA-OAEP encryption and SHA signing
+- Aes128Sha256RsaOaep: AES-128 with RSA-OAEP and SHA-256
 
 Note: When using any value other than "None", a client certificate must be configured.
 
@@ -1228,9 +1320,9 @@ This authentication method is mutually exclusive with [username](#username)/[pas
 
 ### Username
 
-Username credential used for authentication with the OPC UA server. Username and password should not be included as clear text in the configuration. It is strongly recommended to use placeholders and use the SFC integration with the AWS secrets manager.
+Username credential used for authentication with the OPC UA server. Username and Password must be set together. Username and password should not be included as clear text in the configuration. It is strongly recommended to use placeholders and use the SFC integration with the [AWS secrets manager](../core/secrets-manager-configuration.md).
 
-Username and [UserCertificateFile](#usercertificate) are mutally exclusive.
+Username/Password and [UserCertificate](#usercertificate) are mutually exclusive. The server must offer an endpoint with the configured [SecurityPolicy](#securitypolicy) that accepts this user token type.
 
 **Type:** String
 
@@ -1244,11 +1336,11 @@ Default is 10000, the minimum value is 1000
 
 ---
 ### WaitAfterReadError
-The WaitAfterReadError property specifies the time in milliseconds to wait before attempting to reconnect after a read error.
+The WaitAfterReadError property specifies the time in milliseconds the connection watchdog waits after a failed server-status read before checking again.
 
 **Type**: Integer
 
-Default is 10000, the minimum value is 1000
+Default is 1000, the minimum value is 1000
 
 ### OpcuaServerConfiguration Schema
 
@@ -1260,7 +1352,7 @@ Default is 10000, the minimum value is 1000
   "properties": {
     "Address": {
       "type": "string",
-      "description": "The IP address or hostname of the OPC UA server"
+      "description": "Address of the OPC UA server including the scheme, e.g. opc.tcp://localhost"
     },
     "Certificate": {
       "$ref": "#/definitions/CertificateConfiguration",
@@ -1290,6 +1382,10 @@ Default is 10000, the minimum value is 1000
       "type": "integer",
       "description": "Maximum size of a message in bytes"
     },
+    "Password": {
+      "type": "string",
+      "description": "Password for user authentication, set together with Username"
+    },
     "Path": {
       "type": "string",
       "description": "Path component of the OPC UA server URL"
@@ -1309,8 +1405,8 @@ Default is 10000, the minimum value is 1000
     "SecurityPolicy": {
       "type": "string",
       "description": "Security policy for the OPC UA connection",
-      "enum": ["None", "Basic128Rsa15", "Basic256", "Basic256Sha256", "Aes128_Sha256_RsaOaep""]
-      "default" : "None"         
+      "enum": ["None", "Basic128Rsa15", "Basic256", "Basic256Sha256", "Aes128Sha256RsaOaep"],
+      "default" : "None"
     },
     "ServerProfile": {
       "type": "string",
@@ -1324,12 +1420,16 @@ Default is 10000, the minimum value is 1000
       "$ref": "#/definitions/CertificateConfiguration",
       "description": "Certificate configuration for user authentication"
     },
+    "Username": {
+      "type": "string",
+      "description": "Username for user authentication, set together with Password"
+    },
     "WaitAfterReadError": {
       "type": "integer",
       "description": "Wait time after a read error in milliseconds"
     }
   },
-  "required": ["Address", "Port"]
+  "required": ["Address"]
 }
 
 
@@ -1356,7 +1456,7 @@ Basic configuration:
 
 ## OpcuaCertificateValidationConfiguration
 
-[OpcuaAdapterConfiguration](#opcuaadapterconfiguration) >   [OpcuaServers](#opcuaservers) > [OpcUaServer](#opcuaservers) > [CertificateValidation](#certificatevalidation)
+[OpcuaAdapterConfiguration](#opcuaadapterconfiguration) >   [OpcuaServers](#opcuaservers) > [OpcuaServer](#opcuaserverconfiguration) > [CertificateValidation](#certificatevalidation)
 
 The OpcuaCertificateValidationConfiguration class defines the configuration settings for OPC UA certificate validation.
 
@@ -1380,6 +1480,8 @@ The Active property is a flag that enables or disables the validation of server 
 When set to true, server certificate validation is enabled.
 When set to false, server certificate validation is disabled
 
+Default is true.
+
 ------
 
 ### Directory
@@ -1388,9 +1490,11 @@ The Directory property specifies the pathname to the base directory where certif
 
 **Type** : String
 
+If not set, the directory the adapter process is started from is used.
+
 Important notes:
 
-- This directory must exist prior to use
+- This directory must exist prior to use; if it does not, the adapter logs an error and does not validate server certificates
 - The adapter will automatically create any required subdirectories if they don't exist
 
 Directory structure
@@ -1482,7 +1586,7 @@ With validation options:
   "ValidationOptions": {
     "ApplicationUri": false,
     "ExtKeyUsageEndEntity": false,
-    "HostOrIp": false,
+    "HostOrIP": false,
     "KeyUsageEndEntity": false,
     "KeyUsageIssuer": true,
     "Revocation": true,
@@ -1495,7 +1599,7 @@ With validation options:
 
 ## OpcuaCertificateValidationOptions type
 
-[OpcuaAdapterConfiguration](#opcuaadapterconfiguration) >   [OpcuaServers](#opcuaservers) > [OpcUaServer](#opcuaservers) > [CertificateValidation](#certificatevalidation) > [ValidationOptions](#validationoptions)
+[OpcuaAdapterConfiguration](#opcuaadapterconfiguration) >   [OpcuaServers](#opcuaservers) > [OpcuaServer](#opcuaserverconfiguration) > [CertificateValidation](#certificatevalidation) > [ValidationOptions](#validationoptions)
 
 The OpcuaCertificateValidationOptions class defines configuration options for certificate validation checks during OPC UA connections.
 
@@ -1508,7 +1612,7 @@ This class allows you to specify which validation checks should be performed whe
 
 - [ApplicationUri](#applicationuri)
 - [ExtKeyUsageEndEntity](#extkeyusageendentity)
-- [HostOrIp](#hostorip)
+- [HostOrIP](#hostorip)
 - [KeyUsageEndEntity](#keyusageendentity)
 - [KeyUsageIssuer](#keyusageissuer)
 - [Revocation](#revocation)
@@ -1557,9 +1661,9 @@ When disabled (false):
 
 ---
 
-### HostOrIp
+### HostOrIP
 
-The HostOrIp property controls whether the host name or IP address must be present and validated in the Subject Alternative Names (SAN) field of the certificate.
+The HostOrIP property controls whether the host name or IP address must be present and validated in the Subject Alternative Names (SAN) field of the certificate.
 
 When enabled (true):
 
@@ -1598,18 +1702,9 @@ When disabled (false):
 
 ### KeyUsageIssuer
 
-The KeyUsageIssuer property controls the validation of the Key Usage extension for Certificate Authority (CA) certificates. 
+The KeyUsageIssuer property refers to the validation of the Key Usage extension for Certificate Authority (CA) certificates, which must permit signing other certificates. 
 
-When enabled (true):
-
-- Requires the Key Usage extension to be present in CA certificates
-- Validates that the CA certificate has appropriate key usage flags set
-- Ensures the CA certificate has proper permissions for signing other certificates
-- Verifies the CA certificate is being used within its intended constraints
-
-When disabled (false):
-
-- Skips the validation check for Key Usage extension in CA certificates
+Issuer key usage is always validated as part of the certificate chain validation and cannot be disabled; setting KeyUsageIssuer to false does not switch it off. Omit the option or set it to true.
 
 **Type** : Boolean
 **Default** : true
@@ -1679,7 +1774,7 @@ Note: It's generally recommended to keep this enabled as using expired certifica
       "description": "Enable validation of extended key usage for end entity certificates",
       "default": true
     },
-    "HostOrIp": {
+    "HostOrIP": {
       "type": "boolean",
       "description": "Enable validation of host name or IP address",
       "default": true
@@ -1691,7 +1786,7 @@ Note: It's generally recommended to keep this enabled as using expired certifica
     },
     "KeyUsageIssuer": {
       "type": "boolean",
-      "description": "Enable validation of key usage for issuer certificates",
+      "description": "Validation of key usage for issuer certificates, always performed",
       "default": true
     },
     "Revocation": {
@@ -1715,7 +1810,7 @@ Note: It's generally recommended to keep this enabled as using expired certifica
 {
   "ApplicationUri": false,
   "ExtKeyUsageEndEntity": false,
-  "HostOrIp": false,
+  "HostOrIP": false,
   "KeyUsageEndEntity": false,
   "KeyUsageIssuer": true,
   "Revocation": true,
@@ -1723,4 +1818,6 @@ Note: It's generally recommended to keep this enabled as using expired certifica
 }
 
 ```
+
+**More examples:** [OPC-UA to IoT Core with filters](../../examples/opcua-to-iot-using-filters/README.md) (combines the adapter with [SFC filters and transformations](../sfc-data-processing-filtering.md)) · [YAML config provider](../../examples/yaml-custom-config-provider/README.md) · all: [examples catalog](../examples/README.md)
 

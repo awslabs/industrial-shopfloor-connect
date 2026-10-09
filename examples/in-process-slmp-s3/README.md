@@ -2,13 +2,28 @@
 
 [Examples](../../docs/examples/README.md)
 
-The file `in-process-slmp-s3.json` contains an example template for
+The file [`inproc-slmp-s3.json`](inproc-slmp-s3.json) contains an example template for
 reading data from a Mitsubishi controller using SLMP and
 sending the data to an S3 bucket.
 
+The configuration is split over several files, which `inproc-slmp-s3.json`
+includes with [`@file:` statements](../../docs/sfc-configuration.md#file-http-https-statements):
+
+-   `slmp-channels.json`, the channels of the source
+-   `structures.json`, the custom structured types of the SLMP adapter
+-   `types.json`, the `AdapterTypes` and `TargetTypes`, selected with
+    `@file:types.json@Adapters` and `@file:types.json@Targets`
+    ([selective inclusions](../../docs/sfc-configuration.md#selective-inclusions))
+-   `templates.json`, the template for the S3 target
+    ([configuration templates](../../docs/sfc-configuration.md#configuration-templates))
+-   `credential-providers.json`, the AWS IoT credential provider client
+
+The same pipeline with the adapter and the targets as IPC services:
+[ipc-slmp-s3](../ipc-slmp-s3/README.md).
 
 In order to use the configuration, make the changes described below, and
-use it as the value of the --config parameter when starting sfc-main.
+use it as the value of the `-config` parameter when starting sfc-main, as
+shown under [Deployment directory](#deployment-directory).
 
 A debug target is included in the example to optionally write the output
 to the console.
@@ -17,19 +32,48 @@ to the console.
 
 ## Deployment directory
 
-A Placeholder ${SFC_DEPLOYMENT_DIR} is used in the configuration. SFC
-dynamically replaces these placeholders with the value of the
-environment variable from the placeholder. In this example it should
-have the value of the pathname of the directory where scf-main, the used
-adapters and targets are deployed with the following directory
-structure. (This structure can be changed by setting the pathnames in
-the AdapterTypes and TargetTypes sections)
+The `JarFiles` entries in `types.json` use the placeholder
+`${SFC_DEPLOYMENT_DIR}`, which SFC replaces with the value of the
+environment variable `SFC_DEPLOYMENT_DIR`. Point it at the directory into
+which you unpack the module bundles `sfc-main`, `debug-target`,
+`aws-s3-target` and `slmp` of the
+[latest release](https://github.com/awslabs/industrial-shopfloor-connect/releases/latest)
+(for another layout, change the `JarFiles` paths). `sfc-main` needs a
+Java 17 (or newer) runtime (Windows: `winget install EclipseAdoptium.Temurin.17.JDK`).
+More about this mode: [In-process](../../docs/sfc-deployment.md#in-process).
 
-${SFC_DEPLOYMENT_DIR}  
-&nbsp;&nbsp;&nbsp;|-sfc-main  
-&nbsp;&nbsp;&nbsp;|-debug-target    
-&nbsp;&nbsp;&nbsp;|-aws-s3-target  
-&nbsp;&nbsp;&nbsp;|-slmp  
+Unpack the bundles, set the variable and, once you have made the changes
+described below, start `sfc-main` from this example's folder. It must be
+started from there, because the `@file:` paths are relative to the
+directory SFC is started from:
+
+**Linux / macOS**
+
+```shell
+export SFC_DEPLOYMENT_DIR="$HOME/sfc"
+mkdir -p "$SFC_DEPLOYMENT_DIR"
+for m in sfc-main debug-target aws-s3-target slmp; do
+  curl -fsSL "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz" | tar -xzf - -C "$SFC_DEPLOYMENT_DIR"
+done
+"$SFC_DEPLOYMENT_DIR/sfc-main/bin/sfc-main" -config inproc-slmp-s3.json
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$env:SFC_DEPLOYMENT_DIR = "C:/sfc"
+New-Item -ItemType Directory -Force C:\sfc | Out-Null
+foreach ($m in "sfc-main", "debug-target", "aws-s3-target", "slmp") {
+    curl.exe -fsSL -o "C:\sfc\$m.tar.gz" "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz"
+    tar -xf "C:\sfc\$m.tar.gz" -C C:\sfc
+}
+java -cp "C:\sfc\sfc-main\lib\*" com.amazonaws.sfc.MainController -config inproc-slmp-s3.json
+```
+
+On Windows start `sfc-main` with `java -cp` as shown, not with
+`bin\sfc-main.bat` ([Platform support](../../docs/README.md#platform-support)).
+With the uberjar from [sfcup](../../README.md#1-install), remove the
+`JarFiles` entries from `types.json` and run `sfcx -config inproc-slmp-s3.json`.
 &nbsp;  
 &nbsp;
 
@@ -51,14 +95,15 @@ uncomment the DebugTarget by deleting the '#'.
 
 ## S3Target 
 
-A template S3Target is used fot the actual S3 target. This template is loaded by the "Templates"  section from
+A template S3Target is used for the actual S3 target. This template is loaded by the "Templates"  section from
 the file templates.json. In the "Targets" section this template is used for the actual S3 target, passing the name of the bucket, 
 the region and a prefix as parameters.
 
 ```json
 "Targets": {
-    "S3Target": "$(S3Target, bucket=<YOUR BUCKET>,region=<YOUR REGION>>,prefix=slmp-data)",
-},
+    "S3Target": "$(S3Target, bucket=< YOUR BUCKET >,region=< YOUR REGION >,prefix=< YOUR PREFIX >)",
+    "DebugTarget": {"TargetType": "DEBUG-TARGET"}
+}
 ```
 The used template is defined in the templates.json file as:
 
@@ -97,8 +142,9 @@ section AwsIotCredentialProviderClients below.
 ## Sources Section
 
 In this section, the values are defined as channels, which are read from
-the controller. In this template there is an example for every
-address/type supported by the adapter. In order to change the name of
+the controller. The channels, loaded from the file slmp-channels.json, are
+examples for word (D), double word, bit (X, Y), string, array and structure
+reads; see the [SLMP adapter](../../docs/adapters/slmp.md) for all device codes and data types. In order to change the name of
 the value as it is included in the data which is sent to the targets,
 include a setting "Name" for the channel.
 &nbsp;  
@@ -107,23 +153,34 @@ include a setting "Name" for the channel.
 ## ProtocolAdapters section
 
 ```json
-  "ProtocolAdapters": {
-      "SLMP": {
-        "AdapterType": "SLMP",
-          "Controllers": {
-          "SLMP-CONTOLLER": {
-              "Address": "<CONTROLLER IP ADDRESS >"
-          }
-      },
-      "Structures": "@file:structures.json"
-  }   
-},
-
+"ProtocolAdapters": {
+  "SLMP": {
+    "AdapterType": "SLMP",
+    "Controllers": {
+      "SLMP-CONTROLLER": {
+        "Address": "< IP ADDRESS OF CONTROLLER >"
+      }
+    },
+    "Structures": "@file:structures.json"
+  }
+}
 ```
 
--   <CONTROLLER IP ADDRESS >, IP address of the controller
+-   \< IP ADDRESS OF CONTROLLER \>, IP address of the controller
 
-The file structures.json is loaded for the SLMP adapter, which contains the custom structured types used for the channels that are using this adapter.
+The default SLMP port 50000 is used, which can be changed by including a
+`Port` setting for the controller.
+
+**Try it without hardware:** omni-plc-sim, the PLC simulator that
+[uberjar-plc-sim-s3tables](../uberjar-plc-sim-s3tables/README.md) uses,
+also serves SLMP: a simulated MELSEC iQ-R CPU on port 40000 that has every
+device this configuration reads. Build and start it as in
+[step 1](../uberjar-plc-sim-s3tables/README.md#1-start-the-plcs) of that
+example, but with `slmp` as its only argument, then set the controller
+`Address` to `127.0.0.1` and add `"Port": 40000`.
+
+The file structures.json is loaded for the SLMP adapter, which contains the custom structured types used for the channels that are using this adapter
+([Structures](../../docs/adapters/slmp.md#structures)).
 
 
 &nbsp;  
@@ -132,59 +189,27 @@ The file structures.json is loaded for the SLMP adapter, which contains the cust
 
 ## AwsIotCredentialProviderClients
 
-This section configures one or more clients which can be referred to by
-targets which need access to AWS services.
+The credential provider clients for this example are loaded from the file
+[credential-providers.json](credential-providers.json). Its client
+`AwsIotClient` obtains temporary credentials for the S3 target from the
+AWS IoT credentials provider, using the certificate of a Thing in AWS IoT.
+Fill in `IotCredentialEndpoint`, `RoleAlias`, `ThingName`,
+`CertificateFile`, `PrivateKeyFile` and `RootCa`. On a Greengrass V2 core
+device you can instead remove the `#` from `GreenGrassDeploymentPath`, set
+it to the Greengrass root folder (the file has `/greengrass/v2`) and delete
+the other settings. The role that `RoleAlias` points to must
+allow `s3:PutObject` on the bucket. On Windows write the file paths with
+forward slashes, e.g. `"C:/sfc/certs/device.crt"`.
 
-A credential provider will make use of the AWS IoT Credentials service
-to obtain temporary credentials. This process is described at
-<https://aws.amazon.com/blogs/security/how-to-eliminate-the-need-for-hardcoded-aws-credentials-in-devices-by-using-the-aws-iot-credentials-provider/>
-
-The resources used in the configuration can easily be setup by creating
-a Thing in the AWS IoT service. The role that `RoleAlias` points to, must
-give access to the services used by the target which uses the client.
-
-The credential providers for this example are loaded from the file credential-providers.json.
-
-```json
-{
-  "AwsIotClient": {
-    "IotCredentialEndpoint": "<ID>.credentials.iot.<YOUR REGION>.amazonaws.com",
-    "RoleAlias": "< ROLE EXCHANGE ALIAS >”,
-    "ThingName": "< THING NAME > ",
-    "Certificate": "< PATH TO DEVICE CERTIFICATE .crt FILE >",
-    "PrivateKey": "< PATH TO PRIVATE KEY .key FILE >",
-    "RootCa": "< PATH TO ROOT CERTIFICATE .pem FILE >"
-  }
-
-```
-
-
-If there is a GreenGrass V2 deployment on the same machine, instead of
-all settings a setting named GreenGrassDeploymentPath can be used to
-point to that deployment. SFC will use the GreenGrass V2 configurations
-setting. Specific setting can be overridden by setting a value for that
-setting, which will replace the value from the GreenGrass V2
-Configuration. Note that although SFC can be deployed as a GreenGrass
-component, it can also run as a standalone process or in a docker
-container and still use a GreenGrass configuration.
-&nbsp;  
-&nbsp;  
-
-
-```json
-{
-  "AwsIotClient": {
-    "GreenGrassDeploymentPath": "<GREENGRASS DEPLOYMENT DIR>/v2"
-  }
-}
-```
-
-When the AWS service credentials are provided using one of the options in the AWS SDK credentials provider chain
-(<https://docs.aws.amazon.com/sdk-for-java/latest/developer-guide/credentials-chain.html>) AwsIotCredentialProviderClients and any references in the targets can be
-deleted. Using the temporary credentials provided through a configured
-AwsIotCredentialProviderClient for production environment is strongly
-recommended.
+All settings:
+[AwsIotCredentialProviderClients](../../docs/core/aws-iot-credential-provider-configuration.md).
+To use the AWS SDK default credentials chain instead, delete the
+`AwsIotCredentialProviderClients` line from `inproc-slmp-s3.json` and the
+`CredentialProviderClient` line from `templates.json`; see
+[AWS service credentials](../../docs/sfc-aws-service-credentials.md). For
+production environments the temporary credentials of a credential provider
+client are strongly recommended.
 
 [^top](#sfc-example-in-process-configuration-for-mitsubishimelsec-slmp-to-amazon-s3)
 
-[Examples](../../docs/examples/README.md)
+Docs used: [SLMP adapter and structures](../../docs/adapters/slmp.md#structures) · [S3 target](../../docs/targets/aws-s3.md) · [Debug target](../../docs/targets/debug.md) · [configuration templates](../../docs/sfc-configuration.md#configuration-templates) · [including configuration sections](../../docs/sfc-configuration.md#including-configuration-sections) · [AWS IoT credential provider](../../docs/core/aws-iot-credential-provider-configuration.md) · [In-process mode](../../docs/sfc-deployment.md#in-process) · [All examples](../../docs/examples/README.md)

@@ -5,9 +5,10 @@ Shop Floor Connectivity (SFC) Framework
 
 ## Introduction
 
-Shop Floor Connectivity (SFC) is a data ingestion technology that can deliver data to multiple AWS Services.
+Shop Floor Connectivity (SFC) is an industrial data ingestion technology that can deliver machine data to multiple AWS Services.
 
-SFC extends and unifies data collection capabilities additionally to our existing IIoT data collection services, allowing customers to provide data in a consistent way to a wide range of AWS Services. It allows customers to collect data from their industrial equipment and deliver it to the AWS services that work best for their requirements. Customers get the cost and functional benefits of specific AWS services and save costs on licenses for additional connectivity products.
+SFC extends and unifies data collection capabilities additionally to existing AWS IIoT data collection solutions & partner offerings, allowing customers to provide data in a consistent way to a wide range of AWS Services. It allows customers to collect data from their industrial equipment and deliver it to the AWS services that work best for their requirements. Customers get the cost and functional benefits of specific AWS services and save costs on licenses for additional connectivity products. Create highly flexible Data Pipelines that lay the foundation for Industrial ML and AI workloads.
+
 
 [**Supported protocols:**](./docs/adapters/README.md)
 
@@ -27,7 +28,6 @@ SFC extends and unifies data collection capabilities additionally to our existin
 
 [**Supported  service targets:** ](./docs/targets/README.md)
 
-- [AWS IoT Analytics](./docs/targets/aws-iot-analytics.md)
 - [AWS IoT Core](./docs/targets/aws-iot-core.md)
 - [AWS IoT Sitewise](./docs/targets/aws-sitewise.md)
 - [AWS Kinesis Firehose](./docs/targets/aws-kinesis-firehose.md)
@@ -38,10 +38,10 @@ SFC extends and unifies data collection capabilities additionally to our existin
 - [AWS S3 Tables](./docs/targets/aws-s3-tables.md)
 - [AWS SNS](./docs/targets/aws-sns.md)
 - [AWS SQS](./docs/targets/aws-sqs.md)
-- [AWS Timestream](./docs/targets/aws-timestream.md)
 
 [**Supported  edge  targets:** ](./docs/targets/README.md)
 
+- [AWS IoT SiteWise Edge](./docs/targets/aws-sitewiseedge.md)
 - [OPCUA](./docs/targets/opcua.md)
 - [OPCUA Writer](./docs/targets/opcua-writer.md)
 - [Debug Terminal](./docs/targets/debug.md)
@@ -49,249 +49,339 @@ SFC extends and unifies data collection capabilities additionally to our existin
 - [MQTT](./docs/targets/mqtt.md)
 - [NATS](./docs/targets/nats.md)
 
-**SFC Docs:** [`/docs/README.md`](./docs/README.md)
-
-**SFC Configuration:** [`docs/core/sfc-configuration.md`](./docs/core/sfc-configuration.md)
-
-&nbsp;
-
-### SFC Components
-
-There are three main types of components that make up SFC:
-
-- `Protocol Adapters`
-- `SFC Core`
-- `Target Adapters`
-
-Shop Floor Connectivity (SFC) is a versatile data ingestion solution that can be deployed in a variety of environments, including standalone applications, Docker containers, and Kubernetes pods. With no additional requirements beyond a Java JVM 1.8 runtime, SFC can be deployed on Linux and Windows systems. To optimize hardware utilization, SFC uses parallel and non-blocking async patterns in its software.
-
-SFC protocol and target adapters can be implemented as a JVM component or as an external microservices using the gRPC protocol for communication. When running as stand-alone services, protocol adapters can be deployed on separate machines from the SFC Core process, with secure communication facilitated by gRPC (`IPC-mode`). The SFC Core provides a consistent infrastructure allowing all JVM based protocol and target adapters to run in the same process as the SFC Core (`In-Process mode`).
-
-Distributed deployment using microservices is required to deploy in environments that use segregated OT and IT networks, with components connected to devices, protocol adapters, deployed in the OT network and components requiring internet access, targets adapters, in a DMZ.
-
-The SFC core will provide the services, protocol and target adapters, with the required configuration after these are bootstrapped, providing a single, monitored and consistent source and location of configuration.
 
 
 
-<p align="center">
-  <img src="docs/img/fig01.png" width="75%"/>
-</p>
+## Quickstart
+
+Follow those steps to get started instantly. Dive deep later on the [Docs](./docs/README.md) and our [Example Collection](./docs/examples/README.md).
 
 
-## Documentation
+### 1. Install
 
-Read more in the [SFC documentation](./docs/README.md)
-
-
-## Quickstart Example
-
->**Requirements**: Docker, Java runtime, aws cli [Credentials Configuration](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html#configure-precedence)
-
-### Installation
-
-In this Quick start you will set up following architecture: A local SFC installation will receive data from an OPC-UA server and send it according to its configuration to an S3 Bucket. *As a side note here: SFC can deal with more industrial protocols - [have a look at the docs here!](docs/adapters/README.md)*
-
-At first, we have to download and extract the SFC bundles. These are precompiled executables to get started quickly:
+**Linux / macOS**
 
 ```shell
-# Define sfc version and directory
-export VERSION=$(curl -s "https://api.github.com/repos/awslabs/industrial-shopfloor-connect/tags" | jq -r '.[0].name')
-export SFC_DEPLOYMENT_DIR="./sfc"
+curl -fsSL https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.sh | bash
 ```
 
-```shell
-# Download and extract bundles into folder ./sfc
-mkdir $SFC_DEPLOYMENT_DIR && cd $SFC_DEPLOYMENT_DIR
-wget https://github.com/awslabs/industrial-shopfloor-connect/releases/download/$VERSION/\
-{aws-s3-target,debug-target,opcua,sfc-main}.tar.gz
+**Windows (PowerShell)**
 
-for file in *.tar.gz; do
-  tar -xf "$file"
-  rm "$file"
-done
-cd -
+```powershell
+irm https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.ps1 | iex
 ```
 
-### Deploy, Configure, Run
+### 2. HelloWorld Simulator Example
 
-Next we will define the installation directory, the AWS region, the AWS account and the bucket name we want to send the data to:
+The **simulator adapter** generates signals in-process, so you can watch SFC work before connecting
+anything. Save this as `simulator.json`:
 
-```shell
-# define configuration values
-export SFC_DEPLOYMENT_DIR="./sfc"
-export AWS_REGION="us-east-1"
-export ACCOUNT_ID=$(aws sts get-caller-identity --query "Account" --output text)
-export SFC_S3_BUCKET_NAME="sfc-s3-bucket-${AWS_REGION}-${ACCOUNT_ID}"
-```
-
-If you do not have a S3 bucket yet, you will have to create one:
-
-```shell
-# Create S3 bucket
-aws s3api create-bucket --bucket ${SFC_S3_BUCKET_NAME} --region ${AWS_REGION}
-```
-
-Next we will have to configure the SFC. This is done via a [configuration file](./docs/core/sfc-configuration.md) you can specify at execution time (e.g. `sfc-main -config example.json`) We are first defining following variables which we will then use in an example configuration file. The following configuration sets SFC up, to connect to a OPCUA-Server and forward it to the S3 Bucket in your AWS Account:
-> Note: **Please** expand the section below, to see the json config...
 <details>
-  <summary><b>Expand</b></summary>
+  <summary><b>Expand simulator.json</b></summary>
 
-```shell
-cat << EOF > $SFC_DEPLOYMENT_DIR/example.json
-  {
-    "AWSVersion": "2022-04-02",
-    "Name": "OPCUA to S3, using in process source and targets",
-    "Version": 1,
-    "LogLevel": "Info",
-    "ElementNames": {
-      "Value": "value",
-      "Timestamp": "timestamp",
-      "Metadata": "metadata"
-    },
-    "Schedules": [
-      {
-        "Name": "OpcuaToS3",
-        "Interval": 50,
-        "Description": "Read data of all OPCUA data types once per second and send to S3",
-        "Active": true,
-        "TimestampLevel": "Both",
-        "Sources": {
-          "OPCUA-SOURCE": [
-            "*"
-          ]
-        },
-        "Targets": [
-          "S3Target"
-        ]
-      }
-    ],
-    "Sources": {
-      "OPCUA-SOURCE": {
-        "Name": "OPCUA-SOURCE",
-        "ProtocolAdapter": "OPC-UA",
-        "AdapterOpcuaServer": "OPCUA-SERVER-1",
-        "Description": "OPCUA local test server",
-        "SourceReadingMode": "Polling",
-        "SubscribePublishingInterval": 100,
-        "Channels": {
-                "ServerStatus": {
-                    "Name": "ServerStatus",
-                    "NodeId": "ns=0;i=2256"
-                },
-                "ServerTime": {
-                    "Name": "ServerTime",
-                    "NodeId": "ns=0;i=2256",
-                    "Selector": "@.currentTime"
-                },
-                "State": {
-                    "Name": "State",
-                    "NodeId": "ns=0;i=2259"
-                },
-                "Machine1AbsoluteErrorTime": {
-                    "Name": "AbsoluteErrorTime",
-                    "NodeId": "ns=20;i=59217"
-                },
-                "Machine1AbsoluteLength": {
-                    "Name": "AbsoluteLength",
-                    "NodeId": "ns=20;i=59235"
-                },
-                "Machine1AbsoluteMachineOffTime": {
-                    "Name": "AbsoluteMachineOffTime",
-                    "NodeId": "ns=20;i=59210"
-                },
-                "Machine1AbsoluteMachineOnTime": {
-                    "Name": "AbsoluteMachineOnTime",
-                    "NodeId": "ns=20;i=59219"
-                },
-                "Machine1AbsolutePiecesIn": {
-                    "Name": "AbsolutePiecesIn",
-                    "NodeId": "ns=20;i=59237"
-                },
-                "Machine1FeedSpeed": {
-                    "Name": "FeedSpeed",
-                    "NodeId": "ns=20;i=59208"
-                }
-            }
-      }
-    },
-    "Targets": {
-      "DebugTarget": {
-        "Active": true,
-        "TargetType": "DEBUG-TARGET"
-      },
-      "S3Target": {
-        "Active": true,
-        "TargetType": "AWS-S3",
-        "Region": "us-east-1",
-        "BucketName": "${SFC_S3_BUCKET_NAME}",
-        "Interval": 60,
-        "BufferSize": 1,
-        "Prefix": "opcua-data",
-        "Compression": "None"
-      }
-    },
-    "TargetTypes": {
-      "DEBUG-TARGET": {
-        "JarFiles": [
-          "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
-        ],
-        "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
-      },
-      "AWS-S3": {
-        "JarFiles": [
-          "${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"
-        ],
-        "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
-      }
-    },
-    "AdapterTypes": {
-      "OPCUA": {
-        "JarFiles": [
-          "${SFC_DEPLOYMENT_DIR}/opcua/lib"
-        ],
-        "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter"
-      }
-    },
-    "ProtocolAdapters": {
-      "OPC-UA": {
-        "AdapterType": "OPCUA",
-        "OpcuaServers": {
-          "OPCUA-SERVER-1": {
-            "Address": "opc.tcp://localhost",
-            "Path": "/",
-            "Port": 4840,
-            "ConnectTimeout": "10000",
-            "ReadBatchSize": 500
-          }
-        }
+```json
+{
+  "AWSVersion": "2022-04-02",
+  "Name": "Simulator to console",
+  "Version": 1,
+  "LogLevel": "Info",
+  "Schedules": [
+    {
+      "Name": "SimSchedule",
+      "Interval": 1000,
+      "Active": true,
+      "TimestampLevel": "Both",
+      "Sources": { "Simulator": ["*"] },
+      "Targets": ["DebugTarget"]
+    }
+  ],
+  "Sources": {
+    "Simulator": {
+      "Name": "Sim",
+      "ProtocolAdapter": "SimulatorAdapter",
+      "Channels": {
+        "sinus":    { "Simulation": { "SimulationType": "Sinus",    "DataType": "Double", "Min": 0, "Max": 100  } },
+        "triangle": { "Simulation": { "SimulationType": "Triangle", "DataType": "Double", "Min": 0, "Max": 100  } },
+        "sawtooth": { "Simulation": { "SimulationType": "Sawtooth", "DataType": "Double", "Min": 0, "Max": 100  } },
+        "square":   { "Simulation": { "SimulationType": "Square",   "DataType": "Double", "Min": 0, "Max": 100  } },
+        "random":   { "Simulation": { "SimulationType": "Random",   "DataType": "Byte",   "Min": 0, "Max": 100  } },
+        "counter":  { "Simulation": { "SimulationType": "Counter",  "DataType": "Int",    "Min": 0, "Max": 1000 } }
       }
     }
+  },
+  "Targets": {
+    "DebugTarget": { "Active": true, "TargetType": "DEBUG-TARGET" }
+  },
+  "TargetTypes": {
+    "DEBUG-TARGET": { "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter" }
+  },
+  "ProtocolAdapters": {
+    "SimulatorAdapter": { "AdapterType": "SIMULATOR" }
+  },
+  "AdapterTypes": {
+    "SIMULATOR": { "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter" }
   }
-EOF
+}
 ```
 
 </details>
 
-With everything being set up you can start the OPC UA server and the SFC itself:
+Run it:
 
 ```shell
-# start umati opc-ua sample server
-docker run -d -p 4840:4840 ghcr.io/umati/sample-server:main
-
-# run sfc
-sfc/sfc-main/bin/sfc-main -config sfc/example.json
+sfcx -config simulator.json -info
 ```
 
-### Run Output
+Six simulated signals now print once per second, one JSON record per read (shortened here):
 
-The output of your Quick Start SFC run should look like the following. You can also check your S3 bucket (e.g. the first entry of your first file) with the following command:
+```text
+INFO  - {
+  "schedule": "SimSchedule",
+  ...
+  "sources": {
+    "Sim": {
+      "values": {
+        "sinus": { "value": 79.38926261462365, "timestamp": "..." },
+        ...
+        "counter": { "value": 12, "timestamp": "..." }
+```
+Every simulation type (counters, waves, random values, ranges and more) is described in the
+[Simulator adapter](./docs/adapters/simulator.md) docs.
+
+### 3. A more serious Example - Ingest OPC-UA to Iceberg (AWS S3 Tables)
+
+Use a local OPC-UA test server, writing to an Apache Iceberg table in
+[Amazon S3 Tables](./docs/targets/aws-s3-tables.md) in your AWS account.
+
+>**You need**: Docker, and the AWS CLI v2, with
+>[admin credentials configured](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html#configure-precedence).
+
+
+
+Choose an [AWS Region with S3 Tables](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-tables-regions-quotas.html)
+and a name for the table bucket. Nothing needs creating by hand: With
+[`AutoCreate`](./docs/targets/aws-s3-tables.md#autocreate) the target creates the table bucket, the
+namespace and the table when it starts, if they are missing. SFC needs only the bucket name.
+
+**Linux / macOS**
 
 ```shell
-# gets a list of entries in your bucket and filters it to the first file with jq
-export KEY=$(aws s3api list-objects --bucket $SFC_S3_BUCKET_NAME | jq -r '.Contents[0].Key')
-
-# downloads and prints the first entry of this file into your console
-aws s3 cp s3://$SFC_S3_BUCKET_NAME/$KEY - | jq '.[0]'
+export AWS_REGION="us-west-2"
+export SFC_TABLE_BUCKET="sfc-quickstart"
+ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+BUCKET_ARN="arn:aws:s3tables:${AWS_REGION}:${ACCOUNT}:bucket/${SFC_TABLE_BUCKET}"
 ```
 
-![SFC-Demo Run](./docs/img/SFC-Demo.gif)
+**Windows (PowerShell)**
+
+```powershell
+$env:AWS_REGION = "us-west-2"
+$env:SFC_TABLE_BUCKET = "sfc-quickstart"
+$ACCOUNT = aws sts get-caller-identity --query Account --output text
+$BUCKET_ARN = "arn:aws:s3tables:${env:AWS_REGION}:${ACCOUNT}:bucket/${env:SFC_TABLE_BUCKET}"
+```
+
+Save the [configuration](./docs/core/sfc-configuration.md) below as `example.json` in the current
+directory. It reads nine channels of the opcua sample server, prints each read with the [debug target](./docs/targets/debug.md), and writes one row per read to
+the table `umati` in the namespace `sfc`. 
+
+Its `Schema` declares `event_time` and the six numeric machine
+values as Iceberg columns, `Mappings` fills each column with a `ValueQuery` into the
+[record SFC produces](./docs/sfc-data-format.md#output-data-format), and `Partition` partitions the table
+by day. SFC replaces `${AWS_REGION}` and `${SFC_TABLE_BUCKET}` with the environment variables you just
+set, so start it in the same terminal.
+
+<details>
+  <summary><b>Expand example.json</b></summary>
+
+```json
+{
+  "AWSVersion": "2022-04-02",
+  "Name": "OPC UA server to S3 Tables (uberjar)",
+  "Version": 1,
+  "LogLevel": "Info",
+  "Schedules": [
+    {
+      "Name": "OpcuaSchedule",
+      "Interval": 1000,
+      "Active": true,
+      "TimestampLevel": "Both",
+      "Sources": { "OPCUA-SOURCE": ["*"] },
+      "Targets": ["S3TablesTarget", "DebugTarget"]
+    }
+  ],
+  "Sources": {
+    "OPCUA-SOURCE": {
+      "Name": "OPCUA-SOURCE",
+      "ProtocolAdapter": "OPC-UA",
+      "AdapterOpcuaServer": "OPCUA-SERVER-1",
+      "Description": "umati OPC UA sample server",
+      "SourceReadingMode": "Polling",
+      "SubscribePublishingInterval": 100,
+      "Channels": {
+        "ServerStatus":                   { "Name": "ServerStatus",           "NodeId": "ns=0;i=2256" },
+        "ServerTime":                     { "Name": "ServerTime",             "NodeId": "ns=0;i=2256", "Selector": "@.currentTime" },
+        "State":                          { "Name": "State",                  "NodeId": "ns=0;i=2259" },
+        "Machine1AbsoluteErrorTime":      { "Name": "AbsoluteErrorTime",      "NodeId": "ns=20;i=59217" },
+        "Machine1AbsoluteLength":         { "Name": "AbsoluteLength",         "NodeId": "ns=20;i=59235" },
+        "Machine1AbsoluteMachineOffTime": { "Name": "AbsoluteMachineOffTime", "NodeId": "ns=20;i=59210" },
+        "Machine1AbsoluteMachineOnTime":  { "Name": "AbsoluteMachineOnTime",  "NodeId": "ns=20;i=59219" },
+        "Machine1AbsolutePiecesIn":       { "Name": "AbsolutePiecesIn",       "NodeId": "ns=20;i=59237" },
+        "Machine1FeedSpeed":              { "Name": "FeedSpeed",              "NodeId": "ns=20;i=59208" }
+      }
+    }
+  },
+  "Targets": {
+    "S3TablesTarget": {
+      "Active": true,
+      "TargetType": "AWS-S3-TABLES",
+      "Region": "${AWS_REGION}",
+      "TableBucket": "${SFC_TABLE_BUCKET}",
+      "Namespace": "sfc",
+      "AutoCreate": true,
+      "Tables": [
+        {
+          "TableName": "umati",
+          "Schema": [
+            { "Name": "event_time",                "Type": "timestamptz", "Optional": false },
+            { "Name": "absolute_error_time",       "Type": "double" },
+            { "Name": "absolute_length",           "Type": "double" },
+            { "Name": "absolute_machine_off_time", "Type": "double" },
+            { "Name": "absolute_machine_on_time",  "Type": "double" },
+            { "Name": "absolute_pieces_in",        "Type": "double" },
+            { "Name": "feed_speed",                "Type": "double" }
+          ],
+          "Mappings": [
+            {
+              "event_time":                { "ValueQuery": "@.timestamp" },
+              "absolute_error_time":       { "ValueQuery": "@.sources.OPCUA-SOURCE.values.AbsoluteErrorTime.value" },
+              "absolute_length":           { "ValueQuery": "@.sources.OPCUA-SOURCE.values.AbsoluteLength.value" },
+              "absolute_machine_off_time": { "ValueQuery": "@.sources.OPCUA-SOURCE.values.AbsoluteMachineOffTime.value" },
+              "absolute_machine_on_time":  { "ValueQuery": "@.sources.OPCUA-SOURCE.values.AbsoluteMachineOnTime.value" },
+              "absolute_pieces_in":        { "ValueQuery": "@.sources.OPCUA-SOURCE.values.AbsolutePiecesIn.value" },
+              "feed_speed":                { "ValueQuery": "@.sources.OPCUA-SOURCE.values.FeedSpeed.value" }
+            }
+          ],
+          "Partition": { "day": "event_time" }
+        }
+      ]
+    },
+    "DebugTarget": { "Active": true, "TargetType": "DEBUG-TARGET" }
+  },
+  "TargetTypes": {
+    "AWS-S3-TABLES": { "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter" },
+    "DEBUG-TARGET":  { "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter" }
+  },
+  "ProtocolAdapters": {
+    "OPC-UA": {
+      "AdapterType": "OPCUA",
+      "OpcuaServers": {
+        "OPCUA-SERVER-1": {
+          "Address": "opc.tcp://localhost",
+          "Path": "/",
+          "Port": 4840,
+          "ConnectTimeout": "10000",
+          "ReadBatchSize": 500
+        }
+      }
+    }
+  },
+  "AdapterTypes": {
+    "OPCUA": { "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter" }
+  }
+}
+```
+
+</details>
+
+Start the OPC-UA server and SFC:
+
+```shell
+docker run -d --name umati -p 4840:4840 ghcr.io/umati/sample-server:main
+sfcx -config example.json -info
+```
+
+The debug target prints each read, once per second. The S3 Tables target logs
+`Created table "sfc.umati" for bucket "sfc-quickstart"` when it starts (on later runs
+`Table "sfc.umati" does exist`), then writes the collected rows every 10 seconds, its default
+[`Interval`](./docs/targets/aws-s3-tables.md#interval), and logs
+`Written … buffered records for table "umati" in …` each time. Once that line appears, the data is in the
+table; press `Ctrl-C` when you have seen enough.
+
+Check the table from the same terminal (the command is the same in PowerShell):
+
+```shell
+aws s3tables list-tables --table-bucket-arn "$BUCKET_ARN" --namespace sfc
+```
+
+It lists the table `umati`. The data can also be viewed in the Amazon S3 console, under
+**Table buckets**. To chart it, the optional
+[Iceberg timeseries explorer](./examples/in-process-sim-s3tables/cdk/README.md) pictured above is a
+ready-made web app for S3 Tables data; deploy it with your table bucket in its `tableBucketNames` setting.
+
+<p align="center">
+  <img src="./examples/uberjar-plc-sim-s3tables/plcsim-iceberg-explorer.png" alt="The Iceberg timeseries explorer charting the six signals of sfc.plc_signals, the table of the PLC simulator example" height="300">
+  <img src="./examples/in-process-sim-s3tables/docs/ux2.png" alt="The Iceberg timeseries explorer charting sfc.sim, the table of the simulator example, with its rows below" height="300">
+</p>
+
+*As a reference: The [Iceberg timeseries explorer](./examples/in-process-sim-s3tables/cdk/README.md) charting S3 Tables (using DuckDB) tables written by SFC (left: the PLC simulator example, right: the simulator example).*
+
+Clean up: remove the OPC-UA server container, then delete the table, the namespace and the table bucket
+(the commands are the same in PowerShell):
+
+```shell
+docker rm -f umati
+aws s3tables delete-table --table-bucket-arn "$BUCKET_ARN" --namespace sfc --name umati
+aws s3tables delete-namespace --table-bucket-arn "$BUCKET_ARN" --namespace sfc
+aws s3tables delete-table-bucket --table-bucket-arn "$BUCKET_ARN"
+```
+
+If you deployed the explorer, remove it as its
+[clean-up section](./examples/in-process-sim-s3tables/cdk/README.md#clean-up) describes.
+
+### 4. Publish to AWS - an Amazon ECR image and an AWS IoT Greengrass component
+
+sfcup publishes the released uberjar to your AWS account straight from GitHub: no clone, and nothing is
+installed locally. It needs the AWS CLI v2 with credentials and a region (`--region`, `AWS_REGION` or the
+AWS CLI default); the image also needs Docker, podman or finch.
+
+**Linux / macOS**
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.sh | bash -s -- --aws-ecr --region eu-central-1
+curl -fsSL https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.sh | bash -s -- --aws-greengrass --region eu-central-1
+```
+
+**Windows (PowerShell)**
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.ps1))) -AwsEcr -Region eu-central-1
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/sfcup.ps1))) -AwsGreengrass -Region eu-central-1
+```
+
+After step 1, the installed `sfcup` does the same: `sfcup --aws-ecr --region eu-central-1` (Windows:
+`sfcup -AwsEcr -Region eu-central-1`).
+
+- `--aws-ecr` builds the `sfcx` image and pushes it to the ECR repository `sfcx` (created if missing), tagged
+  with the SFC version, then prints the `docker run` commands for it.
+- `--aws-greengrass` uploads the jar to S3 and creates the component `com.amazonaws.sfc.Sfcx`, whose default
+  configuration is the simulator of step 2, then prints the `aws greengrassv2 create-deployment` command for
+  your core device.
+
+Options and details: [Publish to AWS with sfcup](./docs/sfc-deployment.md#publish-to-aws-with-sfcup).
+
+### Manage SFC at scale
+
+The [SFC Agentic Control Plane](https://github.com/aws-samples/sample-sfc-agentic-control-plane), built by the
+SFC team, manages the full lifecycle of SFC from a web app in your AWS account: AI-assisted configuration,
+launch packages with AWS IoT credentials for Linux, macOS and Windows hosts, and remote monitoring,
+configuration updates and restarts. See [SFC Control Plane](./docs/sfc-deployment.md#sfc-control-plane).
+
+### Next steps
+
+- **A PLC, without hardware:** [uberjar-plc-sim-s3tables](./examples/uberjar-plc-sim-s3tables/README.md)
+  reads three simulated PLCs (Siemens S7, Beckhoff ADS, Allen-Bradley PCCC) and writes them to the S3
+  Tables table pictured in step 3.
+- **Adapters and targets in-process or as separate services:** [Choose a deployment mode](./docs/sfc-deployment.md#choose-a-deployment-mode).
+- **More ready-made configurations:** the [examples catalog](./docs/examples/README.md).
+- **Linux, macOS and Windows differences:** [Platform support](./docs/README.md#platform-support).

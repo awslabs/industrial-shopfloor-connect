@@ -1,0 +1,953 @@
+{
+  "cases": [
+    {
+      "id": "ADP-PCCC-PILOT",
+      "title": "pilot: omni-plc-sim PCCC (micrologix1400 profile) -> pccc adapter -> file",
+      "intent": "The first case on a real PCCC server: SFC's own EtherNet/IP client (RegisterSession, then SendRRData with CIP Execute PCCC and CMD 0x0F FNC 0xA2 typed reads) against omni-plc-sim's MicroLogix 1400 data table, with channels in every file type the adapter decodes (O, I, S, B, T, C, R, N, F, ST, L, A), through the read optimiser, in all three deployment modes. If it fails, SFC no longer reads SLC 500 or MicroLogix controllers: a regression in framing, address encoding, the optimiser or a decoder. Static values are exact; the dynamic block (the F8:10..21 signals, N7:10/11, L10:10, the S:4 clock, the self-resetting timer T4:1 and the counter C5:1) is range- and change-checked over 8 records (the first read waits out the TCP client's 1 s first-send delay, so the second follows it back to back). The simulator's events log proves the wire plan (15 requests a cycle, F8 and L10 split by the 32-byte MaxReadGap) and that no request got an error status. Client defects avoided: O/I addresses with .n and O/I arrays on their own (the size sent and the length expected disagree, Address.kt:26-51 vs :301-308), B3:0.1 (the .1 is ignored) and C5:0.0 (word 0 as an INT, not a bit), reconnects and config reloads (no new RegisterSession, and cached packets keep the first session handle: Client.kt:146, PcccSource.kt:48-56), ConnectPath (never applied: PcccControllerConfiguration.kt:20-22) and non-ASCII text (bytes decoded as signed chars, Decoders.kt:33-53).",
+      "pins": [
+        "adapters/pccc/src/main/kotlin/com/amazonaws/sfc/pccc/protocol/Client.kt:66-136",
+        "adapters/pccc/src/main/kotlin/com/amazonaws/sfc/pccc/protocol/Client.kt:224-243",
+        "adapters/pccc/src/main/kotlin/com/amazonaws/sfc/pccc/protocol/Client.kt:274-382",
+        "adapters/pccc/src/main/kotlin/com/amazonaws/sfc/pccc/protocol/Client.kt:385-495",
+        "adapters/pccc/src/main/kotlin/com/amazonaws/sfc/pccc/protocol/Address.kt:26-51",
+        "adapters/pccc/src/main/kotlin/com/amazonaws/sfc/pccc/protocol/Address.kt:258-308",
+        "adapters/pccc/src/main/kotlin/com/amazonaws/sfc/pccc/protocol/Decoders.kt:14-133",
+        "adapters/pccc/src/main/kotlin/com/amazonaws/sfc/pccc/protocol/DataFileType.kt:21-199",
+        "adapters/pccc/src/main/kotlin/com/amazonaws/sfc/pccc/protocol/AddressNamedSubElement.kt:9-95",
+        "adapters/pccc/src/main/kotlin/com/amazonaws/sfc/pccc/PcccSource.kt:48-56",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourcesValuesAsFlow.kt:133-146",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/tcp/TcpClient.kt:256-260"
+      ],
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "plc",
+          "kind": "plc-sim",
+          "args": {
+            "protocol": "pccc",
+            "profile": "micrologix1400"
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "plc": {
+          "kind": "jsonl",
+          "service": "plc",
+          "file": "events.jsonl"
+        }
+      },
+      "records": 8,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.plc.values",
+          "keys": [
+            "outputs",
+            "inputs",
+            "status_word",
+            "status_word_b5",
+            "blink_1hz",
+            "timer",
+            "ton",
+            "ton_acc",
+            "counter",
+            "ctu",
+            "control",
+            "int",
+            "int_array",
+            "sine_int",
+            "scan15",
+            "real",
+            "sine",
+            "cosine",
+            "tangent",
+            "cotangent",
+            "exp",
+            "quadratic",
+            "sawtooth",
+            "triangle",
+            "square",
+            "damped",
+            "noise",
+            "randomwalk",
+            "string",
+            "dint",
+            "scan",
+            "ascii",
+            "free_running_clock"
+          ],
+          "comment": "every channel in every record: no request of the cycle failed (a failed request drops its channels, Client.kt:188-190) and no decode threw"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.outputs.value",
+          "equals": [
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ],
+          "comment": "O0:0 = 0: 16 booleans, bit 0 first"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.inputs.value",
+          "equals": [
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            true,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false,
+            false
+          ],
+          "comment": "I1:0 = 0x0081"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.status_word.value",
+          "equals": [
+            true,
+            true,
+            false,
+            false,
+            false,
+            false,
+            true,
+            true,
+            true,
+            false,
+            true,
+            false,
+            false,
+            true,
+            false,
+            true
+          ],
+          "comment": "B3:0 = 0xA5C3"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "status_word_b5",
+          "values": [
+            false
+          ],
+          "comment": "B3:0/5, bit 5 of 0xA5C3"
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "blink_1hz",
+          "values": [
+            true,
+            false
+          ],
+          "comment": "B3:1/0 = blink_1hz"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.timer.value",
+          "equals": {
+            "EN": true,
+            "TT": false,
+            "DN": true,
+            "BASE": 0,
+            "PRE": 100,
+            "ACC": 100
+          },
+          "comment": "T4:0: a TIMER is a map of its named fields (Decoders.kt:121-133); BASE is bits 8-11 of the control word, which reads 0"
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.plc.values.ton.value",
+          "keys": [
+            "EN",
+            "TT",
+            "DN",
+            "BASE",
+            "PRE",
+            "ACC"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ton.value.PRE",
+          "equals": 500
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ton.value.BASE",
+          "equals": 0
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ton.value.EN",
+          "type": "bool"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ton.value.TT",
+          "type": "bool"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ton.value.DN",
+          "type": "bool"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.ton.value.ACC",
+          "min": 3,
+          "comment": "T4:1 times 0..500 in 10 ms ticks and resets itself through its DN bit, so 8 reads see 8 values but for the back-to-back first two"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "ton_acc",
+          "min": 0,
+          "max": 500,
+          "comment": "T4:1.ACC, the named field on its own (decodeField, Decoders.kt:127-133)"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.ton_acc.value",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.counter.value",
+          "equals": {
+            "CU": false,
+            "CD": false,
+            "DN": false,
+            "OV": false,
+            "UN": false,
+            "UA": false,
+            "PRE": 10,
+            "ACC": 7
+          },
+          "comment": "C5:0"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ctu.value.PRE",
+          "equals": 10
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ctu.value.ACC",
+          "in": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11,
+            12,
+            13,
+            14,
+            15
+          ],
+          "comment": "C5:1 counts whole seconds mod 16, DN from 10"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.ctu.value.ACC",
+          "min": 2,
+          "comment": "a 1 Hz count over more than a second: the 8 reads span 1.2 s and more (SourcesValuesAsFlow.kt:133-146)"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ctu.value.CU",
+          "type": "bool"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ctu.value.DN",
+          "type": "bool"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.control.value",
+          "equals": {
+            "EN": false,
+            "EU": false,
+            "DN": false,
+            "EM": false,
+            "ER": false,
+            "UL": false,
+            "IN": false,
+            "FD": false,
+            "LEN": 10,
+            "POS": 3
+          },
+          "comment": "R6:0"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "int",
+          "values": [
+            -12345
+          ],
+          "comment": "PCCC has no unsigned type: N, S and the T/C/R words are Short, L is Int, so every number is a JSON number in all three modes"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.int_array.value",
+          "equals": [
+            -12345,
+            12345,
+            32767,
+            -32768
+          ],
+          "comment": "N7:0,4"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "sine_int",
+          "min": -10000,
+          "max": 10000,
+          "comment": "N7:10 = round(100 sine)"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.sine_int.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "scan15",
+          "min": 0,
+          "max": 32767,
+          "comment": "N7:11 = scan mod 32768"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.scan15.value",
+          "min": 3
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "real",
+          "values": [
+            12345.5
+          ],
+          "comment": "F8:0"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "sine",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.sine.value",
+          "min": 3,
+          "comment": "8 records: the first two reads are back to back (SourcesValuesAsFlow.kt:133-146), the other six 200 ms apart, so a symmetric waveform shows at least 3 values"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "cosine",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.cosine.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "tangent",
+          "min": -1000,
+          "max": 1000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.tangent.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "cotangent",
+          "min": -1000,
+          "max": 1000
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.cotangent.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "exp",
+          "min": 4.97,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.exp.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "quadratic",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.quadratic.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "sawtooth",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.sawtooth.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "triangle",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.triangle.value",
+          "min": 3
+        },
+        {
+          "kind": "channelValueIn",
+          "source": "plc",
+          "channel": "square",
+          "values": [
+            100.0,
+            -100.0
+          ]
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "damped",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.damped.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "noise",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.noise.value",
+          "min": 3
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "randomwalk",
+          "min": -100,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.randomwalk.value",
+          "min": 3
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "string",
+          "values": [
+            "SFC-SIM"
+          ],
+          "comment": "ST9:0: LEN, then the characters in swapped pairs (Decoders.kt:33-53)"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "plc",
+          "channel": "dint",
+          "values": [
+            -1234567890
+          ],
+          "comment": "L10:0"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "scan",
+          "min": 0,
+          "max": 2147483647,
+          "comment": "L10:10, the scan counter, which starts at 0 with the simulator"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.scan.value",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.plc.values.ascii.value",
+          "equals": [
+            "S",
+            "F"
+          ],
+          "comment": "A11:0: two characters, the high byte first (Decoders.kt:86-91)"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "plc",
+          "channel": "free_running_clock",
+          "min": -32768,
+          "max": 32767,
+          "comment": "S:4, +1 every scan, read as a signed word"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.plc.values.free_running_clock.value",
+          "min": 3
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error reading address",
+            "PCCC read error",
+            "PCCC error code",
+            "Invalid PCCC response codes",
+            "PCCC data length is",
+            "PCCC data in read response",
+            "Expected sequence number",
+            "Expected session handle",
+            "Expected value 0x07",
+            "Expected first byte read response",
+            "Packet read response type",
+            "CIP Error",
+            "Timeout reading read response package",
+            "Can not read if client is not connected",
+            "Error reading from source",
+            "Error connecting to",
+            "Timeout connecting to",
+            "Error reading data from",
+            "Error writing data to"
+          ]
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "path": "status",
+          "values": [
+            "ok"
+          ],
+          "comment": "no request got an encapsulation, CIP or PCCC error status, and nothing was dropped"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "typed_read"
+          },
+          "path": "detail.file",
+          "values": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8,
+            9,
+            10,
+            11
+          ],
+          "comment": "the wire plan of the read optimiser (Client.kt:395-471), 15 requests a cycle: one per file, F8 and L10 split"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "typed_read",
+            "detail.file": 7
+          },
+          "path": "detail.size",
+          "values": [
+            24
+          ],
+          "comment": "N7:0, N7:0,4, N7:10 and N7:11 merged into one 24-byte read"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "typed_read",
+            "detail.file": 4
+          },
+          "path": "detail.size",
+          "values": [
+            12
+          ],
+          "comment": "T4:0, T4:1 and T4:1.ACC merged"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "typed_read",
+            "detail.file": 8
+          },
+          "path": "detail.element",
+          "values": [
+            0,
+            10,
+            20
+          ],
+          "comment": "a member joins only while it starts within MaxReadGap (32) bytes of the earliest member's end (Client.kt:385-393): F8:0 alone, F8:10..19, F8:20..21"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "typed_read",
+            "detail.file": 8
+          },
+          "path": "detail.size",
+          "values": [
+            4,
+            40,
+            8
+          ]
+        },
+        {
+          "kind": "valueSet",
+          "sink": "plc",
+          "where": {
+            "op": "typed_read",
+            "detail.file": 10
+          },
+          "path": "detail.element",
+          "values": [
+            0,
+            10
+          ],
+          "comment": "L10:10 starts 35 bytes after L10:0 ends"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-PCCC-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "plc": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "plc": {
+            "Name": "plc",
+            "ProtocolAdapter": "Pccc",
+            "AdapterController": "plc1",
+            "Channels": {
+              "outputs": {
+                "Name": "outputs",
+                "Address": "O0:0"
+              },
+              "inputs": {
+                "Name": "inputs",
+                "Address": "I1:0"
+              },
+              "status_word": {
+                "Name": "status_word",
+                "Address": "B3:0"
+              },
+              "status_word_b5": {
+                "Name": "status_word_b5",
+                "Address": "B3:0/5"
+              },
+              "blink_1hz": {
+                "Name": "blink_1hz",
+                "Address": "B3:1/0"
+              },
+              "timer": {
+                "Name": "timer",
+                "Address": "T4:0"
+              },
+              "ton": {
+                "Name": "ton",
+                "Address": "T4:1"
+              },
+              "ton_acc": {
+                "Name": "ton_acc",
+                "Address": "T4:1.ACC"
+              },
+              "counter": {
+                "Name": "counter",
+                "Address": "C5:0"
+              },
+              "ctu": {
+                "Name": "ctu",
+                "Address": "C5:1"
+              },
+              "control": {
+                "Name": "control",
+                "Address": "R6:0"
+              },
+              "int": {
+                "Name": "int",
+                "Address": "N7:0"
+              },
+              "int_array": {
+                "Name": "int_array",
+                "Address": "N7:0,4"
+              },
+              "sine_int": {
+                "Name": "sine_int",
+                "Address": "N7:10"
+              },
+              "scan15": {
+                "Name": "scan15",
+                "Address": "N7:11"
+              },
+              "real": {
+                "Name": "real",
+                "Address": "F8:0"
+              },
+              "sine": {
+                "Name": "sine",
+                "Address": "F8:10"
+              },
+              "cosine": {
+                "Name": "cosine",
+                "Address": "F8:11"
+              },
+              "tangent": {
+                "Name": "tangent",
+                "Address": "F8:12"
+              },
+              "cotangent": {
+                "Name": "cotangent",
+                "Address": "F8:13"
+              },
+              "exp": {
+                "Name": "exp",
+                "Address": "F8:14"
+              },
+              "quadratic": {
+                "Name": "quadratic",
+                "Address": "F8:15"
+              },
+              "sawtooth": {
+                "Name": "sawtooth",
+                "Address": "F8:16"
+              },
+              "triangle": {
+                "Name": "triangle",
+                "Address": "F8:17"
+              },
+              "square": {
+                "Name": "square",
+                "Address": "F8:18"
+              },
+              "damped": {
+                "Name": "damped",
+                "Address": "F8:19"
+              },
+              "noise": {
+                "Name": "noise",
+                "Address": "F8:20"
+              },
+              "randomwalk": {
+                "Name": "randomwalk",
+                "Address": "F8:21"
+              },
+              "string": {
+                "Name": "string",
+                "Address": "ST9:0"
+              },
+              "dint": {
+                "Name": "dint",
+                "Address": "L10:0"
+              },
+              "scan": {
+                "Name": "scan",
+                "Address": "L10:10"
+              },
+              "ascii": {
+                "Name": "ascii",
+                "Address": "A11:0"
+              },
+              "free_running_clock": {
+                "Name": "free_running_clock",
+                "Address": "S:4"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Pccc": {
+            "AdapterType": "PCCC",
+            "Controllers": {
+              "plc1": {
+                "Address": "127.0.0.1",
+                "Port": "${SFC_E2E_PLC_PORT}",
+                "ConnectTimeout": 5000,
+                "ReadTimeout": 2000,
+                "WaitAfterConnectError": 1000,
+                "WaitAfterReadError": 1000,
+                "WaitAfterWriteError": 1000
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "PCCC": {
+            "FactoryClassName": "com.amazonaws.sfc.pccc.PcccAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "PCCC": {
+            "FactoryClassName": "com.amazonaws.sfc.pccc.PcccAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/pccc/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "PcccServer": {
+          "module": "pccc"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Pccc": {
+            "AdapterServer": "PcccServer"
+          }
+        },
+        "AdapterServers": {
+          "PcccServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

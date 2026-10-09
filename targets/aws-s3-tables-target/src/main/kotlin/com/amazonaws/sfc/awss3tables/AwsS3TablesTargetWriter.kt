@@ -164,7 +164,7 @@ class AwsS3TablesTargetWriter(
             log.info("Using default AWS credentials provider")
             // The default provider has no worker to signal readiness, so signal it here
             credentialsAvailableChannel.trySend(true)
-            DefaultCredentialsProvider.create()
+            DefaultCredentialsProvider.builder().build()
         } else {
             log.info("Using SFC credential provider client ${targetConfiguration.credentialProviderClient}")
             AwsIoTCredentialSessionProvider(credentialClientConfig, logger)
@@ -716,7 +716,9 @@ class AwsS3TablesTargetWriter(
         return try {
             val builder = Parquet.writeData(file)
                 .schema(table.schema())
-                .createWriterFunc(GenericParquetWriter::buildWriter)
+                // Iceberg 1.7 replaced buildWriter(MessageType) with the schema-aware
+                // create(Schema, MessageType), matching createWriterFunc's BiFunction overload.
+                .createWriterFunc(GenericParquetWriter::create)
                 .overwrite()
 
             if (table.spec().isPartitioned && partitionData != null) {

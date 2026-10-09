@@ -20,7 +20,7 @@ class Abs : TransformationImpl<Nothing>() {
             is Double -> kotlin.math.abs(target)
             is Byte -> kotlin.math.abs(target.toInt()).toByte()
             is Short -> kotlin.math.abs(target.toInt()).toShort()
-            is Long -> kotlin.math.abs(target.toLong())
+            is Long -> kotlin.math.abs(target)
             else -> null
         }
 

@@ -47,16 +47,31 @@ To conduct the workshop you will need the following tools/setup/knowledge:
 
 - AWS Account with admin privileges. If you don't have an AWS Account follow [the instructions](https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/) to create one. 
 If you are participating in an AWS event an account can be provided by AWS.
+- An AWS Region where AWS IoT SiteWise and SiteWise Monitor are available, see
+[AWS IoT SiteWise endpoints and quotas](https://docs.aws.amazon.com/general/latest/gr/iot-sitewise.html).
+The stack picks the region's current Amazon Linux 2023 image for the PLC instance.
 - Laptop or computer
 - Browser
 - No background knowledge is needed, however basic Linux knowledge and basic AWS knowledge is preferred 
 
 This workshop will take 1-2 hours to complete, depending on your pace.
 
+> **Platform:** this workshop is Linux-only by design. Every terminal command runs on AWS, not on your
+> computer: in the AWS Cloud9 terminal (Amazon Linux 2) that the stack creates, or, for the check of the
+> OPC-UA server, in a Session Manager session on the PLC instance. On Windows, macOS and Linux alike you
+> only need a browser.
+
+> **AWS Cloud9** is no longer available to new customers. In an account that cannot use it, the `sfc`
+> environment fails to create and the whole stack rolls back. Remove the `nestedSfcComponentStack`
+> resource and the `Cloud9URL` output from `root.yaml` before you upload it, and run the SFC steps on a
+> Linux machine in the VPC's public subnet that can reach the PLC on port 4840 and has AWS credentials
+> for the AWS CLI calls of this workshop and for writing to AWS IoT SiteWise, for example an Amazon EC2
+> instance that you open with Session Manager.
+
 ### What you are going to build
 
 This workshop demonstrates how to send data from an on premises OPC-UA server to AWS IoT SiteWise using 
-the SFC [in-process deployment](https://github.com/aws-samples/shopfloor-connectivity/tree/mainline/docs#in-process-and-ipc-deployment-models).
+the SFC [in-process deployment](../../docs/sfc-deployment.md#details-wrt-in-process-and-ipc-deployment-models).
 You will: 
 
 1. Set-up the infrastructure simulating the on-premises environment
@@ -76,7 +91,7 @@ OT assets, like PLCs, will be in a private OT network (private subnet) and the I
 contains assets that will establish the connection to AWS. 
 For this setup, we simulate a PLC in a private subnet and in a public subnet a Linux-based device with the 
 SFC component installed in it.
-We will use the [in-process deployment](https://github.com/aws-samples/shopfloor-connectivity/tree/mainline/docs#in-process-and-ipc-deployment-models)
+We will use the [in-process deployment](../../docs/sfc-deployment.md#details-wrt-in-process-and-ipc-deployment-models)
 meaning, that the SFC adapter will be running in the same process as the SFC component.
 
 For demonstration purposes both the PLC device will be simulated with a pre-configured EC2 instance, while the device
@@ -109,22 +124,22 @@ If this workshop is provided to you by AWS the environment is provisioned to you
 and you [can move to the next session](#overview-the-ec2-for-the-opc-ua-server-plc).
 
 **Upload the CloudFormation templates in S3:**
-1. Steps 1-3 only needs to be completed if you execute the workshop on your own environment
-If the environment is provisioned to you by AWS you can proceed to the next step (Create the CloudFormation stacks).
-2. Go to **S3** and create a bucket to upload the CloudFormation templates. Pick a name of your choice for the S3 bucket
-3. Navigate to the new S3 bucket and upload all the files located in the ```resources\cf-templates``` folder of this workshop
-4. When the upload is finished, navigate to the **S3 Bucket** and select the ```root.yaml```. 
-5. Select the **Copy URL** and copy the value to your clipboard. You will need this to the next steps.
+
+1. Go to **S3** and create a bucket to upload the CloudFormation templates. Pick a name of your choice for the S3 bucket
+2. Navigate to the new S3 bucket and upload all the files located in the ```resources/cf-templates``` folder of this workshop
+3. When the upload is finished, navigate to the **S3 Bucket** and select the ```root.yaml```. 
+4. Select the **Copy URL** and copy the value to your clipboard. You will need this to the next steps.
 
 **Create the CloudFormation stacks**
 1. In you AWS Management Console search and select CloudFormation
 2. Select **Create Stack**
 3. Select **Template is ready**
-4. In the **Amazon S3 URL** copy the URL value of the ```root.yaml```
-4. Provide the URL of the **root.yaml** file in the S3 bucket
+4. Paste the URL of the ```root.yaml``` into **Amazon S3 URL**
 5. Click **Next**
-6. Enter ```sfc-workshop-inprocess-opcua-sitewise``` as **Stack name** and leave the rest of the options as default.
-The default properties are shown in the image below.
+6. Enter ```sfc-workshop-inprocess-opcua-sitewise``` as **Stack name**. In **TemplateBucketUrl** paste the
+same URL without the trailing ```/root.yaml```, for example ```https://my-bucket.s3.eu-central-1.amazonaws.com```:
+the root stack loads the nested templates you uploaded from there.
+Leave the rest of the options as default; the default properties are shown in the image below.
 Click **Next**
 
 <p align="center">
@@ -133,7 +148,7 @@ Click **Next**
 
 7. Leave the rest of the properties as default and click **Next**.
 8. Check the checkboxes for:
-   - "I acknowledge that AWS CloudFormation might create IAM resources with custom names" and
+   - "I acknowledge that AWS CloudFormation might create IAM resources" and
    - "I acknowledge that AWS CloudFormation might require the following capability: CAPABILITY_AUTO_EXPAND".
 9. Review the selected properties and click **Submit**.
 10. Wait for the stack to be created, it will take 2-3'. 
@@ -239,54 +254,71 @@ is changed to **COMPLETED**
 In this section we set up a local SFC installation that receives the data from the OPC-UA server 
 and sends it to the AWS IoT SiteWise.
 The Cloud9 environment simulates the industrial equipment, on which the SFC Component needs to be installed.
+No Cloud9 in your account? See the note under [Prerequisites](#prerequisites).
 
 **Install the SFC Component:**
 1. Choose **Cloud9** in your AWS console
 2. Locate the **sfc** Cloud9 instance and click **Open**. This opens Cloud9 IDE in the browser.
 3. Select **Window --> New Terminal** to open a new terminal.
-4. Set the required environmental variables by executing the following commands:
+4. Install Java 17, which SFC needs. If `java -version` still reports an older version afterwards, select
+Java 17 with `sudo alternatives --config java`.
 
 ```
-# Define sfc version and directory
-export VERSION="1.0.3"
-export SFC_DEPLOYMENT_DIR="./sfc"
+sudo yum install -y java-17-amazon-corretto-headless
+java -version
 ```
 
-5. Then, we need to download and extract the SFC bundles.
+5. Set the deployment directory. The configuration file finds the SFC modules through this variable, so
+run the remaining commands in this terminal, or export it again in a new one:
+
+```
+# Define the sfc directory
+export SFC_DEPLOYMENT_DIR="$HOME/environment/sfc"
+```
+
+6. Then, we need to download and extract the SFC bundles of this repository's latest release.
 These are precompiled executables to get started quickly.
 Copy and paste the following command to the terminal:
 
 ```
-# Download and extract bundles into folder ./sfc
-mkdir $SFC_DEPLOYMENT_DIR && cd $SFC_DEPLOYMENT_DIR
-wget https://github.com/aws-samples/shopfloor-connectivity/releases/download/v$VERSION/\
-{aws-sitewise-target,debug-target,opcua,sfc-main}.tar.gz
-
-for file in *.tar.gz; do
-  tar -xf "$file"
-  rm "$file"
+# Download and extract bundles into folder sfc
+mkdir -p "$SFC_DEPLOYMENT_DIR"
+for m in sfc-main opcua aws-sitewise-target debug-target; do
+  curl -fsSL "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz" | tar -xz -C "$SFC_DEPLOYMENT_DIR"
 done
-cd -
 ```
 
-Now your Cloud9 environment is now set-up with the SFC component.
+Now your Cloud9 environment is set up with the SFC component.
 
 ### Enable Data Ingestion from OPC-UA Server
 
 To connect the SFC component to the OPC-UA server, we need to configure the file ```inproc-sitewise_config.json```.
 The initial configuration file is a template that needs to be edited with environment-specific values to enable the connection.
 
+The file is an in-process [SFC configuration](../../docs/core/sfc-configuration.md). The
+[OPC-UA adapter](../../docs/adapters/opcua.md) reads the nodes listed under `Channels`
+([NodeId](../../docs/adapters/opcua.md#nodeid), [Selector](../../docs/adapters/opcua.md#selector)) from the
+server under [OpcuaServers](../../docs/adapters/opcua.md#opcuaservers). The
+[AWS IoT SiteWise target](../../docs/targets/aws-sitewise.md) writes each value to the asset property whose
+[DataPath](../../docs/targets/aws-sitewise.md#datapath) selects it. `#DebugTarget` is the
+[Debug target](../../docs/targets/debug.md), disabled by its `#`.
+
 **Configure the SFC Component:**
 1. Upload the template configuration file 
-[inproc-sitewise_config_template.json](resources/inproc-sitewise_config.json) from your local computer 
+[inproc-sitewise_config.json](resources/inproc-sitewise_config.json) from your local computer 
 to the Cloud9 SFC instance using **File -> Upload Local Files**
 2. Move the uploaded file under the created sfc folder
 
+Instead of steps 1 and 2 you can download the file in the terminal:
+
+```
+curl -fsSL -o "$SFC_DEPLOYMENT_DIR/inproc-sitewise_config.json" https://raw.githubusercontent.com/awslabs/industrial-shopfloor-connect/main/examples/in-process-opcua-sitewise/resources/inproc-sitewise_config.json
+```
+
 The template file contains placeholder values enclosed in brackets that need to be replaced:
-- **[MODEL_ID]**: ID of the **DemoModel** created in AWS IoT SiteWise
 - **[ASSET_ID]**: ID of the **Machine1** asset created in AWS IoT SiteWise
 - **[PROPERTY_ID]**: ID of measurements like ServerStatus, State etc.
-- **[REGION]**: Region were the workload is deployed
+- **[REGION]**: Region where the workload is deployed
 - **[PRIVATE_IP]**: Private IP of the EC2 instance simulating the OPC-UA server.
 
 There are two ways to retrieve the values needed for the configuration file:
@@ -295,25 +327,24 @@ We will use AWS CLI commands to export the required values.
 These commands execute REST API requests to retrieve information from the AWS environment and the AWS IoT SiteWise service.
 [AWS CLI Commands](https://docs.aws.amazon.com/cli/latest/#) are leveraged to automate retrieving the values from AWS.
 
-To get the **[MODEL_ID]**:
+The asset is looked up through its model, so first get the ID of the **DemoModel**:
 ```
-MODEL_ID=$(aws iotsitewise list-asset-models --query 'assetModelSummaries[?name==`DemoModel`].id' | tr -d "[","]","\"","[:space:]")
+MODEL_ID=$(aws iotsitewise list-asset-models --query 'assetModelSummaries[?name==`DemoModel`].id' --output text)
 ```
-This returns a list of assets and models, filters for the model named "DemoModel", gets the ID, and removes whitespace and quotes.
-Then, it saves the resulting ID in the ```$MODEL_ID`` variable.
+This lists the asset models, filters for the model named "DemoModel", gets its ID
+and saves it in the ```$MODEL_ID``` variable.
 
 To get the **[ASSET_ID]**:
 ```
-ASSET_ID=$(aws iotsitewise list-assets --asset-model-id "$MODEL_ID" --query 'assetSummaries[?name==`Machine1`].id' | tr -d "[","]","\"","[:space:]")
+ASSET_ID=$(aws iotsitewise list-assets --asset-model-id "$MODEL_ID" --query 'assetSummaries[?name==`Machine1`].id' --output text)
 ```
 This lists all assets for the model with ID stored in ```$MODEL_ID```.
-It queries the result to filter for the asset named "Machine1", gets the ID of that asset,
-and removes whitespace and quotes.
-Then, it saves the ID into the ```$ASSET_ID``` variable.
+It queries the result to filter for the asset named "Machine1", gets the ID of that asset
+and saves it into the ```$ASSET_ID``` variable.
 
 To get the **[PROPERTY_ID]**:
 ```
-aws iotsitewise list-asset-properties --asset-id "$ASSET_ID" --query 'assetPropertySummaries[*].path[?(!(name==`Machine1`))]' >> machine1_properties.json
+aws iotsitewise list-asset-properties --asset-id "$ASSET_ID" --query 'assetPropertySummaries[*].path[?(!(name==`Machine1`))]' > machine1_properties.json
 ```
 This command lists all the properties (measurements) for the asset with ID stored in ```$ASSET_ID```.
 It queries the result to return only the property paths, excluding the root asset name path. 
@@ -332,12 +363,10 @@ This returns the current region where the workload is running.
 
 To get the **[PRIVATE_IP]** of the EC2 instance running the OPC-UA server:
 ```
-STACK_NAME=$(aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE --query 'StackSummaries[*].StackName' | grep sfc-workshop-inprocess-opcua-sitewise-nestedPlcStack- | tr -d "[","]","\"","[:space:]")
-PRIVATE_IP=$(aws cloudformation --region "$REGION" describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[0].OutputValue" | tr -d "[","]","\"","[:space:]")
+PRIVATE_IP=$(aws cloudformation list-exports --query "Exports[?Name=='PlcPrivateIP'].Value" --output text)
 ```
-When we created the stack with the CloudFormation template, this value has been saved as an output of the stack.
-So, the only thing we need to do now, is to get the CloudFormation stack name that was created earlier.
-Then use that to query the stack outputs and get the private IP address stored there.
+When we created the stack with the CloudFormation template, the PLC stack exported this value as ```PlcPrivateIP```
+(the root stack also shows it on its **Outputs** tab), so one query of the CloudFormation exports returns it.
 
 To summarize, at this point we have:
 
@@ -361,7 +390,8 @@ For ```[PROPERTY_ID]```, we will lookup the appropriate IDs from the ```machine1
 and copy them to the respective properties with the same name in the configuration file.
 For convenience, you can right click on the tab of the open file, and select **Split Pane in Two Columns**
 
-As soon as the configuration file is ready, the final step is to start ingesting data, execute the SFC component with the following command: 
+As soon as the configuration file is ready, the final step is to start ingesting data, execute the SFC component with the following command,
+in the terminal where ```SFC_DEPLOYMENT_DIR``` is set: 
 
 ```
 # run sfc
@@ -472,11 +502,34 @@ The dashboard should contain the overall measurements of **Machine1**.
 
 If the AWS environment was not provisioned for you during a 
 workshop, remember to clean up your resources afterwards to avoid unwanted charges.
+The stack does not contain the SiteWise resources and the S3 buckets, and deleting it also removes the
+Cloud9 terminal, so work through the steps in this order.
+
+**Delete the SiteWise Monitor resources**
+1. In your SiteWise Monitor portal, delete the dashboard **Machine1 Dashboard**, then the project **SFC OPC-UA to SiteWise Monitoring**.
+2. In the AWS IoT SiteWise console, under **Portals**, delete the portal **SFC OPC-UA to SiteWise Portal**.
+3. In the IAM console, delete the service role that **Create and use a new service role** created for the portal.
+
+**Delete the asset and the model**
+
+Run this in the Cloud9 terminal; if `MODEL_ID` and `ASSET_ID` are no longer set there, look them up again as
+in [Enable Data Ingestion from OPC-UA Server](#enable-data-ingestion-from-opc-ua-server):
+
+```
+aws iotsitewise delete-asset --asset-id "$ASSET_ID"
+aws iotsitewise wait asset-not-exists --asset-id "$ASSET_ID"
+aws iotsitewise delete-asset-model --asset-model-id "$MODEL_ID"
+```
 
 **Delete the Stack**
 1. Go to **CloudFormation**, and select **Stacks**
 2. Select the root stack named **sfc-workshop-inprocess-opcua-sitewise**
 3. Click **Delete**
 
+**Delete the S3 buckets**
 
-[Examples](../../docs/examples/README.md)
+Delete the bucket with the CloudFormation templates and, if you used the bulk import, the bucket
+with ```sitewise_model_asset.json```: in the S3 console empty each bucket and then delete it.
+
+
+Docs used: [OPC-UA adapter](../../docs/adapters/opcua.md) · [AWS IoT SiteWise target](../../docs/targets/aws-sitewise.md) · [Debug target](../../docs/targets/debug.md) · [In-process mode](../../docs/sfc-deployment.md#in-process) · [All examples](../../docs/examples/README.md)

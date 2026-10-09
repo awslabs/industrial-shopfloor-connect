@@ -3,18 +3,60 @@
 
 The AWS IoT [SiteWise Edge](https://aws.amazon.com/iot-sitewise/sitewise-edge/) target adapter for Shop Floor Connectivity (SFC) enables data transfer from industrial equipment to AWS IoT SiteWise Edge gateways running on-premises.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `AWS-SITEWISEEDGE-TARGET` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWS-SITEWISEEDGE-TARGET": {
-      "JarFiles" : ["<location of deployment>/aws-sitewiseedge-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.awssitewiseedge.SiteWiseEdgeTargetWriter"
-   }
+"TargetTypes": {
+  "AWS-SITEWISEEDGE-TARGET": { "FactoryClassName": "com.amazonaws.sfc.awssitewiseedge.SiteWiseEdgeTargetWriter" }
 }
 ```
 
+**In-process** - module bundle `aws-sitewiseedge-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
 
+```json
+"TargetTypes": {
+  "AWS-SITEWISEEDGE-TARGET": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-sitewiseedge-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awssitewiseedge.SiteWiseEdgeTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "SiteWiseEdgeTarget": {
+    "TargetType": "AWS-SITEWISEEDGE-TARGET",
+    "TargetServer": "SiteWiseEdgeServer"
+  }
+},
+"TargetServers": {
+  "SiteWiseEdgeServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-sitewiseedge-target/bin/aws-sitewiseedge-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-sitewiseedge-target\lib\*" com.amazonaws.sfc.awssitewiseedge.SiteWiseEdgeTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awssitewiseedge.SiteWiseEdgeTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awssitewiseedge.SiteWiseEdgeTargetService -port 50001`).
+
+**Examples:** in-process: [in-process-opcua-sitewiseedge](../../examples/in-process-opcua-sitewiseedge/README.md) · all: [examples catalog](../examples/README.md)
 
 ## SiteWiseEdgeTargetConfiguration
 
@@ -23,6 +65,8 @@ In order to use this target as in [in-process](../sfc-running-targets.md#running
 The `AWS-SITEWISEEDGE-TARGET` is a specific type of target configuration in SFC that allows you to connect and send data to an MQTT topic consumed by the AWS IoT SiteWise Edge service. The `Targets` configuration element can contain entries of this type, and the `TargetType` of these entries must be set to `"AWS-SITEWISEEDGE-TARGET"`.
 This type extends the type  [TargetConfiguration](../core/target-configuration.md) with specific configuration data for this adapter.
 This target adapter follows the Time Quality Value (TQV) schema for ingesting data into SiteWise Edge. For a better understanding of the TQV schema, please refer to the [Ingest data using the AWS IoT SiteWise API](https://docs.aws.amazon.com/iot-sitewise/latest/userguide/ingest-api.html) documentation.
+
+**Prerequisite:** every schedule that feeds this target must set [`"TimestampLevel"`](../core/schedule-configuration.md#timestamplevel) to `"Channel"` or `"Both"`. Each TQV value needs a channel timestamp; without one the values of that source are not sent and the target logs "Error getting asset for source".
 
 - [Schema](#sitewiseedgetargetconfiguration-schema)
 - [Examples](#sitewiseedgetargetconfiguration-examples)
@@ -35,8 +79,7 @@ This target adapter follows the Time Quality Value (TQV) schema for ingesting da
 - [Certificate](#certificate)
 - [ClientName](#clientname)
 - [ConnectRetries](#connectretries)
-- [Connection](#connection)
-- [ConnectionTimeout](#connectiontimeout)
+- [ConnectTimeout](#connecttimeout)
 - [EndPoint](#endpoint)
 - [Password](#password)
 - [Port](#port)
@@ -55,8 +98,7 @@ Number of TQV messages to buffer per channel before sending data as a batch to t
 
 **Type**: Int
 
-Batching is enabled by setting a value for one or more of BatchSize, BatchCount and BatchInterval.
-Whenever the number of messages, total message size or an interval is reached the buffered data is sent as an array of messages to the topic.
+Batching is per topic and needs both BatchCount and BatchSize. A topic is published when it holds BatchCount values or BatchSize KB; BatchInterval publishes whatever is left. With only one of the two set, or only BatchInterval, every value is published immediately.
 
 ---
 ### BatchInterval
@@ -64,8 +106,7 @@ Interval in milliseconds after which all messages are sent to the SiteWise Edge 
 
 **Type**: Int
 
-Batching is enabled by setting a value for one or more of BatchSize, BatchCount and BatchInterval.
-Whenever the number of messages, total message size or an interval is reached the buffered data is sent as an array of messages to the topic.
+Batching: see [BatchCount](#batchcount).
 
 
 ---
@@ -74,8 +115,7 @@ Channel TQV Payload size in KB of messages to batch before sending data as a bat
 
 **Type**: Int
 
-Batching is enabled by setting a value for one or more of BatchSize, BatchCount and BatchInterval.
-Whenever the number of messages, total message size or an interval is reached the buffered data is sent as an array of messages to the topic.
+Batching: see [BatchCount](#batchcount).
 The size is calculated on the uncompressed payload of the messages.
 
 ---
@@ -90,6 +130,8 @@ Client name to provide when connecting to the SiteWise Edge MQTT broker. When ru
 
 **Type**: String
 
+Required.
+
 Length Constraints: Minimum length of 1. Maximum length of 128.
 
 Pattern: [a-zA-Z0-9:_-]+
@@ -103,22 +145,12 @@ Number of retries to connect to MQTT broker
 Default is 10
 
 ---
-### Connection
-Connection type
-
-**Type**: String
-
-- "PlainText" (Default)
-- "ServerSideTLS"
-- "MutualTLS"
-
----
-### ConnectionTimeout
+### ConnectTimeout
 Timeout for connecting to the broker in seconds
 
 **Type**: Int
 
-Default is 10 seconds
+Default is 10 seconds. Known limitation: the configured value is currently not applied; the timeout is always 10 seconds.
 
 ---
 ### EndPoint
@@ -126,18 +158,7 @@ SiteWise Edge MQTT broker endpoint address
 
 **Type**: String
 
-Optionally with a port number (see Port)
-
-If no scheme is specified in the address, then it will be added based on the Connection type.
-("tcp://" for PlainText or "ssl://" for ServerSideTLS or MutualTLS)
-
-To get the ATS endpoint for an account use the AWS CLI command
-
-```console 
-iot describe-endpoint --endpoint-type iot:Data-ATS
-```
-
-https://awscli.amazonaws.com/v2/documentation/api/latest/reference/iot/describe-endpoint.html
+Required. Use `tcp://<host>` for plain MQTT or `ssl://<host>` for TLS with a client certificate, which requires [RootCA](#rootca), [Certificate](#certificate) and [PrivateKey](#privatekey). The client connects to this URL: without a port in it, the default port of the scheme is used (1883 for `tcp://`, 8883 for `ssl://`), and a port can be added as `tcp://<host>:<port>`. Do not include a port with `ssl://`.
 
 
 ---
@@ -154,14 +175,10 @@ SiteWise Edge MQTT broker port
 
 **Type**: Integer
 
-Commonly port numbers are
+Required. Set it to the broker port. The MQTT connection itself uses the port in [EndPoint](#endpoint), or the default port of its scheme; Port is used to fetch the server certificate for `ssl://` connections. Commonly port numbers are
 
-- 1883 for PlainText
-- 8883 for ServerSideTLS
-- 8884 for MutualTLS.
-- 443 for AWS IoT Core endpoints
-
-In no port number is specified then the EndPoint address is searched for a training port number.
+- 1883 for `tcp://`
+- 8883 for `ssl://`
 
 ---
 ### PrivateKey
@@ -173,9 +190,9 @@ Path to client private key file
 ### PublishTimeout
 Timeout in seconds for publishing
 
-**Type**: Long
+**Type**: Integer
 
-Default is 10 seconds
+Default is 10 seconds. Known limitation: the configured value is currently not applied; the timeout is always 10 seconds.
 
 ---
 ### RootCA
@@ -190,7 +207,7 @@ Path to server certificate file to verify the identity of the broker.
 **Type**: String
 
 If no certificate file is specified it is obtained from the server.
-Used for connections of type ServerSideTLS and MutualTLS
+Used for `ssl://` connections.
 
 ---
 ### TopicName
@@ -199,6 +216,8 @@ Name of the MQTT topic to which SiteWise Edge will subscribe for ingesting data.
 **Type**: String
 
 Default: %channel%
+
+Must contain %channel%. The rendered value is both the MQTT topic and the property alias in the TQV payload, so the SiteWise asset property that receives the values must have this alias; with the default %channel%, the alias is the channel name. Values are sent with quality GOOD. The [in-process-opcua-sitewiseedge](../../examples/in-process-opcua-sitewiseedge/README.md) example creates an asset whose property aliases match the channel names.
 
 ---
 ### Username
@@ -214,13 +233,15 @@ Verify the server hostname from the provided certificates. Set this to `false` w
 
 **Type**: Boolean
 
+Default is true
+
 ---
 ### WaitAfterConnectError
 Period in seconds to wait before trying to connect after a connection failure
 
 **Type**: Int
 
-Default is 60 seconds
+Default is 10 seconds
 
 ### SiteWiseEdgeTargetConfiguration Schema
 
@@ -232,9 +253,6 @@ Default is 60 seconds
   "allOf": [
     {
       "$ref": "#/definitions/TargetConfiguration"
-    },
-    {
-      "$ref": "#/definitions/AwsServiceConfig"
     },
     {
       "type": "object",
@@ -249,7 +267,7 @@ Default is 60 seconds
         },
         "BatchSize": {
           "type": "integer",
-          "description": "Size of the batch in bytes"
+          "description": "Size of the batch in KB"
         },
         "Certificate": {
           "type": "string",
@@ -263,13 +281,9 @@ Default is 60 seconds
           "type": "integer",
           "description": "Number of connection retry attempts"
         },
-        "Connection": {
-          "type": "string",
-          "description": "Connection string"
-        },
-        "ConnectionTimeout": {
+        "ConnectTimeout": {
           "type": "integer",
-          "description": "Connection timeout in milliseconds"
+          "description": "Connection timeout in seconds"
         },
         "EndPoint": {
           "type": "string",
@@ -289,7 +303,7 @@ Default is 60 seconds
         },
         "PublishTimeout": {
           "type": "integer",
-          "description": "Timeout for publish operations in milliseconds"
+          "description": "Timeout for publish operations in seconds"
         },
         "RootCA": {
           "type": "string",
@@ -313,9 +327,10 @@ Default is 60 seconds
         },
         "WaitAfterConnectError": {
           "type": "integer",
-          "description": "Wait time after connection error in milliseconds"
+          "description": "Wait time after connection error in seconds"
         }
-      }
+      },
+      "required": ["ClientName", "EndPoint", "Port"]
     }
   ]
 }
@@ -332,7 +347,6 @@ Default is 60 seconds
   "ClientName": "${CLIENT_ID}",
   "EndPoint": "ssl://${GATEWAY_HOSTNAME}",
   "Port": 8883,
-  "Connection": "ServerSideTLS",
   "RootCA": "${GATEWAY_CA_FILE}",
   "Certificate": "${CLIENT_CERTIFICATE_FILE}",
   "PrivateKey": "${CLIENT_KEY_FILE}",
@@ -341,6 +355,28 @@ Default is 60 seconds
   "BatchInterval": 5000,
   "BatchCount": 10
 }
+```
+
+The example reads the gateway host name, the client name and the certificate files from environment variables. Set them in the terminal that starts SFC:
+
+**Linux / macOS**
+
+```shell
+export GATEWAY_HOSTNAME="<gateway host name>"
+export CLIENT_ID="<client name>"
+export GATEWAY_CA_FILE="/sfc/certs/gateway-ca.pem"
+export CLIENT_CERTIFICATE_FILE="/sfc/certs/client-cert.pem"
+export CLIENT_KEY_FILE="/sfc/certs/client-key.pem"
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$env:GATEWAY_HOSTNAME = "<gateway host name>"
+$env:CLIENT_ID = "<client name>"
+$env:GATEWAY_CA_FILE = "C:/sfc/certs/gateway-ca.pem"
+$env:CLIENT_CERTIFICATE_FILE = "C:/sfc/certs/client-cert.pem"
+$env:CLIENT_KEY_FILE = "C:/sfc/certs/client-key.pem"
 ```
 
 [^top](#aws-sitewise-edge-target)

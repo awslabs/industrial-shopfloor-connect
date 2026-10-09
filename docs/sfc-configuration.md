@@ -1,5 +1,8 @@
 # SFC Configuration
 
+Configuration guide: how to use placeholders, secrets, templates, includes, configuration providers and signing. Every
+top-level configuration key is described in the [configuration file reference](./core/sfc-configuration.md).
+
 - [Configuration Concepts](#configuration-concepts)
 - [Configuration placeholders](#configuration-placeholders)
 - [Configuration secrets](#configuration-secrets)
@@ -18,17 +21,20 @@
 SFC is based on the concept of configuration providers, that collect data from internal or external sources. These
 providers can constantly monitor resources, periodically make calls or wait for incoming configuration data, and apply
 the providers logic to build the actual SFC configuration that is provided to a configuration data stream of the SFC
-core. If an updated version of configuration data is provided to the SFC core , it will automatically restart its
-internal processes to let the internal and external processes use this updates version of the configuration data,
+core. If an updated version of configuration data is provided to the SFC core, it will automatically restart its
+internal processes to let the internal and external processes use this updated version of the configuration data,
 without the need to restart the core process.
 
-As SFC is deployed in a distributed mode, where protocol and target adapters can be running as standalone services,
-potentially on different systems, the SFC core will automatically extract the subsets of relevant data and send this to
-the adapter services when the SFC core is started or when it received an update configuration from its configuration
-provider. This means that there is no need to manually distribute the confirmation data to these services, even when
-they run remotely, as they will automatically and constantly receive a consistent in of the SFC configuration. The only
-information that is required to bootstrap these services is the port number on which they can receive the configuration
-update.
+> **Known issue:** when SFC runs from the uberjar, and for protocol adapters that run as IPC services, changes to the
+> settings, sources or channels of a protocol adapter currently take effect only after SFC (or the adapter service) is
+> restarted.
+
+When protocol adapters or targets run as IPC services, possibly on other systems, the SFC core will automatically
+extract the subsets of relevant data and send this to the services when the SFC core is started or when it receives an
+updated configuration from its configuration provider. This means that there is no need to manually distribute the
+configuration data to these services, even when they run remotely, as they will automatically and constantly receive a
+consistent subset of the SFC configuration. The only information that is required to bootstrap these services is the
+port number on which they can receive the configuration update.
 
 This feature ensures that the SFC system is always up-to-date with the latest configuration data.
 
@@ -38,12 +44,33 @@ The provider is constantly monitoring the actual configuration files, and enviro
 placeholders, and if the files or the environment variables are updated, will provide a new version of the configuration
 to the SFC Core.
 
-<p align="center">
-<img src="img/fig03.png" width="50%"/>
+```mermaid
+%%{init: {'theme':'base','themeVariables':{
+  'background':'#0a0e14','primaryColor':'#0d1117','primaryTextColor':'#e6faff',
+  'primaryBorderColor':'#1f6feb','lineColor':'#7d8590','fontFamily':'monospace',
+  'clusterBkg':'#0a0e14','clusterBorder':'#1f6feb'}}}%%
+flowchart TD
+    ENV[/"Environment<br/>variables"/]:::data
+    SEC[/"Secrets<br/><i>AWS Secrets Manager</i>"/]:::data
+    FILE[("SFC config file<br/><i>JSON</i>")]:::data
+    PROV(["<b>Config file provider</b><br/>resolves placeholders · watches for changes"]):::tool
+    CORE(["<b>SFC Core</b>"]):::core
 
+    ENV ==> PROV
+    SEC ==> PROV
+    FILE ==> PROV
+    PROV == "config stream" ==> CORE
+    PROV -. "monitors" .-> ENV
+    PROV -. "monitors" .-> FILE
 
-<p align="center">
-    <em>Fig. 3. SFC default config provider</em>
+    classDef core fill:#0d1117,stroke:#ff6b35,stroke-width:2px,color:#ffd4c2,font-weight:bold;
+    classDef tool fill:#0d1117,stroke:#1f6feb,stroke-width:2px,color:#e6faff,font-weight:bold;
+    classDef data fill:#0d1117,stroke:#ff2bd6,stroke-width:1px,color:#ffb3f0;
+    classDef aws fill:#0d1117,stroke:#b6ff00,stroke-width:2px,color:#d9ffb3;
+    classDef ext fill:#0d1117,stroke:#7d8590,stroke-width:1px,color:#9aa4b2,stroke-dasharray:5 3;
+```
+
+<p align="center"><em>Fig. 3. SFC default config provider</em></p>
 
 
 
@@ -54,12 +81,36 @@ created by the SFC Core at startup. It will receive the content of the initial c
 of the SFC configuration, combined with (or just) custom provider specific configuration data it needs to obtain the
 data it will use to build the SFC configuration.
 
-<p align="center">
-<img src="img/fig04.png" width="50%"/>
+For configurations managed outside the host, see also the [SFC Control Plane](./sfc-deployment.md#sfc-control-plane):
+it stores configuration versions and pushes a new version to the hosts that run it.
 
+```mermaid
+%%{init: {'theme':'base','themeVariables':{
+  'background':'#0a0e14','primaryColor':'#0d1117','primaryTextColor':'#e6faff',
+  'primaryBorderColor':'#1f6feb','lineColor':'#7d8590','fontFamily':'monospace',
+  'clusterBkg':'#0a0e14','clusterBorder':'#1f6feb'}}}%%
+flowchart TD
+    ENV[/"Environment<br/>variables"/]:::data
+    SEC[/"Secrets<br/><i>AWS Secrets Manager</i>"/]:::data
+    EXT[/"External config data<br/><i>customer-managed system</i>"/]:::ext
+    FILE[("Initial config file<br/><i>provider settings + subset</i>")]:::data
+    PROV(["<b>Custom config provider</b><br/>builds the SFC configuration"]):::tool
+    CORE(["<b>SFC Core</b>"]):::core
 
-<p align="center">
-    <em>Fig. 4. Extensible config providers</em>
+    ENV ==> PROV
+    SEC ==> PROV
+    EXT ==> PROV
+    FILE ==> PROV
+    PROV == "config stream" ==> CORE
+
+    classDef core fill:#0d1117,stroke:#ff6b35,stroke-width:2px,color:#ffd4c2,font-weight:bold;
+    classDef tool fill:#0d1117,stroke:#1f6feb,stroke-width:2px,color:#e6faff,font-weight:bold;
+    classDef data fill:#0d1117,stroke:#ff2bd6,stroke-width:1px,color:#ffb3f0;
+    classDef aws fill:#0d1117,stroke:#b6ff00,stroke-width:2px,color:#d9ffb3;
+    classDef ext fill:#0d1117,stroke:#7d8590,stroke-width:1px,color:#9aa4b2,stroke-dasharray:5 3;
+```
+
+<p align="center"><em>Fig. 4. Extensible config providers</em></p>
 
 
 
@@ -68,7 +119,7 @@ SFC employs a modular configuration approach, separating generic core data from 
 
 The configuration structure includes generic core data used by the SFC Core and adapter-specific extensions of core data classes. Adapters are responsible for handling their specific configuration data, with the option to implement custom validation logic. The SFC Core provides a consistent configuration reader used by both the core and target adapters for reading, validating, and replacing placeholders in configuration data.
 
-To ensure configuration integrity, SFC incorporates tooling and an API for digitally signing configuration data. The SFC Core verifies this signature and rejects configurations that fail verification, protecting against unauthorized modifications.
+To ensure configuration integrity, SFC incorporates tooling and an API for digitally signing configuration data. The SFC Core verifies this signature and rejects configurations that fail verification, protecting the configuration file against unauthorized modifications (see [Securing the configuration](#securing-the-configuration) for what the signature covers).
 
 The core's awareness of input sources and output targets is limited to their identifiers, maintaining abstraction from protocol or target-specific details. Each adapter type (input protocol or target) has its own configuration model containing specific details. SFC's configuration layer provides each adapter or target with a tailored view of its configuration data, preventing dependencies, mix-ups, or redefinition of attributes across different types.
 
@@ -94,6 +145,31 @@ Name of the placeholders can contain the characters:
 - \-
 - _
 
+Write placeholders inside quotes, also for numbers (`"Port": "${PORT}"`). A placeholder for which no environment
+variable or configured secret with that name exists is a configuration error.
+
+Set the environment variables in the terminal or service that starts SFC, for example the directory used in `JarFiles`
+paths:
+
+**Linux / macOS**
+
+```shell
+export SFC_DEPLOYMENT_DIR=/sfc
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$env:SFC_DEPLOYMENT_DIR = "C:/sfc"
+```
+
+This sets the variable for the current terminal only. To keep it, add the `export` line to your shell profile, or on
+Windows run `[Environment]::SetEnvironmentVariable("SFC_DEPLOYMENT_DIR", "C:/sfc", "User")` and open a new terminal.
+
+On Windows, write paths in variable values with forward slashes (`C:/sfc`). Backslashes work in most sections, but break
+the `ConfigProvider` and `LogWriter` sections, where placeholders are replaced in the JSON text. Use the exact case of
+the variable name.
+
 ## Configuration secrets
 
 SFC integrates with AWS Secrets Manager following the same logic as used in GreenGrass Secret manager. Secrets are
@@ -103,6 +179,9 @@ Each secret has an id, which can either be the arn or name of the secret, and an
 using placeholders of the format \${name} in the configuration file. Name can be the name, arn or alias of the secret.
 If just an arn is used for a configured secret either this arn or the name of the secret in the AWS Secrets manager
 service can be used as name in the placeholder.
+
+> **Known issue:** a configuration that uses a placeholder for a configured secret currently fails to load, and SFC does
+> not start. Until this is fixed, pass such values in environment variables.
 
 When resolving the placeholders, the configuration manager will first try to replace the placeholder with the value of
 an environment variable with that name, or when no variable with that name exists it will try to replace it with
@@ -130,11 +209,15 @@ the core build subsets of the configuration, used to initialize external IPC ser
 target IPC services, the placeholders are replaced with their environment variable or secret values. It is possible to
 defer the replacement of these placeholders on the receiving service, allowing to resolve environment variables by the
 system/process running the service or preventing secret values to be passed over the network. (please note that IPC
-traffic between the core and external services can be configured to be encrypted) Deferring placeholder can be done by
-using placeholders in the format **${{name}}**. If the placeholders are used for replacement by configured secrets from
-AWS Systems Manager, all required configuration elements to resolve the secrets by the service process will be included
-in the configuration that is used to initialize it. (SecretsManager with selected configured secrets, credentials
-manager client etc.)
+traffic between the core and protocol adapter services can be configured to be
+[encrypted](./sfc-securing-component-traffic.md); target services currently accept PlainText connections only)
+Deferring placeholder can be done by using placeholders in the format **${{name}}**. If the placeholders are used for
+replacement by configured secrets from AWS Secrets Manager, all required configuration elements to resolve the secrets
+by the service process will be included in the configuration that is used to initialize it. (SecretsManager with
+selected configured secrets, credentials manager client etc.)
+
+Deferred placeholders apply only to components that run as IPC services. In-process and uberjar components receive the
+literal text `${{name}}`, without an error.
 
 [^top](#sfc-configuration)
 
@@ -149,16 +232,16 @@ Below is a snippet of an SFC configuration file defining an S3 Target
 ```json
 "Targets": {
     "S3Target": {
-    "Active": true,
-    "TargetType": "AWS-S3",
-    "Region": "eu-west-1",
-    "BucketName": "sfc-bucket",
-    "Interval": 60,
-    "BufferSize": 1,
-    "Prefix": "data",
-    "CredentialProviderClient": "AwsClient",
-    "CertificatesAndKeysByFileReference": false,
-    "Compression": "Zip"
+        "Active": true,
+        "TargetType": "AWS-S3",
+        "Region": "eu-west-1",
+        "BucketName": "sfc-bucket",
+        "Interval": 60,
+        "BufferSize": 1,
+        "Prefix": "data",
+        "CredentialProviderClient": "AwsIotClient",
+        "Compression": "Zip"
+    }
 }
 ```
 
@@ -208,7 +291,7 @@ Within a template it is possible to have placeholders for values making these te
 }
 ```
 
-Now this template can be used by specifying in an SFC  its name and the names of the placeholders with their values. Below is an example and Targets with two S3 targets defined using the template. The values for the placeholders used by the template are provided by a comma separated list, which is separated from the name of the template by a comma as well, including the names and values of the placeholders. The actual values should nor be included in quotes. Leading and training whitespaces will be trimmed from the values.
+Now this template can be used by specifying in an SFC  its name and the names of the placeholders with their values. Below is an example and Targets with two S3 targets defined using the template. The values for the placeholders used by the template are provided by a comma separated list, which is separated from the name of the template by a comma as well, including the names and values of the placeholders. The actual values should not be included in quotes. Leading and trailing whitespaces will be trimmed from the values.
 
 ```json
 "Targets": {
@@ -231,7 +314,6 @@ It is also possible to use nested  templates within templates, Below is the S3 t
       "BufferSize": 1,
       "Prefix": "$(S3Prefix)",
       "CredentialProviderClient": "AwsIotClient",
-      "CertificatesAndKeysByFileReference": false,
       "Compression": "Zip"
     },
 
@@ -241,7 +323,7 @@ It is also possible to use nested  templates within templates, Below is the S3 t
 
 Templates can be used for all values in and SFC configuration file to replace values.
 
-It is possible to partially replace parts of  values. Note that this works only for single value templates, not for structured values. Below is a template used to define the S3 and debug  target types. A third template named "DeploymentDir" is used in the other two templates to specify the directory in which the targets are deployed.
+It is possible to partially replace parts of  values. Note that this works only for single value templates, not for structured values. Use string values for templates that are embedded in other strings (`"Ver": "3"`): a number renders as `3.0`. Below is a template used to define the S3 and debug  target types. A third template named "DeploymentDir" is used in the other two templates to specify the directory in which the targets are deployed.
 
 ```json
 "Templates" : {
@@ -259,7 +341,16 @@ It is possible to partially replace parts of  values. Note that this works only 
 }
 ```
 
+These type entries are for the in-process mode, with the module bundles unpacked in `/sfc` (on Windows write
+`"DeploymentDir" : "C:/sfc"`). With the uberjar a type entry needs only `FactoryClassName`, e.g.
+`"S3Type" : { "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter" }`; see
+[Configure a component in each mode](./sfc-deployment.md#configuration-in-each-mode).
+
 When rendering the templates the SFC core will check for circular dependencies between templates. After resolving the templates SFC will remove the “Templates” section from the configuration.
+
+**Runnable example:** [SLMP to S3](../examples/in-process-slmp-s3/README.md) defines its S3 target as a template with
+placeholders in `templates.json` and uses it as `"$(S3Target, bucket=..., region=..., prefix=...)"`; the
+[IPC variant](../examples/ipc-slmp-s3/README.md) does the same with its `S3TargetIPC` template.
 
 ## Including configuration sections
 
@@ -280,6 +371,17 @@ During configuration file processing, the following sequence is utilized:
 - @file, @http, @https statements are processed in a depth-first order.
 
 As the content of each step may include new inclusion statements for statements of the other type, the sequence is repeated until the configuration file no longer contains inclusion statements from any type.
+
+Keep in mind when using includes:
+
+- Put each `@include` statement on its own line: the statement ends at the last `"` of its line.
+- `${name}` placeholders are expanded in `@file:` paths, not in `@include` paths.
+- Relative paths are resolved against the directory SFC is started from, not against the directory of the
+  configuration file.
+- On Windows write paths with forward slashes, e.g. `"@file:C:/sfc/s3-inproc.json@S3TargetType"`; a single backslash
+  is a JSON escape.
+- With `-config`, an include that cannot be resolved is logged as an error, and SFC keeps waiting for a valid
+  configuration instead of exiting.
 
 
 
@@ -311,13 +413,15 @@ The included files may contain nested @include statements, which will be include
 
 ### @file, @http, @https statements
 
-An alternative method include configuration data from an external the file the syntax is **“@file:\<pathname of the file>”**.  
+To include configuration data from an external file the syntax is **“@file:\<pathname of the file>”**.  
 
-For including data from a get request he syntax is **“@http://\<url>”** or **“@https://\<url>**”. 
+For including data from a GET request the syntax is **“@http://\<url>”** or **“@https://\<url>**”. The URL needs
+`http://` or `https://` and a host name that contains a dot, or an IPv4 address; other values, such as `localhost` URLs,
+are not recognized as an include and stay a plain string.
 
 After reading the content from the file or the get response SFC will replace the reference to the file or the url with this content.
 
-The main difference of the  @file, @http and @https staye ments with the **@include** is that the data read from the file of GET requests response payload must be a valid JSON syntax. Additionaly ithey offer the possibility or select sections from the JSON data to insert in the configuration file.
+The main difference of the @file, @http and @https statements with the **@include** is that the data read from the file or GET request response payload must be valid JSON. Additionally they offer the possibility to select sections from the JSON data to insert in the configuration file.
 
 Below is an example where the value of “AwsIoTClient” is read from a file named “aws-iot-client.json”.
 
@@ -341,22 +445,29 @@ This file contains the following JSON data:
 ```
 
 
-For getting the content from a hypothetical configuration server named "config-server" the syntax would be:
+For getting the content from a hypothetical configuration server named "config-server.example.com" the syntax would be:
 
 ```json
 "AwsIotCredentialProviderClients": {
-		"AwsIotClient": "@https:config-server/sfc/aws-iot-client.json"
+		"AwsIotClient": "@https://config-server.example.com/sfc/aws-iot-client.json"
 }
 ```
 
 
 It is possible to nest, mixing includes from files and from get requests, in the included content. When including the content SFC will detect circular references between include sections.
 
-SFC will check if the included configuration content is changed by external processes, and if this is the case reloaded the SFC configuration file. For included files SFC will monitor the file system to detect changes to the included file. Monitoring the included files can be disabled by including a configuration item **"MonitorIncludedConfigFiles" : false** at the top level of the SFC configuration.
+SFC will check if the included configuration content is changed by external processes, and if this is the case reloads the SFC configuration file. For included files SFC will monitor the file system to detect changes to the included file. Monitoring the included files can be disabled by including a configuration item **"MonitorIncludedConfigFiles" : false** at the top level of the SFC configuration.
 
-To check if the content loaded from he get-request to the configured url is updated, SFC will make a request every 60 seconds to that url. If the content was retrieved successfully, it will compare a checksum of that data with the crc from a previous request to detect changes to the data. If a change is detected then the SFC config will be reloaded. The interval can bet set by including a configuration item **“MonitorIncludedConfigContentInterval” : <interval in seconds>** at the top level of the SFC configuration. To disable set the value to 0.
+To check if the content loaded from the GET request to the configured url is updated, SFC will make a request every 60 seconds to that url. If the content was retrieved successfully, it will compare a checksum of that data with the crc from a previous request to detect changes to the data. If a change is detected then the SFC config will be reloaded. The interval can be set by including a configuration item **“MonitorIncludedConfigContentInterval” : <interval in seconds>** at the top level of the SFC configuration. To disable set the value to 0.
 
-SFC will cache the content included content, as long as it is not modified, for faster re-loading of the data.
+> **Known issue:** in a configuration file (`-config`) that uses includes, setting `MonitorIncludedConfigContentInterval`
+> (also to 0) currently prevents SFC from loading the configuration. Leave it unset to keep the default of 60 seconds.
+
+SFC caches the included content, as long as it is not modified, for faster re-loading of the data.
+
+**Runnable example:** [SLMP to S3](../examples/in-process-slmp-s3/README.md) splits its configuration into files that
+it includes with `@file:` (channels, structures, types, credential providers and templates). Start it from its folder,
+because the included paths are relative.
 
 ## Selective Inclusions
 
@@ -370,7 +481,7 @@ The following included file "s3-inproc.json" contains two elements. The first el
 ```json
 {
   "S3TargetType" : {
-      "JarFiles": ["/sfc/s3-target/aws-s3-target/lib"],
+      "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"],
       "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
   },
 
@@ -387,7 +498,7 @@ The following included file "s3-inproc.json" contains two elements. The first el
 }
 ```
 
-The "S3TargetType" and "S3Target" are selected in the "TargetTypes" and "Target" sections of the SFC configuration by appending a "@" to the filename followed by the JMESPath expression to select that section, as shown below.
+The "S3TargetType" and "S3Target" are selected in the "TargetTypes" and "Targets" sections of the SFC configuration by appending a "@" to the filename followed by the JMESPath expression to select that section, as shown below. "S3TargetType" is an in-process type entry; with the uberjar leave out its `JarFiles`.
 
 ```json
 "TargetTypes": {
@@ -401,6 +512,11 @@ The "S3TargetType" and "S3Target" are selected in the "TargetTypes" and "Target"
 }
 ```
 
+**Runnable example:** [SLMP to S3](../examples/in-process-slmp-s3/README.md) selects its adapter and target types from
+one file with `@file:types.json@Adapters` and `@file:types.json@Targets`; its
+[IPC variant](../examples/ipc-slmp-s3/README.md) selects its servers with `@file:servers.json@Adapters` and
+`@file:servers.json@Targets`.
+
 [^top](#sfc-configuration)
 
 ## Combining Templates and Inclusions
@@ -408,7 +524,7 @@ The "S3TargetType" and "S3Target" are selected in the "TargetTypes" and "Target"
 
 Templates can be loaded from external sources, making it possible to use them as building blocks in different configuration files.
 
-For example the file s3-target.json does include the following definition of an S3 bucket, and using the **"%region%"** and **"bucket-name"**.
+For example the file s3-target.json does include the following definition of an S3 bucket, and using the **"%region%"** and **"%bucket-name%"**.
 
 ```json
 {
@@ -419,7 +535,6 @@ For example the file s3-target.json does include the following definition of an 
     "Interval": 60,
     "BufferSize": 1,
     "CredentialProviderClient": "AwsIotClient",
-    "CertificatesAndKeysByFileReference": false,
     "Compression": "Zip"
 }
 ```
@@ -456,19 +571,25 @@ these to the internal service instance that will use these new settings without 
 Service providers can read configuration data from files, by making service calls or listening to service requests.
 
 By default, the configuration is read from a configuration file which is specified by the `-config` command line parameter
-for all services. The ConfigFileServiceProvider, which is used for configuration files, will detect updates to the
+for all services. The ConfigFileProvider, which is used for configuration files, will detect updates to the
 configuration file, or changes made to environment variables used in placeholders in the configuration file, and provide
 the updated configuration data to the service.
 
-If you don't specify the `-config` parameter SFC will check the environment variable `SFC_CONFIG` if it exists and holds
-a json configuration. This helps in environment where even default configuration is not passed as a file (e.g. in an AWS
-IoT Greengrass component) 
+If you don't specify the `-config` parameter, SFC reads the configuration from the environment variable `SFC_CONFIG`,
+see [specifying the configuration via environment variables](./sfc-running-core-process.md#additional-functionality-to-specify-the-config-via-environment-variables).
+
+**Runnable examples:** custom configuration providers in
+[custom-config-provider](../examples/custom-config-provider/README.md) (template),
+[yaml-custom-config-provider](../examples/yaml-custom-config-provider/README.md),
+[mqtt-config-provider](../examples/mqtt-config-provider/README.md) and
+[opcua-auto-discovery](../examples/opcua-auto-discovery/README.md); all are listed in the
+[examples catalog](./examples/README.md#configuration-providers).
 
 [^top](#sfc-configuration)
 
 ## Custom configuration
 
-The ConfigFileServiceProvider, which is used when a config file is specified by using the -config parameter, can be used
+The ConfigFileProvider, which is used when a config file is specified by using the -config parameter, can be used
 to configure a handler for custom or additional processing to the configuration file processing. Example of custom
 processing are the dynamic creation of enriching the passed in configuration data with additional data that could come
 from an additional source/service/logic.
@@ -478,56 +599,97 @@ that handler is created. The data that was in the specified configuration file i
 passed "as-is" and could include custom handler specific data. The custom handler is responsible for interpreting this
 data and (periodically) returning a valid version of an SFC configuration as a channel.
 
-If the configuration file specified by the -config parameter or its reference environment variables a new instance of
-the custom handler is created.
+The handler is configured in the [ConfigProvider](./core/sfc-configuration.md#configprovider) section, for example the
+YAML provider from the module bundle `yaml-custom-config-provider`:
 
-# Securing the configuration
+```json
+"ConfigProvider": {
+  "JarFiles": ["${SFC_DEPLOYMENT_DIR}/yaml-custom-config-provider/lib"],
+  "FactoryClassName": "com.amazonaws.sfc.config.YamlConfigProvider"
+}
+```
+
+The example providers are bundled in the uberjar; there write `"JarFiles": []`. The key must be present: a
+`ConfigProvider` section without `JarFiles` is ignored. How to implement a handler is described in
+[Custom configuration handlers](./sfc-extending.md#custom-configuration-handlers); runnable handlers are listed under
+[Configuration providers](#configuration-providers).
+
+If the configuration file specified by the -config parameter changes, a new instance of the custom handler is created.
+
+## Securing the configuration
 
 In order to secure the content of configuration data passed to the SFC Core the content can be digitally signed with a
 secret key. The digital signature, which is added to the configuration, will be checked using the public key related to
 the key that was used to sign the configuration data.
 
-The configuration can be signed using a command line application as shown below:
+The configuration can be signed with the signing application of the
+[sign-sfc-config example](../examples/sign-sfc-config/README.md), which is included in the uberjar. Create an RSA key
+pair, sign the configuration file, and start SFC with the public key (the paths assume an sfcup install):
 
-```kotlin
-import com.amazonaws.sfc.config.ConfigVerification
-import File
-import kotlin.system.exitProcess
+**Linux / macOS**
 
-fun main(args: Array<String>) {
-    checkArguments(args)
-    val privateKeyFile = File(args[0])
-    val inputConfigFile = File(args[1])
-    val signedConfigFile = File(args[2])
-    ConfigVerification.sign(inputConfigFile, privateKeyFile, signedConfigFile)
-    println("Signed configuration file written to ${signedConfigFile.* absoluteFile}")
-
-}
-
-private fun checkArguments(args: Array<String>) {
-    if (args.size != 3) {
-        println("Usage: sign-sfc-config <private-key-file> <config-file> <signed-config-file>")
-        exitProcess(0)
-    }
-}
+```shell
+openssl genrsa -out sfc-sign.key 2048
+openssl rsa -in sfc-sign.key -pubout -out sfc-sign.pub
+java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.SignConfigKt sfc-sign.key sfc.json sfc.signed.json
+sfcx -config sfc.signed.json -verify sfc-sign.pub
 ```
 
-This code loads the input configuration file to be signed, and adds an entry named "ConfigSignature", containing the
-digital signature of the configuration data, to the signed configuration output file.
+**Windows (PowerShell)**
 
-In order to check the digital signature, the -verify parameter of the sfc-main module, which runs the SFC core, is used
-to specify the file containing the public key for the private key that was used to sign the configuration.
+The commands need `openssl.exe` on the `PATH`; Git for Windows includes one in `C:\Program Files\Git\usr\bin`, which the
+first line adds to the `PATH` of the current session:
+
+```powershell
+$env:Path += ";C:\Program Files\Git\usr\bin"
+openssl genrsa -out sfc-sign.key 2048
+openssl rsa -in sfc-sign.key -pubout -out sfc-sign.pub
+java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.SignConfigKt sfc-sign.key sfc.json sfc.signed.json
+sfcx -config sfc.signed.json -verify sfc-sign.pub
+```
+
+The application adds an entry named "ConfigSignature", containing the digital signature of the configuration data, to
+the signed configuration output file.
+
+In order to check the digital signature, the -verify parameter of the SFC core (`sfcx`, or `sfc-main` with the module
+bundles) is used to specify the file containing the public key for the private key that was used to sign the
+configuration.
 
 If the verification of the signature fails, because of the configuration being changed after signing it or the signature
 is missing the SFC core will not process the configuration.
 
+The signature covers only the configuration passed with `-config` (or in `SFC_CONFIG`, see below). Content included
+with `@include`, `@file`, `@http` or `@https`, and the values of placeholders, are not covered.
+
+When the configuration is passed in the `SFC_CONFIG` environment variable instead of a file, put the public key in
+`SFC_CONFIG_VERIFY`. It holds the PEM text of the key (the content of the key file, not its path):
+
+**Linux / macOS**
+
+```shell
+export SFC_CONFIG="$(cat sfc.signed.json)"
+export SFC_CONFIG_VERIFY="$(cat sfc-sign.pub)"
+sfcx -info
+```
+
+**Windows (PowerShell)**
+
+```powershell
+$env:SFC_CONFIG = Get-Content -Raw sfc.signed.json
+$env:SFC_CONFIG_VERIFY = Get-Content -Raw sfc-sign.pub
+sfcx -info
+```
+
+More on `SFC_CONFIG`:
+[specifying the configuration via environment variables](./sfc-running-core-process.md#additional-functionality-to-specify-the-config-via-environment-variables).
+
 In situation where the configuration file is generated programmatically by an application or a custom config provider,
-the one of the ConfigVerification's sign methods can be used to calculate and add the digital signature.
+one of the ConfigVerification's sign methods can be used to calculate and add the digital signature.
 
 ```kotlin
-fun sign(configFile, privateKeyFile: File, signedConfigFile: File): Unit
+fun sign(configFile: File, privateKeyFile: File, signedConfigFile: File): Unit
 fun sign(configFile: File, privateKeyFile: File, signedConfig: OutputStream): Unit
-fun sign(configFile: File, privateKey: PrivateKey, signedConfigFile: File): kotlin.
+fun sign(configFile: File, privateKey: PrivateKey, signedConfigFile: File): Unit
 fun sign(configFile: File, privateKey: PrivateKey, signedConfig: OutputStream): Unit
 fun sign(config: InputStream, privateKeyFile: File, signedConfigFile: File): Unit
 fun sign(configStream: InputStream, privateKeyFile: File, signedConfig: OutputStream): Unit
@@ -539,13 +701,13 @@ fun sign(configJson: String, privateKey: PrivateKey): String
 fun sign(configJson: String, privateKey: PrivateKey, signedConfig: OutputStream): Unit
 ```
 
-If a custom configuration provider is used, the public key read from the public key file specified by the -very
-parameter of the sfc-main application will be passed to the instance of the provider, where it can be used to verify the
-initial configuration passed to the instance. If the public key is provided, meaning it was passed to the sfc-main
-module for verification pf the configuration, the data which is produced by the provider needs to be signed using one of
-the sign methods listed above.
+If a custom configuration provider is used, the public key read from the public key file specified by the -verify
+parameter will be passed to the instance of the provider, where it can be used to verify the initial configuration
+passed to the instance. The core does not verify the configurations that a provider produces, so a provider must verify
+any data it accepts itself, as the [custom-config-provider](../examples/custom-config-provider/README.md) template does
+with the configuration passed to it.
 
-To verify the input configuration passed to the custom provider one of the following ConfigValidation's verify methods
+To verify the input configuration passed to the custom provider one of the following ConfigVerification's verify methods
 can be used:
 
 ```kotlin

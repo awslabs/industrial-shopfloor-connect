@@ -67,7 +67,7 @@ open class ConfigReader(val config: String, val allowUnresolved: Boolean = false
     @Suppress("UNCHECKED_CAST")
     private fun processConfig(configString: String): String {
 
-        val configWithIncluded = includeFiles(configString).toString()
+        val configWithIncluded = includeFiles(configString)
 
         val configMap = fromJsonExtended(configWithIncluded, Map::class.java) as Map<String, Any>
         val useCachedResults = try {

@@ -25,7 +25,7 @@ object ConfigProviderFactory {
     private fun commandLine(args: Array<String>) =
         DefaultParser()
             .parse(Options()
-                .addOption(CommandLine.configOption.build())
+                .addOption(CommandLine.configOption.get())
                 .addOption(CommandLine.configVerificationPublicKeyFile),
                 args, true)
 

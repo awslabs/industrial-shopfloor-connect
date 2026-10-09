@@ -1,17 +1,61 @@
 # SNMP Protocol Configuration
 
-The SFC SNMP Protocol Adapter enables communication with devices using Simple Network Management Protocol (SNMP) versions 1 and 2. The adapter collects data from SNMP-enabled network devices, sensors, and equipment by polling OIDs.
+The SFC SNMP Protocol Adapter enables communication with devices using Simple Network Management Protocol (SNMP) v2c. The adapter collects data from SNMP-enabled network devices, sensors, and equipment by polling OIDs.
 
-In order to use this adapter as in [in-process](../sfc-running-adapters.md#running-protocol-adapters-in-process) type adapter the type must be added to the [AdapterTypes](../core/sfc-configuration.md#adaptertypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this adapter
+
+`AdapterType` is `SNMP` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"AdapterTypes" :{
-  "SNMP" : {
-    "JarFiles" : ["<location of deployment>/snmp/lib"]
-  },
-  "FactoryClassName" : "com.amazonaws.sfc.snmp.SnmpAdapter"
+"AdapterTypes": {
+  "SNMP": { "FactoryClassName": "com.amazonaws.sfc.snmp.SnmpAdapter" }
 }
 ```
+
+**In-process** - module bundle `snmp` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"AdapterTypes": {
+  "SNMP": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/snmp/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.snmp.SnmpAdapter"
+  }
+}
+```
+
+**IPC** - no `AdapterTypes`; the adapter runs as its own service:
+
+```json
+"ProtocolAdapters": {
+  "SnmpAdapter": {
+    "AdapterType": "SNMP",
+    "AdapterServer": "SnmpAdapterServer"
+  }
+},
+"AdapterServers": {
+  "SnmpAdapterServer": { "Address": "localhost", "Port": 50000 }
+}
+```
+
+Start the service before SFC, on the port of its `AdapterServers` entry:
+
+**Linux / macOS**
+
+```shell
+snmp/bin/snmp -port 50000
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\snmp\lib\*" com.amazonaws.sfc.snmp.SnmpProtocolService -port 50000
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.snmp.SnmpProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.snmp.SnmpProtocolService -port 50000`).
+
+**Examples:** uberjar: [uberjar-snmp-file](../../examples/uberjar-snmp-file/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 
@@ -102,17 +146,17 @@ At least 1 channel must be configured.
     "Uptime": {
       "Name": "SystemUptime",
       "Description": "System uptime",
-      "ObjectId": "1.3.6.1.2.1.1.3.0"
+      "ObjectId": ".1.3.6.1.2.1.1.3.0"
     },
     "InOctets": {
       "Name": "IncomingTraffic",
       "Description": "Incoming traffic on port 1",
-      "ObjectId": "1.3.6.1.2.1.2.2.1.10.1"
+      "ObjectId": ".1.3.6.1.2.1.2.2.1.10.1"
     },
     "OutOctets": {
       "Name": "OutgoingTraffic",
       "Description": "Outgoing traffic on port 1",
-      "ObjectId": "1.3.6.1.2.1.2.2.1.16.1"
+      "ObjectId": ".1.3.6.1.2.1.2.2.1.16.1"
     }
   }
 }
@@ -140,7 +184,9 @@ The SnmpChannelConfiguration class extends [ChannelConfiguration](../core/channe
 
 ---
 ### ObjectId
-The ObjectId property specifies the SNMP Object Identifier (OID) that identifies which data point to read from the SNMP device. The OID can be written in dot notation format (e.g., "1.3.6.1.2.1.1.3.0") where each number represents a node in the SNMP Management Information Base (MIB) tree hierarchy.
+The ObjectId property specifies the SNMP Object Identifier (OID) that identifies which data point to read from the SNMP device. The OID must be written in dot notation with a leading dot (e.g. ".1.3.6.1.2.1.1.3.0"), where each number represents a node in the SNMP Management Information Base (MIB) tree hierarchy.
+
+Values read: INTEGER becomes Int; OCTET STRING, IpAddress and OID become String (OIDs without the leading dot); TimeTicks, Counter32/64 and Gauge32 become Long; noSuchObject and noSuchInstance give no value.
 
 **Type**: string
 
@@ -161,7 +207,7 @@ The ObjectId property specifies the SNMP Object Identifier (OID) that identifies
         "ObjectId": {
           "type": "string",
           "description": "SNMP Object Identifier (OID)",
-          "pattern": "^([0-9]+\\.)*[0-9]+$"
+          "pattern": "^(\\.[0-9]+)+$"
         }
       },
       "required": ["ObjectId"]
@@ -176,7 +222,7 @@ The ObjectId property specifies the SNMP Object Identifier (OID) that identifies
 {
   "Name": "SystemUptime",
   "Description": "System uptime in timeticks",
-  "ObjectId": "1.3.6.1.2.1.1.3.0"
+  "ObjectId": ".1.3.6.1.2.1.1.3.0"
 }
 ```
 
@@ -237,7 +283,7 @@ The Devices property is a map of SNMP device configurations, where each key is a
 
 ```json
 {
-  "AdapterType": "SnmpAdapter",
+  "AdapterType": "SNMP",
   "Description": "Basic network device monitoring",
   "Devices": {
     "MainSwitch": {
@@ -285,6 +331,7 @@ The SnmpDeviceConfiguration class defines the connection parameters needed to co
 - [Retries](#retries)
 - [SnmpVersion](#snmpversion)
 - [Timeout](#timeout)
+- [WaitAfterReadError](#waitafterreaderror)
 
 ---
 ### Address
@@ -294,7 +341,7 @@ The Address property specifies the IP address of the SNMP-enabled device that th
 
 ---
 ### Community
-The Community property defines the SNMP community string used for authentication in SNMP versions 1 and 2c. It acts as a simple password mechanism for accessing the SNMP device. While the default value is "public", it's recommended to change this to a unique value for security purposes. The community string can contain alphanumeric characters, hyphens, and underscores,
+The Community property defines the SNMP community string used for authentication in SNMPv2c. It acts as a simple password mechanism for accessing the SNMP device. While the default value is "public", it's recommended to change this to a unique value for security purposes. The community string can contain alphanumeric characters, hyphens, and underscores,
 
 **Type**: String
 
@@ -302,11 +349,11 @@ Default is "public"
 
 ---
 ### NetworkProtocol
-The NetworkProtocol property specifies the transport protocol to be used for SNMP communication, accepting either `"UDP"` or `"TCP"` as valid values. UDP (User Datagram Protocol) is the default protocol for SNMP communications, though TCP (Transmission Control Protocol) can be used when more reliable delivery is required.
+The NetworkProtocol property specifies the transport protocol to be used for SNMP communication, accepting `"udp"` (default) or `"tcp"` (lowercase; any other value, such as `"TCP"`, silently falls back to UDP). UDP (User Datagram Protocol) is the default protocol for SNMP communications, though TCP (Transmission Control Protocol) can be used when more reliable delivery is required.
 
 **Type**: String
 
-Default is "UDP"
+Default is "udp"
 
 ---
 ### Port
@@ -334,7 +381,7 @@ Default is 2
 
 ---
 ### SnmpVersion
-The SnmpVersion property specifies which version of the SNMP protocol to use when communicating with the device. It accepts either 1 (for SNMPv1) or 2 (for SNMPv2c), with version 2 being the default. 
+The SnmpVersion property is intended to select the version of the SNMP protocol used to communicate with the device: 1 (for SNMPv1) or 2 (for SNMPv2c, the default). It must be an integer; a string such as "v2c" makes the configuration fail to load. The setting is currently ignored: the adapter always uses SNMPv2c, so devices that only support SNMPv1 cannot be read.
 
 **Type**: Integer
 
@@ -345,6 +392,14 @@ The Timeout property defines how long (in milliseconds) the adapter will wait fo
 **Type**: Integer
 
 Default is 10000
+
+---
+### WaitAfterReadError
+The WaitAfterReadError property specifies how long (in milliseconds) the adapter waits before it retries a read after an I/O error. The number of retries is set by [Retries](#retries).
+
+**Type**: Integer
+
+Default is 1000
 
 ### SnmpDeviceConfiguration Schema
 
@@ -360,14 +415,14 @@ Default is 10000
     },
     "Community": {
       "type": "string",
-      "description": "SNMP community string"
+      "description": "SNMP community string",
       "default" : "public"
     },
     "NetworkProtocol": {
       "type": "string",
       "description": "Network protocol to use",
-      "enum": ["UDP", "TCP"],
-      "default" : "UDP"
+      "enum": ["udp", "tcp"],
+      "default" : "udp"
     },
     "Port": {
       "type": "integer",
@@ -391,6 +446,11 @@ Default is 10000
     "Timeout": {
       "type": "integer",
       "description": "Timeout in milliseconds for SNMP requests"
+    },
+    "WaitAfterReadError": {
+      "type": "integer",
+      "description": "Wait time in milliseconds before retrying after an I/O error",
+      "default": 1000
     }
   },
   "required": ["Address"]
@@ -404,7 +464,6 @@ Default is 10000
 {
   "Address": "192.168.1.100",
   "Community": "public",
-  "SnmpVersion": "v2c",
   "Port": 161,
   "Timeout": 5000,
   "Retries": 3

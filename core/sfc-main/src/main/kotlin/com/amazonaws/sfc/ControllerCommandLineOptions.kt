@@ -12,7 +12,7 @@ class ControllerCommandLineOptions(args: Array<String>) : CommandLine(args) {
 
     override fun options(): Options {
         val options = super.options()
-        options.addOption(configOption.build())
+        options.addOption(configOption.get())
         options.addOption(configVerificationPublicKeyFile)
         return options
     }

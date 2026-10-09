@@ -1,0 +1,1105 @@
+{
+  "cases": [
+    {
+      "id": "CORE-CFG-TPL-01",
+      "title": "Configuration templates: whole-node replacement, %placeholders%, nesting with placeholder pass-through, partial in-string replacement, and @file-loaded templates",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "Merged with CORE-CFG-TEMPLATES-01. TemplateResolver replaces a string that is exactly $(Name, k=v) with the template's value, of any type (TemplateResolver.kt:24-26), substitutes %k% in the template's strings (:84-96), and resolves templates inside the result again, so templates nest. Two sources come from one SRC template with different name/start values; start passes through two levels of nesting into the counter's Min, and Step is a numeric template. A third source's channel comes from a template loaded with @file: (includes resolve before templates, ConfigReader.kt:85-86). Metadata uses a whole-string and a partial in-string replacement (:30). Every assertion fails if any of those steps is skipped.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TemplateResolver.kt:24",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TemplateResolver.kt:30",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TemplateResolver.kt:84",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/JsonHelper.kt:276",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ConfigReader.kt:85"
+      ],
+      "records": 6,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "keySet",
+          "path": "sources",
+          "keys": [
+            "One",
+            "Two",
+            "Three"
+          ],
+          "comment": "source names from %name%"
+        },
+        {
+          "kind": "channelSequence",
+          "source": "One",
+          "channel": "c",
+          "step": 2
+        },
+        {
+          "kind": "channelSequence",
+          "source": "Two",
+          "channel": "c",
+          "step": 2
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "One",
+          "channel": "c",
+          "min": 0,
+          "max": 98,
+          "comment": "Min 0 passed through $(SRC) -> $(NamedCounter) -> $(CounterSim)"
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "Two",
+          "channel": "c",
+          "min": 100,
+          "max": 198,
+          "comment": "Min 100: the other start value"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "Three",
+          "channel": "f",
+          "values": [
+            42
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "metadata.t",
+          "equals": "tpl-ok"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "metadata.p",
+          "equals": "v-tpl-ok-x",
+          "comment": "partial replacement inside a string"
+        },
+        {
+          "kind": "rawAbsent",
+          "texts": [
+            "$(",
+            "%name%",
+            "%start%"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-TPL-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Templates": {
+          "TAG": "tpl-ok",
+          "STEP": 2,
+          "CounterSim": {
+            "SimulationType": "Counter",
+            "DataType": "Int",
+            "Direction": "UP",
+            "Min": "%start%",
+            "Max": 100000,
+            "Step": "$(STEP)"
+          },
+          "NamedCounter": {
+            "Name": "%name%",
+            "Simulation": "$(CounterSim, start=%start%)"
+          },
+          "SRC": {
+            "Name": "%name%",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "c": "$(NamedCounter, name=c, start=%start%)"
+            }
+          },
+          "FromFile": "@file:${SFC_E2E_CASE_DIR}/tpl-chan.json"
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}",
+          "t": "$(TAG)",
+          "p": "v-$(TAG)-x"
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "s1": [
+                "*"
+              ],
+              "s2": [
+                "*"
+              ],
+              "s3": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "s1": "$(SRC, name=One, start=0)",
+          "s2": "$(SRC, name=Two, start=100)",
+          "s3": {
+            "Name": "Three",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "f": "$(FromFile, name=f)"
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "tpl-chan.json": "{\n  \"Name\": \"%name%\",\n  \"Simulation\": {\n    \"SimulationType\": \"Constant\",\n    \"DataType\": \"Int\",\n    \"Value\": 42\n  }\n}\n"
+      }
+    },
+    {
+      "id": "CORE-CFG-TPL-MISSING-01",
+      "title": "A reference to a missing template is reported precisely, but sfc-main exits 0 (known defect)",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "Merged with CORE-CFG-TEMPLATES-NEG-01. TemplateResolver raises 'Template \"Nope\" does not exist, available templates are \"A\"' (TemplateResolver.kt:65-70). The exception is thrown while ServiceMain builds its logger from the configuration (ServiceMain.kt:103 -> Logger.kt:687, which constructs a ConfigReader), outside createAndRunServiceInstance, so it reaches the generic catch at ServiceMain.kt:120-121 instead of the exit(1) path (:171-173): run() returns and the JVM exits 0. A supervisor sees a clean exit. The gate accepts records or the exit.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TemplateResolver.kt:65",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:103",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:120",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:171",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/Logger.kt:687"
+      ],
+      "gate": {
+        "sink": "main",
+        "records": 3,
+        "orExit": true
+      },
+      "timeoutSeconds": 40,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 0
+        },
+        {
+          "kind": "logContains",
+          "text": "Error running service"
+        },
+        {
+          "kind": "logContains",
+          "text": "Template \"Nope\" does not exist, available templates are \"A\""
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:120",
+        "summary": "Template errors (and any BaseConfiguration parse error) are thrown from createLogger(configuration) at ServiceMain.kt:103, outside the instance-creation error handling, and swallowed at :120-121, so sfc-main exits 0 on an invalid configuration. Correct: exit 1, like validation errors.",
+        "assertCurrent": [
+          {
+            "kind": "exitCode",
+            "equals": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "exitCode",
+            "equals": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-TPL-MISSING-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Templates": {
+          "A": "a"
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}",
+          "x": "$(Nope)"
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CFG-TPL-MISSING-02",
+      "title": "Without a Templates section, $(...) references are kept as literal text",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "Split from CORE-CFG-TPL-MISSING-01 (its control run). TemplateResolver returns the configuration unchanged when there is no Templates section (TemplateResolver.kt:15), so the same $(Nope) that is a fatal error with templates present is plain data without them. This pins that asymmetry: a configuration that loses its Templates section keeps running with literal '$(...)' strings.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TemplateResolver.kt:15"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "metadata.x",
+          "equals": "$(Nope)"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "metadata.y",
+          "equals": "a-$(Nope)-b"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "does not exist, available templates are"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-TPL-MISSING-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}",
+          "x": "$(Nope)",
+          "y": "a-$(Nope)-b"
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CFG-TPL-NUMPARTIAL-01",
+      "title": "A numeric template in a partial replacement renders as a double (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "In a partial replacement TemplateResolver inserts resolved.toString() (TemplateResolver.kt:30). Template values come from the Gson-parsed configuration map, where every number is a Double (ConfigReader.kt:72), so 'v$(Ver)' with Ver=3 becomes 'v3.0'. The isNumericValue helper that could prevent it is never called (:104-105). Ports, versions or paths built this way get a '.0'. The string template in the same Metadata is the control: partial replacement itself works.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TemplateResolver.kt:30",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TemplateResolver.kt:104",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ConfigReader.kt:72"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "metadata.n",
+          "equals": "x-plant"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TemplateResolver.kt:30",
+        "summary": "Partial template replacement inserts the Double's toString(), so an integral numeric template renders with '.0' ('v$(Ver)' -> 'v3.0'). Correct: 'v3'.",
+        "assertCurrent": [
+          {
+            "kind": "everyRecord",
+            "path": "metadata.v",
+            "equals": "v3.0"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "path": "metadata.v",
+            "equals": "v3"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-TPL-NUMPARTIAL-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Templates": {
+          "Ver": 3,
+          "Name": "plant"
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}",
+          "v": "v$(Ver)",
+          "n": "x-$(Name)"
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CFG-TPL-RECURSIVE-01",
+      "title": "Recursive templates are detected even when unused, but sfc-main exits 0 (known defect)",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "TemplateResolver walks the whole configuration, the Templates section included (TemplateResolver.kt:18), so the cycle A -> B -> A is found although nothing references A or B, and reported as 'is recursive' (:60-62); without the trail check the resolution would never terminate. Like every template error it is thrown from ServiceMain.kt:103 and swallowed at :120-121, so the process exits 0.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TemplateResolver.kt:18",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TemplateResolver.kt:60",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:103",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:120"
+      ],
+      "gate": {
+        "sink": "main",
+        "records": 3,
+        "orExit": true
+      },
+      "timeoutSeconds": 40,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 0
+        },
+        {
+          "kind": "logContains",
+          "text": "Error running service"
+        },
+        {
+          "kind": "logContains",
+          "text": "is recursive"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:120",
+        "summary": "As CORE-CFG-TPL-MISSING-01: the TemplateException escapes at ServiceMain.kt:103 and is swallowed at :120-121, so sfc-main exits 0. Correct: exit 1.",
+        "assertCurrent": [
+          {
+            "kind": "exitCode",
+            "equals": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "exitCode",
+            "equals": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-TPL-RECURSIVE-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Templates": {
+          "A": "$(B)",
+          "B": "$(A)",
+          "C": "fine"
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}",
+          "c": "$(C)"
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

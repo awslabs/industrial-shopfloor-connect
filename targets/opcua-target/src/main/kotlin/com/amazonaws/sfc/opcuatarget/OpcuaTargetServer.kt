@@ -28,16 +28,20 @@ import io.burt.jmespath.Expression
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import org.eclipse.milo.opcua.sdk.server.OpcUaServer
-import org.eclipse.milo.opcua.sdk.server.api.config.OpcUaServerConfig
+import org.eclipse.milo.opcua.sdk.server.OpcUaServerConfig
 import org.eclipse.milo.opcua.sdk.server.identity.IdentityValidator
+import org.eclipse.milo.opcua.stack.transport.server.tcp.OpcTcpServerTransport
+import org.eclipse.milo.opcua.stack.transport.server.tcp.OpcTcpServerTransportConfig
+import org.eclipse.milo.opcua.sdk.server.identity.CompositeValidator
+import org.eclipse.milo.opcua.sdk.server.identity.AnonymousIdentityValidator
 import org.eclipse.milo.opcua.sdk.server.identity.X509IdentityValidator
-import org.eclipse.milo.opcua.sdk.server.model.nodes.objects.BaseModelChangeEventTypeNode
+import org.eclipse.milo.opcua.sdk.server.model.objects.BaseModelChangeEventTypeNode
 import org.eclipse.milo.opcua.sdk.server.nodes.UaFolderNode
 import org.eclipse.milo.opcua.sdk.server.nodes.UaNode
 import org.eclipse.milo.opcua.sdk.server.nodes.UaVariableNode
 import org.eclipse.milo.opcua.sdk.server.nodes.filters.AttributeFilter
 import org.eclipse.milo.opcua.sdk.server.util.HostnameUtil
-import org.eclipse.milo.opcua.stack.core.Identifiers
+import org.eclipse.milo.opcua.stack.core.NodeIds
 import org.eclipse.milo.opcua.stack.core.StatusCodes
 import org.eclipse.milo.opcua.stack.core.UaRuntimeException
 import org.eclipse.milo.opcua.stack.core.security.DefaultCertificateManager
@@ -47,7 +51,7 @@ import org.eclipse.milo.opcua.stack.core.types.builtin.*
 import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.UShort
 import org.eclipse.milo.opcua.stack.core.types.enumerated.MessageSecurityMode
 import org.eclipse.milo.opcua.stack.core.types.structured.BuildInfo
-import org.eclipse.milo.opcua.stack.server.EndpointConfiguration
+import org.eclipse.milo.opcua.sdk.server.EndpointConfig
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.security.cert.X509Certificate
@@ -133,9 +137,11 @@ class OpcuaTargetServer(private val targetConfiguration: OpcuaTargetConfiguratio
             emptySet()
         else
             targetConfiguration.certificateValidationConfiguration.validationOptions.options
-        val certificateValidator = ServerCertificateValidator(serverTrustListManager, validations, logger)
+        val certificateValidator = ServerCertificateValidator(serverTrustListManager, validations, serverTrustListManager, logger)
 
-        val usernameIdentifyValidator = UserNameValidator(targetConfiguration.serverSecurityPolicies.contains(OpcuaServerSecurityPolicy.None) || targetConfiguration.anonymousDiscoveryEndPoint)
+        val usernameIdentifyValidator = UserNameValidator()
+        val allowAnonymousAccess = targetConfiguration.serverSecurityPolicies.contains(OpcuaServerSecurityPolicy.None) ||
+                targetConfiguration.anonymousDiscoveryEndPoint
 
 
         val secureMode = targetConfiguration.serverSecurityPolicies.any { it != OpcuaServerSecurityPolicy.None }
@@ -154,8 +160,13 @@ class OpcuaTargetServer(private val targetConfiguration: OpcuaTargetConfiguratio
 
         certificateExpiryChecker = startCertificateExpiryChecker(certificate)
 
-        val certificateManager = if (secureMode) DefaultCertificateManager(httpKeypair, certificate) else null
-        val endpointConfigurations: Set<EndpointConfiguration> = createEndpointConfigurations(certificate)
+        val certificateManager = if (secureMode)
+            DefaultCertificateManager(
+                serverTrustListManager,
+                SfcServerCertificateGroup(serverTrustListManager, certificateValidator, httpKeypair, arrayOf(certificate!!))
+            )
+        else null
+        val endpointConfigurations: Set<EndpointConfig> = createEndpointConfigurations(certificate)
 
 
 
@@ -175,24 +186,26 @@ class OpcuaTargetServer(private val targetConfiguration: OpcuaTargetConfiguratio
 
         if (secureMode) {
             serverConfigBuilder.setCertificateManager(certificateManager)
-                .setTrustListManager(serverTrustListManager)
-                .setHttpsKeyPair(httpKeypair)
-                .setHttpsCertificateChain(arrayOf(certificate))
-            
-                serverConfigBuilder.setCertificateValidator(certificateValidator)
-
         }
 
+        // milo 1.1.7 ships CompositeValidator, so SFC no longer needs its own composite.
+        val identityValidators = buildList<IdentityValidator> {
+            add(usernameIdentifyValidator)
+            if (secureMode && x509IdentityValidator != null) add(x509IdentityValidator)
+            if (allowAnonymousAccess) add(AnonymousIdentityValidator.INSTANCE)
+        }
         val identityValidator =
-            if (secureMode && x509IdentityValidator != null) CompositedValidator<IdentityValidator<*>>(usernameIdentifyValidator, x509IdentityValidator)
-            else
-                usernameIdentifyValidator
+            if (identityValidators.size == 1) identityValidators.first()
+            else CompositeValidator(identityValidators)
         serverConfigBuilder.setIdentityValidator(identityValidator)
 
 
         val serverConfig = serverConfigBuilder.build()
 
-        server = OpcUaServer(serverConfig)
+        // milo 1.1.7 requires an explicit transport factory; SFC serves opc.tcp only.
+        server = OpcUaServer(serverConfig) { _ ->
+            OpcTcpServerTransport(OpcTcpServerTransportConfig.newBuilder().build())
+        }
 
         dataModelHelper = ServerDataModelHelper(server!!, targetConfiguration, elementNames, transformations, attributeFilter, logger)
         dataModelHelper!!.createServerDataModels()
@@ -318,8 +331,8 @@ class OpcuaTargetServer(private val targetConfiguration: OpcuaTargetConfiguratio
         return hostnames
     }
 
-    private fun createEndpointConfigurations(certificate: X509Certificate?): Set<EndpointConfiguration> {
-        val endpointConfigurations: MutableSet<EndpointConfiguration> = LinkedHashSet()
+    private fun createEndpointConfigurations(certificate: X509Certificate?): Set<EndpointConfig> {
+        val endpointConfigurations: MutableSet<EndpointConfig> = LinkedHashSet()
 
         val hostNames = hostNamesToBind()
 
@@ -331,12 +344,12 @@ class OpcuaTargetServer(private val targetConfiguration: OpcuaTargetConfiguratio
     }
 
     private fun buildHostNameEndpoints(hostName: String,
-                                       certificate: X509Certificate?): Set<EndpointConfiguration> {
+                                       certificate: X509Certificate?): Set<EndpointConfig> {
 
         val bindAddress = "0.0.0.0"
-        val hostEndpointConfigurations = mutableSetOf<EndpointConfiguration>()
+        val hostEndpointConfigurations = mutableSetOf<EndpointConfig>()
 
-        val builder = EndpointConfiguration.newBuilder()
+        val builder = EndpointConfig.newBuilder()
             .setBindAddress(bindAddress)
             .setHostname(hostName)
             .setPath("/${targetConfiguration.serverPath}")
@@ -354,8 +367,8 @@ class OpcuaTargetServer(private val targetConfiguration: OpcuaTargetConfiguratio
     }
 
 
-    private fun buildEndpoints(builder: EndpointConfiguration.Builder): Set<EndpointConfiguration> {
-        val endpoints = mutableSetOf<EndpointConfiguration>()
+    private fun buildEndpoints(builder: EndpointConfig.Builder): Set<EndpointConfig> {
+        val endpoints = mutableSetOf<EndpointConfig>()
 
         targetConfiguration.serverSecurityPolicies.filter { it != OpcuaServerSecurityPolicy.None }.forEach { policy ->
             targetConfiguration.serverMessageSecurityModes.filter { it != OpcuaServerMessageSecurityMode.NONE }.forEach { mode ->
@@ -451,19 +464,19 @@ class OpcuaTargetServer(private val targetConfiguration: OpcuaTargetConfiguratio
         val log = logger.getCtxLoggers(className, "raiseDataModelChangedEvent")
 
         if (server != null) {
-            val serverNode = server!!.addressSpaceManager.getManagedNode(Identifiers.Server).get()
-            val event = server!!.eventFactory.createEvent(NodeId(0, UUID.randomUUID()), Identifiers.BaseModelChangeEventType) as BaseModelChangeEventTypeNode
+            val serverNode = server!!.addressSpaceManager.getManagedNode(NodeIds.Server).get()
+            val event = server!!.eventFactory.createEvent(NodeId(0, UUID.randomUUID()), NodeIds.BaseModelChangeEventType) as BaseModelChangeEventTypeNode
             event.message = LocalizedText("Model changed")
             event.browseName = QualifiedName(0, "ModelChanged")
             event.displayName = LocalizedText("Model changed")
             event.eventId = ByteString.of(DateTime.now().toString().encodeToByteArray())
-            event.eventType = Identifiers.GeneralModelChangeEventType
+            event.eventType = NodeIds.GeneralModelChangeEventType
             event.sourceNode = serverNode.nodeId
             event.sourceName = serverNode.displayName.text
             event.time = DateTime(System.currentTimeMillis())
             event.receiveTime = DateTime.NULL_VALUE
             event.severity = UShort.valueOf(1)
-            server!!.eventBus.post(event)
+            server!!.eventNotifier.fire(event)
             log.info("Raised data model changed event, ${event.eventType.toParseableString()} from source ${serverNode.nodeId.toParseableString()}")
             event.delete()
 
@@ -604,7 +617,7 @@ class OpcuaTargetServer(private val targetConfiguration: OpcuaTargetConfiguratio
     }
 
 
-    private fun buildTcpEndpoint(base: EndpointConfiguration.Builder): EndpointConfiguration {
+    private fun buildTcpEndpoint(base: EndpointConfig.Builder): EndpointConfig {
         return base.copy()
             .setTransportProfile(TransportProfile.TCP_UASC_UABINARY)
             .setBindPort(targetConfiguration.serverTcpPort)

@@ -11,7 +11,7 @@ import com.amazonaws.sfc.opcuatarget.OpcuaServerDataTypes
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonPrimitive
-import org.eclipse.milo.opcua.stack.core.Identifiers
+import org.eclipse.milo.opcua.stack.core.NodeIds
 import org.eclipse.milo.opcua.stack.core.UaRuntimeException
 import org.eclipse.milo.opcua.stack.core.types.builtin.DateTime
 import org.eclipse.milo.opcua.stack.core.types.builtin.ExpandedNodeId
@@ -115,26 +115,26 @@ class VariableNodeConfiguration(configNode: BaseNodeConfiguration,
             val dataTypeIdentifier = dataType.identifier
             val value = try {
                 when (dataTypeIdentifier) {
-                    Identifiers.Boolean -> json.asBoolean
-                    Identifiers.SByte -> json.asByte
-                    Identifiers.ExpandedNodeId -> ExpandedNodeId.parse(json.asString)
-                    Identifiers.Float -> json.asFloat
-                    Identifiers.Int32 -> json.asInt
-                    Identifiers.LocalizedText -> json.asString
-                    Identifiers.Int64 -> json.asLong
-                    Identifiers.NodeId -> NodeId.parse(json.asString)
-                    Identifiers.QualifiedName -> json.asString
-                    Identifiers.Int16 -> json.asShort
-                    Identifiers.String -> json.asString
-                    Identifiers.UInt32 -> json.asInt
-                    Identifiers.UInt64 -> json.asLong
-                    Identifiers.UInt16 -> json.asShort
-                    Identifiers.XmlElement -> json.asString
-                    Identifiers.Byte -> json.asByte
-                    Identifiers.Double -> json.asDouble
-                    Identifiers.Guid -> json.asString
-                    Identifiers.ByteString -> json.asString
-                    Identifiers.DateTime -> DateTime(Instant.parse(json.asString))
+                    NodeIds.Boolean -> json.asBoolean
+                    NodeIds.SByte -> json.asByte
+                    NodeIds.ExpandedNodeId -> ExpandedNodeId.parse(json.asString)
+                    NodeIds.Float -> json.asFloat
+                    NodeIds.Int32 -> json.asInt
+                    NodeIds.LocalizedText -> json.asString
+                    NodeIds.Int64 -> json.asLong
+                    NodeIds.NodeId -> NodeId.parse(json.asString)
+                    NodeIds.QualifiedName -> json.asString
+                    NodeIds.Int16 -> json.asShort
+                    NodeIds.String -> json.asString
+                    NodeIds.UInt32 -> json.asInt
+                    NodeIds.UInt64 -> json.asLong
+                    NodeIds.UInt16 -> json.asShort
+                    NodeIds.XmlElement -> json.asString
+                    NodeIds.Byte -> json.asByte
+                    NodeIds.Double -> json.asDouble
+                    NodeIds.Guid -> json.asString
+                    NodeIds.ByteString -> json.asString
+                    NodeIds.DateTime -> DateTime(Instant.parse(json.asString))
                     else -> null
                 }
             } catch (e: ClassCastException) {

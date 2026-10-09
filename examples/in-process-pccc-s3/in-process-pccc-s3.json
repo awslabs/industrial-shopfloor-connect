@@ -32,11 +32,11 @@
         },
         "OUTPUT-FIRST-16-BITS-INDEX": {
           "Address": "O0:0.1",
-          "Description": "First 16 outputs bit in logical order, using an index which is a 'row' of 16 bits"
+          "Description": "Second set of 16 output bits (word 1) in logical order, ELEMENTS OF O0 MUST BE SET TO 2 OR HIGHER ON CONTROLLER, KNOWN LIMITATION: SEE README"
         },
         "OUTPUT-ARRAY-OF-2": {
           "Address": "O0:0,2",
-          "Description": "First 32 output bits as 2 sets of 16 bits in logical order, ELEMENTS OF O0 MUST BE SET TO 2 OR HIGHER ON CONTROLLER"
+          "Description": "First 32 output bits as 2 sets of 16 bits in logical order, ELEMENTS OF O0 MUST BE SET TO 2 OR HIGHER ON CONTROLLER, KNOWN LIMITATION: SEE README"
         },
         "OUTPUT-SINGLE-BIT-0": {
           "Address": "O0:0/0",
@@ -44,7 +44,7 @@
         },
         "OUTPUT-SINGLE-BIT-15": {
           "Address": "O0:0/15",
-          "Description": "Fifteenth output bit"
+          "Description": "Sixteenth output bit (offset 15)"
         },
         "INPUT-FIRST-16-BITS": {
           "Address": "I1:0",
@@ -52,7 +52,7 @@
         },
         "INPUT1-FIRST-16-BITS-INDEX": {
           "Address": "I1:0.1",
-          "Description": "First 16 input bit in logical order, using an index which is a 'row' of 16 bits"
+          "Description": "Second set of 16 input bits (word 1) in logical order, ELEMENTS OF I1 MUST BE SET TO 2 OR HIGHER ON CONTROLLER, KNOWN LIMITATION: SEE README"
         },
         "INPUT-SINGLE-BIT-0": {
           "Address": "I1:0/0",
@@ -60,7 +60,7 @@
         },
         "INPUT1-SINGLE-BIT-15": {
           "Address": "I1:0/15",
-          "Description": "Fifteenth input bit"
+          "Description": "Sixteenth input bit (offset 15)"
         },
         "BINARY-FIRST-16-BITS": {
           "Address": "B3:0",
@@ -72,7 +72,7 @@
         },
         "BINARY-SINGLE-BIT-15": {
           "Address": "B3:0/15",
-          "Description": "Fifteenth binary bit"
+          "Description": "Sixteenth binary bit (offset 15)"
         },
         "TIMER-AS-STRUCT": {
           "Address": "T4:0",
@@ -134,7 +134,7 @@
           "Address": "C5:0/UA",
           "Description": "Counter element UA bit value"
         },
-        "COUNTER5:0/UN": {
+        "COUNTER-UN-BIT": {
           "Address": "C5:0/UN",
           "Description": "Counter element UN bit value"
         },
@@ -188,11 +188,11 @@
         },
         "SHORT-SECOND_VALUE": {
           "Address": "N7:1",
-          "Description": "Second 16 bit integer value, ELEMENTS PROPERTY OF N7 MUST BET SET TO 2 OR HIGHER"
+          "Description": "Second 16 bit integer value, ELEMENTS PROPERTY OF N7 MUST BE SET TO 2 OR HIGHER"
         },
         "SHORT-FIRST-TWO-VALUES": {
           "Address": "N7:0,2",
-          "Description": "First two  16 bit integer values, ELEMENTS PROPERTY OF N7 MUST BET SET TO 2 OR HIGHER"
+          "Description": "First two  16 bit integer values, ELEMENTS PROPERTY OF N7 MUST BE SET TO 2 OR HIGHER"
         },
         "FLOAT-FIRST-VALUE": {
           "Address": "F8:0",
@@ -200,11 +200,11 @@
         },
         "FLOAT-SECOND-VALUE": {
           "Address": "F8:1",
-          "Description": "Second float value, ELEMENTS PROPERTY OF F8 MUST BET SET TO 2 OR HIGHER"
+          "Description": "Second float value, ELEMENTS PROPERTY OF F8 MUST BE SET TO 2 OR HIGHER"
         },
         "FLOAT-FIRST-TWO-VALUES": {
           "Address": "F8:0,2",
-          "Description": "First two float values, ELEMENTS PROPERTY OF F8 MUST BET SET TO 2 OR HIGHER"
+          "Description": "First two float values, ELEMENTS PROPERTY OF F8 MUST BE SET TO 2 OR HIGHER"
         },
         "STRING-FIRST-VALUE": {
           "Address": "ST9:0",
@@ -222,7 +222,7 @@
           "Address": "L10:1",
           "Description": "Second long value, CREATE DATAFILE L10  ON CONTROLLER WITH AT LEAST 2 ELEMENTS"
         },
-        "LONG-FIRS-TWO-VALUES": {
+        "LONG-FIRST-TWO-VALUES": {
           "Address": "L10:0,2",
           "Description": "First two long values, CREATE DATAFILE L10  ON CONTROLLER WITH AT LEAST 2 ELEMENTS"
         },
@@ -230,7 +230,7 @@
           "Address": "A11:0",
           "Description": "First ascii value containing two characters, CREATE DATAFILE A11  ON CONTROLLER"
         },
-        "ASCII-SECONDS-TWO-CHARS-VALUE": {
+        "ASCII-SECOND-TWO-CHARS-VALUE": {
           "Address": "A11:1",
           "Description": "Second ascii value containing two characters, CREATE DATAFILE A11  ON CONTROLLER WITH AT LEAST 2 ELEMENTS"
         },

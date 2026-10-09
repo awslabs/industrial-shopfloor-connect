@@ -1,0 +1,1382 @@
+{
+  "cases": [
+    {
+      "id": "AWS-SNS-01",
+      "title": "SNS BatchSize 1: every record is its own PublishBatch call to the real topic and arrives unchanged through the raw-delivery subscription",
+      "tier": "aws",
+      "priority": "P0",
+      "intent": "The basic SNS contract against the real service: with BatchSize 1 each record is flushed on arrival (AwsSnsTargetWriter.kt:214-216) as a one-entry PublishBatch whose message is the record JSON, authorised by sns:Publish on the project role (topic.grantPublish). The stack's sink queue is subscribed to the topic with raw message delivery, so each SQS body is exactly what SFC published; the queue is shared by every concurrent SNS case run, so the sink keeps only this run's marker and, as a standard queue keeps no order, reads on after the stop until nothing new has arrived for 8 s. The case fails if a record is lost or duplicated (the counter set must be contiguous), if anything wraps or alters the record (the top-level keys must be exactly SFC's envelope, in order - a notification envelope would not even carry the marker), if SFC batches despite BatchSize 1 (Messages/Writes must be exactly 1), or if a write error is counted or logged.",
+      "pins": [
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:214-216",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:259-266",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:302-319",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:332-352",
+        "ci/cdk/lib/sfc-it-stack.ts:171-176",
+        "ci/cdk/lib/sfc-it-stack.ts:420-423",
+        "ci/e2e/lib/sinks/aws.py:173-174"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sns"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Sns",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "SNS -> SQS keeps no order: a contiguous set, no duplicates"
+        },
+        {
+          "kind": "keyOrder",
+          "keys": [
+            "schedule",
+            "serial",
+            "timestamp",
+            "sources",
+            "metadata"
+          ],
+          "comment": "raw delivery: the body is SFC's record itself, nothing added or wrapped"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ctr.value",
+          "type": "int"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "Sns",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "Sns",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1,
+          "comment": "BatchSize 1: one record per PublishBatch"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to topic",
+            "Error sending message",
+            "exceeds max SNS message size",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SNS-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Sns"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Sns": {
+            "TargetType": "AWS-SNS",
+            "TopicArn": "${SFC_E2E_SNS_TOPIC_ARN}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sns-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SnsServer": {
+          "module": "aws-sns-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Sns": {
+            "TargetServer": "SnsServer"
+          }
+        },
+        "TargetServers": {
+          "SnsServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SNS-02",
+      "title": "SNS batching: the default BatchSize fills 10-entry PublishBatch calls under a steady stream; Interval flushes a partial batch once the stream is idle; entries carry a Subject",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Batching is how SFC keeps SNS request counts down - one PublishBatch carries up to ten messages - and Interval is what bounds the latency of a partial batch. SnsBatch leaves BatchSize at its documented default of 10 (AwsSnsTargetConfiguration.kt:91-92,170) and gets a record every 100 ms, so it must flush full ten-entry batches (AwsSnsTargetWriter.kt:214-216); its Interval of 2000 ms never elapses between two records. SnsIdle gets a record every second with BatchSize 10 and Interval 200, so only the timer (:169-172) can flush it, one record at a time. SnsBatch also sets a Subject on every entry (:362-364); the raw-delivery subscription drops SNS metadata, so the case proves only that the real service accepts ten-entry batches carrying a Subject, not its value. Both publish to the stack topic and are told apart by schedule. The case fails if batching is off or the default changes (Messages/Writes would be 1, about 10 is expected), if the Interval flush does not happen (a Slow record would wait for ten, 10 s), if SNS rejects an entry ('Error sending message'), or if records are lost or duplicated. That Interval is an inactivity timer rather than a maximum wait is pinned by AWS-SNS-DEF-01.",
+      "pins": [
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:153-180",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:214-216",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:362-364",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/config/AwsSnsTargetConfiguration.kt:82-92",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/config/AwsSnsTargetConfiguration.kt:133-139",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/config/AwsSnsTargetConfiguration.kt:170"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sns"
+        }
+      },
+      "records": 34,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "SnsIdle",
+              "name": "Writes",
+              "op": "ge",
+              "value": 4
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "SnsBatch",
+              "name": "Writes",
+              "op": "ge",
+              "value": 3
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Slow"
+          },
+          "min": 4
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Fast"
+          },
+          "min": 20
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Slow"
+          },
+          "source": "simSlow",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Fast"
+          },
+          "source": "simFast",
+          "channel": "ctr"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "SnsBatch",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "SnsBatch",
+            "name": "Writes"
+          },
+          "op": "ge",
+          "value": 6,
+          "comment": "default BatchSize 10: full batches of 10; 1 would mean no batching, 6 leaves room for a start-up partial"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "SnsIdle",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "SnsIdle",
+            "name": "Writes"
+          },
+          "op": "lt",
+          "value": 2,
+          "comment": "the 200 ms timer flushes each slow record (the start-up reads can share a write); without it a write would carry 10"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to topic",
+            "Error sending message"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SNS-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Fast",
+            "Interval": 100,
+            "Sources": {
+              "simFast": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SnsBatch"
+            ]
+          },
+          {
+            "Name": "Slow",
+            "Interval": 1000,
+            "Sources": {
+              "simSlow": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SnsIdle"
+            ]
+          }
+        ],
+        "Sources": {
+          "simFast": {
+            "Name": "simFast",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "simSlow": {
+            "Name": "simSlow",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SnsBatch": {
+            "TargetType": "AWS-SNS",
+            "TopicArn": "${SFC_E2E_SNS_TOPIC_ARN}",
+            "Region": "${SFC_E2E_REGION}",
+            "Interval": 2000,
+            "Subject": "SFC e2e AWS-SNS-02"
+          },
+          "SnsIdle": {
+            "TargetType": "AWS-SNS",
+            "TopicArn": "${SFC_E2E_SNS_TOPIC_ARN}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 10,
+            "Interval": 200
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sns-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SnsBatchServer": {
+          "module": "aws-sns-target"
+        },
+        "SnsIdleServer": {
+          "module": "aws-sns-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SnsBatch": {
+            "TargetServer": "SnsBatchServer"
+          },
+          "SnsIdle": {
+            "TargetServer": "SnsIdleServer"
+          }
+        },
+        "TargetServers": {
+          "SnsBatchServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SnsIdleServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SNS-03",
+      "title": "SNS GZip and Zip: the {compression, payload} envelope is accepted by the real topic, delivered raw and decodes back to the record",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Compression changes what SFC publishes: Compress.compressedDataPayload wraps the gzip or zip bytes in a base64 JSON envelope {compression: GZIP|ZIP, payload} (AwsSnsTargetWriter.kt:338-347, Compress.kt:51-57). That message has to be accepted by SNS, passed on unchanged by the raw-delivery subscription and decode back to the record a consumer expects. SnsGzip and SnsZip publish separate counter streams, told apart by schedule; the sns sink unwraps either envelope (sinks/aws.py:42-60), so a contiguous counter and the intact constant string per stream prove the round trip, and one 'Used GZIP/ZIP compression to compress' line per message proves the compression path ran for each. The case fails if compression is skipped (no log lines), if an envelope does not decode (its records never match the marker, so the gate times out), or if a record is lost, duplicated or altered. The sink cannot show that a message arrived compressed; the exact envelope is asserted on the wire for SQS by LOC-AWSTGT-SQS-COMPRESSION-WRAPPER-01, and SNS builds it with the same helper.",
+      "pins": [
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:338-347",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/Compress.kt:51-57",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/ZipCompression.kt:38-47",
+        "ci/e2e/lib/sinks/aws.py:42-60"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sns"
+        }
+      },
+      "records": 10,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "SnsGzip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 5
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "SnsZip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 5
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Gz"
+          },
+          "min": 5
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Zp"
+          },
+          "min": 5
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Gz"
+          },
+          "source": "simGz",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Zp"
+          },
+          "source": "simZp",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueSet",
+          "where": {
+            "schedule": "Gz"
+          },
+          "source": "simGz",
+          "channel": "txt",
+          "values": [
+            "sfc-e2e-sns-compressed-payload-sfc-e2e-sns-compressed-payload-sfc-e2e-sns-compressed-payload"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "where": {
+            "schedule": "Zp"
+          },
+          "source": "simZp",
+          "channel": "txt",
+          "values": [
+            "sfc-e2e-sns-compressed-payload-sfc-e2e-sns-compressed-payload-sfc-e2e-sns-compressed-payload"
+          ]
+        },
+        {
+          "kind": "logContains",
+          "text": "Used GZIP compression to compress",
+          "min": 5,
+          "comment": "one line per compressed message (the enum name, not the configured spelling)"
+        },
+        {
+          "kind": "logContains",
+          "text": "Used ZIP compression to compress",
+          "min": 5
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to topic",
+            "Error sending message"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SNS-03",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Gz",
+            "Interval": 200,
+            "Sources": {
+              "simGz": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SnsGzip"
+            ]
+          },
+          {
+            "Name": "Zp",
+            "Interval": 200,
+            "Sources": {
+              "simZp": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SnsZip"
+            ]
+          }
+        ],
+        "Sources": {
+          "simGz": {
+            "Name": "simGz",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "txt": {
+                "Name": "txt",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "sfc-e2e-sns-compressed-payload-sfc-e2e-sns-compressed-payload-sfc-e2e-sns-compressed-payload"
+                }
+              }
+            }
+          },
+          "simZp": {
+            "Name": "simZp",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "txt": {
+                "Name": "txt",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "sfc-e2e-sns-compressed-payload-sfc-e2e-sns-compressed-payload-sfc-e2e-sns-compressed-payload"
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SnsGzip": {
+            "TargetType": "AWS-SNS",
+            "TopicArn": "${SFC_E2E_SNS_TOPIC_ARN}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Compression": "GZip"
+          },
+          "SnsZip": {
+            "TargetType": "AWS-SNS",
+            "TopicArn": "${SFC_E2E_SNS_TOPIC_ARN}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Compression": "Zip"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sns-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SnsGzipServer": {
+          "module": "aws-sns-target"
+        },
+        "SnsZipServer": {
+          "module": "aws-sns-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SnsGzip": {
+            "TargetServer": "SnsGzipServer"
+          },
+          "SnsZip": {
+            "TargetServer": "SnsZipServer"
+          }
+        },
+        "TargetServers": {
+          "SnsGzipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SnsZipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SNS-NEG-01",
+      "title": "SNS: a record over 256 KiB is dropped before publishing while normal records keep flowing - and no WriteError is counted (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "SNS rejects messages over 256 KiB, so SFC checks the payload length first (SNS_MAX_BATCH_MSG_SIZE = 262144, AwsSnsTargetWriter.kt:199-201, :408). SnsBig renders a 300 000-character template, above the SNS limit but below the 1 MiB SQS one, so a guard copied with the SQS limit would let it through and SNS would reject the call; it must never reach the topic, while SnsSmall in the same schedule keeps delivering. The guard only logs and reports the record to a result handler, which a direct target does not have; it does not increment WriteError, so a dashboard shows no failure while every SnsBig record is lost - the exception path of the same writer does count it (:294-296), and the IoT Core target counts its oversize payloads (AwsIotCoreTargetWriter.kt:353-356). The case fails if the guard is lost or too lenient (no 'exceeds max SNS message size' line, a publish for SnsBig, a send error, or the oversize record in the sink) or if SnsSmall stops delivering. SnsBig may report WriteError, so that a fix flips only the pin.",
+      "pins": [
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:199-201",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:294-296",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:408",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:353-356"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sns"
+        }
+      },
+      "records": 5,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "log": "exceeds max SNS message size",
+            "count": 4
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "SnsSmall",
+              "name": "Writes",
+              "op": "ge",
+              "value": 5
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "big"
+          ],
+          "comment": "no oversize record ever reached the topic"
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr"
+        },
+        {
+          "kind": "logContains",
+          "text": "exceeds max SNS message size",
+          "min": 4
+        },
+        {
+          "kind": "metric",
+          "source": "SnsBig",
+          "name": "Writes",
+          "op": "eq",
+          "value": 0,
+          "comment": "nothing was published for SnsBig"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to topic",
+            "Error sending message"
+          ],
+          "comment": "a 300 000-character message that got past the guard would be rejected by SNS"
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:199-201",
+        "summary": "An SNS record over 256 KiB is dropped with only an error log line; WriteError is not incremented, so the data loss is invisible in metrics",
+        "assertCurrent": [
+          {
+            "kind": "metric",
+            "source": "SnsBig",
+            "name": "WriteError",
+            "op": "eq",
+            "value": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "metric",
+            "source": "SnsBig",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 1
+          }
+        ]
+      },
+      "allowWriteErrors": [
+        "SnsBig"
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SNS-NEG-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SnsSmall",
+              "SnsBig"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SnsSmall": {
+            "TargetType": "AWS-SNS",
+            "TopicArn": "${SFC_E2E_SNS_TOPIC_ARN}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1
+          },
+          "SnsBig": {
+            "TargetType": "AWS-SNS",
+            "TopicArn": "${SFC_E2E_SNS_TOPIC_ARN}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Template": "${SFC_E2E_CASE_DIR}/big.vm"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sns-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SnsSmallServer": {
+          "module": "aws-sns-target"
+        },
+        "SnsBigServer": {
+          "module": "aws-sns-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SnsSmall": {
+            "TargetServer": "SnsSmallServer"
+          },
+          "SnsBig": {
+            "TargetServer": "SnsBigServer"
+          }
+        },
+        "TargetServers": {
+          "SnsSmallServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SnsBigServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "big.vm": "{\"metadata\":{\"marker\":\"$metadata.marker\"},\"big\":\"#foreach($i in [1..6000])01234567890123456789012345678901234567890123456789#end\"}\n"
+      }
+    },
+    {
+      "id": "AWS-SNS-DEF-01",
+      "title": "SNS Interval is an inactivity timer, not a maximum wait: a steady stream faster than Interval waits for BatchSize (known defect)",
+      "tier": "aws",
+      "priority": "P2",
+      "intent": "docs/targets/aws-sns.md:99 promises that buffered data is sent when Interval elapses or BatchSize is reached, whichever occurs first - that is what bounds the latency of a slow trickle. The writer cancels the timer for every record it receives and starts a new one after it (AwsSnsTargetWriter.kt:163-174), so the timer fires only after Interval without any record. SnsSteady gets a record every 200 ms with BatchSize 10 and Interval 500: as documented each PublishBatch would carry the 2-3 records of the last 500 ms; today the timer never fires, every call carries 10 and a record waits up to 2 s. The pin discriminates on Messages/Writes - about 10 today, about 2.5 once fixed; the thresholds 5 and 4 leave room for scheduling stalls that let the timer fire a few times. Both behaviours reach the same wait for 30 published messages. The common assertions fail if records are lost or duplicated on the way through the real topic.",
+      "pins": [
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:158-174",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:225-234",
+        "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/config/AwsSnsTargetConfiguration.kt:82-89",
+        "docs/targets/aws-sns.md:98-103"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sns"
+        }
+      },
+      "records": 30,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "SnsSteady",
+              "name": "Messages",
+              "op": "ge",
+              "value": 30
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 30
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to topic",
+            "Error sending message"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-sns-target/src/main/kotlin/com/amazonaws/sfc/awssns/AwsSnsTargetWriter.kt:163-174",
+        "summary": "Interval restarts with every received record, so it is an inactivity timer: under a stream faster than Interval a partial batch is flushed only when BatchSize is reached, not after Interval as documented (docs/targets/aws-sns.md:99)",
+        "assertCurrent": [
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "SnsSteady",
+              "name": "Messages"
+            },
+            "denominator": {
+              "source": "SnsSteady",
+              "name": "Writes"
+            },
+            "op": "ge",
+            "value": 5,
+            "comment": "every PublishBatch waits for 10 records"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "SnsSteady",
+              "name": "Messages"
+            },
+            "denominator": {
+              "source": "SnsSteady",
+              "name": "Writes"
+            },
+            "op": "le",
+            "value": 4,
+            "comment": "flushed at least every 500 ms: 2-3 records per PublishBatch"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SNS-DEF-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Steady",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SnsSteady"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SnsSteady": {
+            "TargetType": "AWS-SNS",
+            "TopicArn": "${SFC_E2E_SNS_TOPIC_ARN}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 10,
+            "Interval": 500
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SNS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sns-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SnsSteadyServer": {
+          "module": "aws-sns-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SnsSteady": {
+            "TargetServer": "SnsSteadyServer"
+          }
+        },
+        "TargetServers": {
+          "SnsSteadyServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

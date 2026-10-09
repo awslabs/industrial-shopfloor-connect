@@ -1,0 +1,3089 @@
+{
+  "cases": [
+    {
+      "id": "CORE-CFG-TYPE-NEG-01",
+      "title": "A wrongly typed core field is reported, but sfc-main exits 0 (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "ServiceMain builds its logger from the configuration first, which parses it as BaseConfiguration (ServiceMain.kt:103 -> Logger.kt:687). A string where Schedules must be a list (BaseConfiguration.kt:80) fails right there, outside createAndRunServiceInstance's handling; the exception is swallowed at ServiceMain.kt:120-121 and the JVM exits 0. The gate accepts records or the exit.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/BaseConfiguration.kt:80",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/Logger.kt:687",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:103",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:120"
+      ],
+      "gate": {
+        "sink": "main",
+        "records": 3,
+        "orExit": true
+      },
+      "timeoutSeconds": 40,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 0
+        },
+        {
+          "kind": "logContains",
+          "text": "Error running service"
+        },
+        {
+          "kind": "logContains",
+          "text": "Error getting configuration of type BaseConfiguration"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:120",
+        "summary": "BaseConfiguration parse errors are thrown from createLogger(configuration) at ServiceMain.kt:103 and swallowed at :120-121, so a mistyped field exits 0. Correct: exit 1.",
+        "assertCurrent": [
+          {
+            "kind": "exitCode",
+            "equals": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "exitCode",
+            "equals": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-TYPE-NEG-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": "not-a-list",
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CFG-VALIDATE-NEG-01",
+      "title": "An unsupported AWSVersion fails validation: exit 1 with the precise message",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "The contrast to the exit-0 parse path. Validation runs when the controller reads its configuration (MainControllerService.kt:482-483); BaseConfiguration rejects an AWSVersion outside the supported list (BaseConfiguration.kt:243-248). The ConfigurationException is caught in createAndRunServiceInstance (ServiceMain.kt:152-153), no instance exists, and runService exits 1 (:171-173).",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/BaseConfiguration.kt:246",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:483",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:153",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:173"
+      ],
+      "expectStartupFailure": true,
+      "timeoutSeconds": 30,
+      "assert": [
+        {
+          "kind": "exitCode",
+          "equals": 1
+        },
+        {
+          "kind": "logContains",
+          "text": "AWSVersion must be any of 2022-04-02"
+        },
+        {
+          "kind": "logContains",
+          "text": "Error creating service instance because of configuration error"
+        },
+        {
+          "kind": "logContains",
+          "text": "Could not create service instance"
+        }
+      ],
+      "config": {
+        "AWSVersion": "1999-01-01",
+        "Name": "CORE-CFG-VALIDATE-NEG-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CFG-VALIDATE-NEG-02",
+      "title": "A configuration whose only schedule is inactive fails validation: exit 1 with the precise message",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "Split from CORE-CFG-VALIDATE-NEG-01 (its run B). ControllerServiceConfiguration requires at least one active schedule (ControllerServiceConfiguration.kt:388-392): a configuration that would do nothing is rejected through the same exit-1 path rather than idling.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ControllerServiceConfiguration.kt:388",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ControllerServiceConfiguration.kt:390",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:153",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:173"
+      ],
+      "expectStartupFailure": true,
+      "timeoutSeconds": 30,
+      "assert": [
+        {
+          "kind": "exitCode",
+          "equals": 1
+        },
+        {
+          "kind": "logContains",
+          "text": "Configuration must contain one or more active schedules"
+        },
+        {
+          "kind": "logContains",
+          "text": "Error creating service instance because of configuration error"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-VALIDATE-NEG-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": false,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-ARGORDER-01",
+      "title": "Any option placed before -config hides it, and sfc-main exits 1 'No configuration found' (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "ConfigProviderFactory parses the command line with stopAtNonOption=true and knows only -config and -verify (ConfigProviderFactory.kt:25-30). The first other option, here -info, stops commons-cli, so the -config after it is never seen. The suite itself only works because the harness puts -config first. argv: '<launcher> -info -nocolor -config <workdir>/config.json', a valid configuration. The gate accepts records or the exit, so the same run asserts today's exit and the correct records. In-process and uberjar only: IPC mode runs the same sfc-main launcher as in-process and differs only in the configuration and the service processes, which this command line never reaches.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigProviderFactory.kt:25",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigProviderFactory.kt:30",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:89"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "cliNoConfig": true,
+      "cliLogLevel": "none",
+      "cliColor": true,
+      "cliArgs": [
+        "-info",
+        "-nocolor",
+        "-config",
+        "${SFC_E2E_WORK}/config.json"
+      ],
+      "gate": {
+        "sink": "main",
+        "records": 3,
+        "orExit": true
+      },
+      "timeoutSeconds": 40,
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigProviderFactory.kt:30",
+        "summary": "ConfigProviderFactory parses with stopAtNonOption=true and only -config/-verify, so any option before -config hides it: '-info -config x.json' exits 1 with 'No configuration found'. Correct: parse the full option set (or skip unknown options) and run.",
+        "assertCurrent": [
+          {
+            "kind": "exitCode",
+            "equals": 1
+          },
+          {
+            "kind": "recordCount",
+            "equals": 0
+          },
+          {
+            "kind": "logContains",
+            "text": "No configuration found from configuration file"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "min": 3
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-ARGORDER-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-HELP-01",
+      "title": "'-help' alone exits 1 with 'No configuration found' and a help text without -config (known defect)",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "The provider lookup runs before any help handling: ConfigProviderFactory stops at '-help' (stopAtNonOption, ConfigProviderFactory.kt:25-30), finds no configuration, and ServiceMain exits 1 after printing commonOptions() (ServiceMain.kt:89-96), which lacks -config and -verify (CommandLine.kt:125-137). A user asking for help is told the configuration is missing and is not shown the option that would fix it. argv: '<launcher> -help'. In-process and uberjar only: IPC mode runs the same sfc-main launcher as in-process and differs only in the configuration and the service processes, which this command line never reaches.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigProviderFactory.kt:30",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:94",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/CommandLine.kt:125"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "cliNoConfig": true,
+      "cliLogLevel": "none",
+      "cliColor": true,
+      "cliArgs": [
+        "-help"
+      ],
+      "expectStartupFailure": true,
+      "timeoutSeconds": 30,
+      "assert": [
+        {
+          "kind": "logContains",
+          "text": "Displays this help"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:94",
+        "summary": "'sfc-main -help' exits 1 with 'No configuration found' and prints commonOptions(), which omits -config and -verify. Correct: honour -help first, exit 0 and list every option.",
+        "assertCurrent": [
+          {
+            "kind": "exitCode",
+            "equals": 1
+          },
+          {
+            "kind": "logContains",
+            "text": "No configuration found from configuration file"
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "Name of the configuration file"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "exitCode",
+            "equals": 0
+          },
+          {
+            "kind": "logContains",
+            "text": "Name of the configuration file"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-HELP-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-HELP-02",
+      "title": "'-help' after -config prints the full help, including -config and -verify, and exits 0",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "Split from CORE-CLI-HELP-01 (its run B). With a configuration present, the controller's strict parse sees -help, prints the help for the controller's options - commonOptions plus -config and -verify (ControllerCommandLineOptions.kt) - and exits 0 (CommandLine.kt:21-24) before the pipeline starts. argv: '<launcher> -config <file> -info -nocolor -help'. In-process and uberjar only: IPC mode runs the same sfc-main launcher as in-process and differs only in the configuration and the service processes, which this command line never reaches.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/CommandLine.kt:21",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/CommandLine.kt:23",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ControllerCommandLineOptions.kt:13"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "cliArgs": [
+        "-help"
+      ],
+      "expectStartupFailure": true,
+      "timeoutSeconds": 30,
+      "assert": [
+        {
+          "kind": "exitCode",
+          "equals": 0
+        },
+        {
+          "kind": "logContains",
+          "text": "Displays this help"
+        },
+        {
+          "kind": "logContains",
+          "text": "Name of the configuration file"
+        },
+        {
+          "kind": "logContains",
+          "text": "Public key file for configuration verification"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Writing"
+          ],
+          "comment": "no record is written: help exits before the pipeline starts"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-HELP-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-LOGFLAG-CONFLICT-01",
+      "title": "Two log-level flags exit 1 with 'Command line error'",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "The four log-level options form one OptionGroup (CommandLine.kt:129-134), so a second level is an AlreadySelectedException in the controller's strict parse, reported as 'Command line error' with exit 1 (CommandLine.kt:26-29). It documents why the harness must replace '-info' rather than append another level. argv: '<launcher> -config <file> -info -nocolor -trace'. In-process and uberjar only: IPC mode runs the same sfc-main launcher as in-process and differs only in the configuration and the service processes, which this command line never reaches.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/CommandLine.kt:129",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/CommandLine.kt:134",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/CommandLine.kt:26"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "cliArgs": [
+        "-trace"
+      ],
+      "expectStartupFailure": true,
+      "timeoutSeconds": 30,
+      "assert": [
+        {
+          "kind": "exitCode",
+          "equals": 1
+        },
+        {
+          "kind": "logContains",
+          "text": "Command line error"
+        },
+        {
+          "kind": "logContains",
+          "text": "AlreadySelectedException"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-LOGFLAG-CONFLICT-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-LOGLEVEL-01",
+      "title": "Without a CLI level flag, the configuration's LogLevel applies once the controller is created",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "MainControllerService takes the level from the command line if one is given, else from the configuration (MainControllerService.kt:485-486). With no flag and LogLevel Error, INFO lines logged after the controller exists must vanish, while records keep flowing. Lines logged before the configuration is read still appear at INFO, because the level is unknown then (ServiceMain.kt:72-75): that is pinned too. 'Created instance of service' (ServiceMain.kt:149) is logged in every mode right after the controller is built.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:485",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:486",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:72",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:149",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/BaseConfiguration.kt:99"
+      ],
+      "cliLogLevel": "none",
+      "records": 4,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 4
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Created instance of service",
+            "Creating in process target writer",
+            "Creating an IPC process writer"
+          ],
+          "process": "sfc-main"
+        },
+        {
+          "kind": "logContains",
+          "text": "Creating configuration provider of type ConfigProvider",
+          "process": "sfc-main",
+          "comment": "pre-configuration INFO lines are not affected"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-LOGLEVEL-01",
+        "Version": 1,
+        "LogLevel": "Error",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-LOGLEVEL-02",
+      "title": "A CLI level flag overrides the configuration's LogLevel",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "Merged with CORE-CFG-LOGLEVEL-01. The command-line level wins over the configuration (MainControllerService.kt:485): with LogLevel Trace in the configuration and -info on the command line, no TRACE line may appear while INFO lines do. This is also why every other case's LogLevel is inert: the harness passes -info by default.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:485",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/CommandLine.kt:46",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:149"
+      ],
+      "records": 4,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 4
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "TRACE -"
+          ],
+          "process": "sfc-main"
+        },
+        {
+          "kind": "logContains",
+          "text": "Created instance of service",
+          "process": "sfc-main"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-LOGLEVEL-02",
+        "Version": 1,
+        "LogLevel": "Trace",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-MISSINGARG-01",
+      "title": "'-config' without a value is reported, but sfc-main exits 0 (known defect)",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "commons-cli raises MissingArgumentException for '-config' with no value inside ConfigProviderFactory (ConfigProviderFactory.kt:25-30), called from ServiceMain.kt:87. The generic catch at ServiceMain.kt:120-121 logs 'Error running service' and run() returns, so the JVM exits 0. argv: '<launcher> -config'. In-process and uberjar only: IPC mode runs the same sfc-main launcher as in-process and differs only in the configuration and the service processes, which this command line never reaches.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigProviderFactory.kt:25",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:87",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:120"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "cliNoConfig": true,
+      "cliLogLevel": "none",
+      "cliColor": true,
+      "cliArgs": [
+        "-config"
+      ],
+      "expectStartupFailure": true,
+      "timeoutSeconds": 30,
+      "assert": [
+        {
+          "kind": "logContains",
+          "text": "Error running service"
+        },
+        {
+          "kind": "logContains",
+          "text": "Missing argument for option: config"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:120",
+        "summary": "The MissingArgumentException for '-config' without a value is swallowed by ServiceMain.kt:120-121 and sfc-main exits 0. Correct: exit 1 with the help.",
+        "assertCurrent": [
+          {
+            "kind": "exitCode",
+            "equals": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "exitCode",
+            "equals": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-MISSINGARG-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-MISSINGFILE-01",
+      "title": "A -config file that does not exist is reported, but sfc-main exits 0 (known defect)",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "ConfigFileProvider logs 'Configuration file ... does not exist' and returns a null configuration channel (ConfigFileProvider.kt:105-107). The ServiceMain loop condition is then false from the start (ServiceMain.kt:100), run() returns normally and the JVM exits 0, so a typo in a service unit's -config path looks like a clean shutdown. argv: '<launcher> -config <workdir>/nope.json -info -nocolor'. In-process and uberjar only: IPC mode runs the same sfc-main launcher as in-process and differs only in the configuration and the service processes, which this command line never reaches.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigFileProvider.kt:105",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigFileProvider.kt:107",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:100"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "cliNoConfig": true,
+      "cliLogLevel": "none",
+      "cliColor": true,
+      "cliArgs": [
+        "-config",
+        "${SFC_E2E_WORK}/nope.json",
+        "-info",
+        "-nocolor"
+      ],
+      "expectStartupFailure": true,
+      "timeoutSeconds": 30,
+      "assert": [
+        {
+          "kind": "logContains",
+          "text": "nope.json does not exist",
+          "comment": "'Configuration file <abs path> does not exist'"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:100",
+        "summary": "A missing configuration file makes ConfigFileProvider return a null channel (ConfigFileProvider.kt:105-107); ServiceMain's loop never runs (ServiceMain.kt:100) and sfc-main exits 0. Correct: exit 1.",
+        "assertCurrent": [
+          {
+            "kind": "exitCode",
+            "equals": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "exitCode",
+            "equals": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-MISSINGFILE-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-NOCOLOR-01",
+      "title": "-nocolor removes the ANSI colour sequences from a normal run",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "ConsoleLogWriter colours the level unless noColor is set (ConsoleLogWriter.kt:22-30). ServiceMain applies -nocolor to its first logger (ServiceMain.kt:77-78) and the controller re-applies it to the logger built from the configuration (MainControllerService.kt:488). Every SFC process gets -nocolor from the harness; on a run without errors no ESC byte may appear on either stream. CORE-CLI-NOCOLOR-02 is the control and CORE-CLI-NOCOLOR-03 the error path.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/ConsoleLogWriter.kt:24",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:77",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:488"
+      ],
+      "records": 4,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 4
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "\u001b["
+          ],
+          "process": "sfc-main"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-NOCOLOR-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-NOCOLOR-02",
+      "title": "Without -nocolor the console writer colours level names (control for CORE-CLI-NOCOLOR-01)",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "The control that makes CORE-CLI-NOCOLOR-01 discriminating: the same run without -nocolor must contain the green INFO sequence ESC[0;32m (ConsoleLogWriter.kt:28, :38), otherwise an absent ESC byte would prove nothing. In-process and uberjar only: IPC mode runs the same sfc-main launcher as in-process and differs only in the configuration and the service processes, which this command line never reaches.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/ConsoleLogWriter.kt:24",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/ConsoleLogWriter.kt:28"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "cliColor": true,
+      "records": 3,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "logContains",
+          "text": "\u001b[0;32mINFO",
+          "process": "sfc-main"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-NOCOLOR-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-NOCOLOR-03",
+      "title": "-nocolor is lost for configuration errors: they are logged in colour (known defect)",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "When a configuration arrives, ServiceMain replaces its logger with createLogger(configuration) (ServiceMain.kt:103), a fresh ConsoleLogWriter whose noColor is false (Logger.kt:613-616); only the controller re-applies -nocolor (MainControllerService.kt:488). A configuration that fails validation never gets there, so 'Error creating service instance because of configuration error' and 'Could not create service instance' - exactly the lines an operator greps for - carry ESC[0;31m despite -nocolor.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:103",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/Logger.kt:614",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:488",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:153"
+      ],
+      "expectStartupFailure": true,
+      "timeoutSeconds": 30,
+      "assert": [
+        {
+          "kind": "exitCode",
+          "equals": 1
+        },
+        {
+          "kind": "logContains",
+          "text": "AWSVersion must be any of"
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:103",
+        "summary": "ServiceMain.kt:103 swaps in a new logger whose ConsoleLogWriter ignores -nocolor; the flag is re-applied only in createController (MainControllerService.kt:488), so configuration errors are printed with ANSI colour codes despite -nocolor. Correct: carry noColor over.",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "text": "\u001b[0;31mERROR \u001b[0m- Error creating service instance because of configuration error",
+            "process": "sfc-main"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "\u001b["
+            ],
+            "process": "sfc-main"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "1999-01-01",
+        "Name": "CORE-CLI-NOCOLOR-03",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-NOCONFIG-01",
+      "title": "No -config and no SFC_CONFIG: sfc-main exits 1 with a clear message and the help",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "ConfigProviderFactory finds neither -config nor SFC_CONFIG and returns no provider (ConfigProviderFactory.kt:53-63); sfc-main needs a configuration, so ServiceMain logs the reason, prints the help and exits 1 (ServiceMain.kt:89-96). The harness environment is built from scratch, so SFC_CONFIG cannot leak in. The argv is '<launcher> -info -nocolor'. In-process and uberjar only: IPC mode runs the same sfc-main launcher as in-process and differs only in the configuration and the service processes, which this command line never reaches.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:89",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:91",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:95",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigProviderFactory.kt:57"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "expectStartupFailure": true,
+      "cliNoConfig": true,
+      "timeoutSeconds": 30,
+      "assert": [
+        {
+          "kind": "exitCode",
+          "equals": 1
+        },
+        {
+          "kind": "logContains",
+          "text": "No configuration found from configuration file or environment variable \"SFC_CONFIG\""
+        },
+        {
+          "kind": "logContains",
+          "text": "Displays this help",
+          "comment": "the help is printed after the error"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-NOCONFIG-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-TRACE-01",
+      "title": "-trace logs source-tagged TRACE lines, and the uberjar resolves factories from the classpath",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "With -trace the console writer prefixes every TRACE line with its [Class:method] source (ConsoleLogWriter.kt:15), and InstanceFactory reports which class-loading branch it takes (InstanceFactory.kt:23-31). In the uberjar there are no JarFiles, so every factory must come from the classpath; this pins that the uberjar really exercises that branch. Split from the catalog's per-mode assertions: CORE-CLI-TRACE-02 covers the JarFiles branch in-process.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/ConsoleLogWriter.kt:15",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:23",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:28",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:485"
+      ],
+      "modes": [
+        "uberjar"
+      ],
+      "cliLogLevel": "trace",
+      "records": 3,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "logContains",
+          "text": "TRACE -[",
+          "process": "sfc-main"
+        },
+        {
+          "kind": "logContains",
+          "text": "No jar files specified for 'com.amazonaws.sfc.filetarget.FileTargetWriter, using factory class from classpath"
+        },
+        {
+          "kind": "logContains",
+          "text": "No jar files specified for 'com.amazonaws.sfc.simulator.SimulatorAdapter, using factory class from classpath"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Loading factory class name class com.amazonaws.sfc.filetarget.FileTargetWriter"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-TRACE-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-TRACE-02",
+      "title": "-trace shows the in-process deployment loading each factory from its JarFiles",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "Split from CORE-CLI-TRACE-01. In-process, the harness gives every component JarFiles, so InstanceFactory must build a URLClassLoader and say 'Loading factory class name class <factory> from <jars>' (InstanceFactory.kt:31) for the adapter and the target - the branch a uberjar-only suite never touches. In-process only: in IPC mode the adapter and target are not loaded in sfc-main at all.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:31",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:39",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:309"
+      ],
+      "modes": [
+        "inprocess"
+      ],
+      "cliLogLevel": "trace",
+      "records": 3,
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "logContains",
+          "text": "TRACE -[",
+          "process": "sfc-main"
+        },
+        {
+          "kind": "logContains",
+          "text": "Loading factory class name class com.amazonaws.sfc.filetarget.FileTargetWriter from"
+        },
+        {
+          "kind": "logContains",
+          "text": "Loading factory class name class com.amazonaws.sfc.simulator.SimulatorAdapter from"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "No jar files specified for 'com.amazonaws.sfc.filetarget.FileTargetWriter"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-TRACE-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CLI-UNKNOWNOPT-01",
+      "title": "An unknown option after -config exits 1 with 'Command line error' and the full help",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "The controller re-parses the whole command line strictly when it is created (MainControllerService.kt:475-476 -> CommandLine.kt:20). An unknown option raises UnrecognizedOptionException, which CommandLine reports as 'Command line error' with the help before exiting 1 (CommandLine.kt:26-29). This is the only place unknown options are rejected: the provider-level parse ignores them (see CORE-CLI-ARGORDER-01). argv: '<launcher> -config <file> -info -nocolor -bogus'. In-process and uberjar only: IPC mode runs the same sfc-main launcher as in-process and differs only in the configuration and the service processes, which this command line never reaches.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/CommandLine.kt:20",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/CommandLine.kt:26",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/CommandLine.kt:29",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:476"
+      ],
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "cliArgs": [
+        "-bogus"
+      ],
+      "expectStartupFailure": true,
+      "timeoutSeconds": 30,
+      "assert": [
+        {
+          "kind": "exitCode",
+          "equals": 1
+        },
+        {
+          "kind": "logContains",
+          "text": "Command line error"
+        },
+        {
+          "kind": "logContains",
+          "text": "Unrecognized option: -bogus"
+        },
+        {
+          "kind": "logContains",
+          "text": "Name of the configuration file",
+          "comment": "the controller help includes -config"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CLI-UNKNOWNOPT-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

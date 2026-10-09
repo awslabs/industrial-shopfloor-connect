@@ -3,23 +3,16 @@
 
 group = "com.amazonaws.sfc"
 version = "1.0.0"
-val sfcRelease = rootProject.extra.get("sfc_release")!!
-val sfcCoreVersion = sfcRelease
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.2.0"
-
 
 plugins {
-    java
     id("sfc.kotlin-library-conventions")
     `maven-publish`
 }
 
 dependencies {
-
     implementation(project(":core:sfc-core"))
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
 }
 
 publishing {
@@ -28,10 +21,9 @@ publishing {
             from(components["kotlin"])
             groupId = group as String
             artifactId = "modbus"
-            version = version
+            version = project.version.toString()
         }
     }
-
 }
 
 tasks.build {

@@ -20,7 +20,7 @@ class Divide(operand: Number) : TransformationImpl<Number>(operand) {
             if (operand == 0 || operand == null || target == null) null
             else
                 when (target) {
-                    is Float -> target.toFloat() / operand.toFloat()
+                    is Float -> target / operand.toFloat()
                     else -> (target.toDouble() / operand.toDouble())
                 }
 

@@ -8,9 +8,11 @@ The payload of the published message can either be
 
 The latter can be used if the size of the configuration exceeds the maximum message size of the MQTT broker.
 
-Optionally a local file can be specified to which the last received configuration data can be stored and used next time the SFC main process is started until a new configuration is published.
+Configurations received on the topic are not signature-checked, even when SFC runs with `-verify`, so anyone who can publish to the topic can reconfigure SFC. Restrict who can publish to it, for example with the broker's access control and an `ssl://` connection with client certificates.
 
-The  SFC configuration used by to sfc-main  contains the configuration for the MQTT custom provider, including the required information to connect to the MQTT broker.
+The provider stores the last received configuration in a local file (`LocalConfigFile`, required) and uses it the next time the SFC process is started, until a new configuration is published.
+
+The SFC configuration that SFC is started with contains the configuration for the MQTT custom provider, including the required information to connect to the MQTT broker.
 &nbsp;
 
 ### Configuration steps
@@ -22,36 +24,84 @@ The image below shows the steps executed by SFC configured to use the MQTT confi
 1. The SFC main process is started with a startup configuration (see example configuration below) which contains the configuration for using the MQTT configuration provider.
 2. The SFC main process will create an instance of the provider and will pass the startup configuration to the instance.
 3. The provider will look for a recently used configuration (this step is optional) and will load that configuration.
-3a.If there was a recently used configuration it will be sent to the SFC which will use it to collect data.
+   - 3a. If there was a recently used configuration it will be sent to the SFC which will use it to collect data.
 4. The provider connects to the MQTT broker using information from the startup configuration and subscribes to a configured topic.
 5. A new configuration is posted to the topic. If the size of the configuration is beyond the maximum payload size of the broker, the configuration is uploaded and instead of the actual configuration an url from where it can be downloaded is published on the topic.
 6. The provider receives the messages from the topic, containing either a configuration or an url from where it can be downloaded.
-6a.If an url was received the configuration is downloaded making a GET request to the url.
+   - 6a. If an url was received the configuration is downloaded making a GET request to the url.
 7. After validation the received, or downloaded, configuration is stored as the last recent configuration.
 8. The new configuration is sent to the SFC core.
 
 ### Example configuration
 
+[config.json](./config.json) is the startup configuration for the in-process mode:
+
 ```json
 {
   "ConfigProvider": {
-    "JarFiles": ["< DEPLOYMENT DIR > /mqtt-config-provider/build/libs"],
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/mqtt-config-provider/lib"],
     "FactoryClassName": "com.amazonaws.sfc.config.MqttConfigProvider"
   },
   "LocalConfigFile" : "local-config.json",
-  "Port" : < PORT NUMBER >,
-  "EndPoint" : "< BROKER ADDRESS >",
+  "Port" : "< PORT NUMBER >",
+  "EndPoint" : "tcp://< BROKER ADDRESS >:< PORT NUMBER >",
   "TopicName" : "< TOPIC NAME >"
 }
 ```
 
+Replace the placeholders, for example with `"Port" : 1883` and `"EndPoint" : "tcp://localhost:1883"` for a broker on
+the same host without TLS. For TLS give the host only, e.g. `"EndPoint" : "ssl://broker.example.com"`, set
+`"Port" : 8883` and add `Certificate` and `PrivateKey` (see the table below).
 
-When sfc-main is started with the command
+### Run it
 
-`sfc-main -config config.json`
+**Uberjar**: the provider is part of the uberjar installed by [sfcup](../../README.md#1-install). Change the
+`JarFiles` entry of the `ConfigProvider` section to an empty list, `"JarFiles": []` (SFC ignores the section without
+the key), and start SFC in the folder that holds `config.json` (the same command in Windows PowerShell):
 
-SFC will load the configured mqtt configuration provider. This provider will optionally use saved configuration data from an earlier program execution and 
-subscribe to the configured topic to receive new versions of the configuration.
+```shell
+sfcx -config config.json -info
+```
+
+**In-process**: unpack the module bundles `sfc-main` and `mqtt-config-provider` of the
+[latest release](https://github.com/awslabs/industrial-shopfloor-connect/releases/latest) into one directory, point
+`SFC_DEPLOYMENT_DIR` at it and start `sfc-main` in the folder that holds `config.json`. `sfc-main` needs a Java 17 (or
+newer) runtime (Windows: `winget install EclipseAdoptium.Temurin.17.JDK`). More about this mode:
+[In-process](../../docs/sfc-deployment.md#in-process).
+
+**Linux / macOS**
+
+```shell
+export SFC_DEPLOYMENT_DIR="$HOME/sfc"
+mkdir -p "$SFC_DEPLOYMENT_DIR"
+for m in sfc-main mqtt-config-provider; do
+  curl -fsSL "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz" | tar -xzf - -C "$SFC_DEPLOYMENT_DIR"
+done
+"$SFC_DEPLOYMENT_DIR/sfc-main/bin/sfc-main" -config config.json -info
+```
+
+**Windows (PowerShell)**
+
+Give `SFC_DEPLOYMENT_DIR` forward slashes: SFC inserts the value into the JSON text as it is, so a backslash breaks
+the JSON.
+Start `sfc-main` with `java -cp`, not with `bin\sfc-main.bat` ([Platform support](../../docs/README.md#platform-support)):
+
+```powershell
+$env:SFC_DEPLOYMENT_DIR = "C:/sfc"
+New-Item -ItemType Directory -Force C:\sfc | Out-Null
+foreach ($m in "sfc-main", "mqtt-config-provider") {
+    curl.exe -fsSL -o "C:\sfc\$m.tar.gz" "https://github.com/awslabs/industrial-shopfloor-connect/releases/latest/download/$m.tar.gz"
+    tar -xf "C:\sfc\$m.tar.gz" -C C:\sfc
+}
+java -cp "C:\sfc\sfc-main\lib\*" com.amazonaws.sfc.MainController -config config.json -info
+```
+
+SFC will load the configured mqtt configuration provider. This provider will use saved configuration data from an
+earlier program execution, if there is any, and subscribe to the configured topic to receive new versions of the
+configuration. It logs `Connected to <EndPoint>, subscribing to topic <TopicName>`; for each message on the topic it
+logs `Received configuration from topic <TopicName>` and, for a valid configuration, `Sending configuration to
+SFC-Core`, after which SFC restarts with that configuration. To try it with the uberjar, publish the
+[Quickstart `simulator.json`](../../README.md#2-helloworld-simulator-example) to the topic with any MQTT client.
 
 ### MQTT configuration provider configuration
 
@@ -73,11 +123,7 @@ subscribe to the configured topic to receive new versions of the configuration.
 <td>EndPoint</td>  
 <td>Broker endpoint address</td>  
 <td>String</td>  
-<td>Optionally with training port number (see Port)
-
-
-If no scheme is specified in the address, then it will be added based on the Connection type.
-("tcp://" for PlainText or "ssl://" for ServerSideTLS or MutualTLS)</td>  
+<td>Required. Broker URL with scheme: "tcp://host:port" for plain MQTT, e.g. "tcp://localhost:1883" (without a port the client connects to 1883), or "ssl://host" for TLS, e.g. "ssl://broker.example.com". For "ssl://" the client connects to port 8883; do not put a port in an "ssl://" URL (see Port). Without a scheme, "tcp://" is added, or "ssl://" when Certificate, PrivateKey or RootCA is set.</td>  
 </tr>  
 <tr class="odd">  
 <td>Port</td>  
@@ -85,39 +131,25 @@ If no scheme is specified in the address, then it will be added based on the Con
 <td>Integer</td>  
 <td>
 
-Commonly port numbers are 
--  1883 for Plaintext
--  8883 for ServerSideTLS
--  8884 for MutualTLS. 
--  443 for AWS IoT Core endpoints
+When it is not set, a port in EndPoint sets it. For "ssl://" endpoints the provider also reads the broker's certificate from this port, so use 8883 there.
 
-In no port number is specified then the EndPoint address is searched for a training port number.
+Commonly port numbers are 
+-  1883 for plain MQTT ("tcp://")
+-  8883 for MQTT over TLS ("ssl://"), also for AWS IoT Core endpoints
 
 </td> 
-</tr>  
-<tr class="even">  
-<td>Connection</td>  
-<td>Connection type</td>  
-<td>String</td>  
-<td>
-
--  "PlainText" (Default)
--  "ServerSideTLS"
--  "MutualTLS"
-</td>  
 </tr>  
 <tr class="even">  
 <td>SslServerCertificate</td>  
 <td>Path to server certificate file to verify the identity of the broker.</td>  
 <td>String</td>  
-<td>If no certificate file is specified it is obtained from the server.
-<p>Used for connections of type ServerSideTLS and MutualTLS</p></td>  
+<td>Currently not applied: the provider reads the certificate from the broker instead and trusts it, so the broker is not authenticated.</td>  
 </tr>  
 <tr class="odd">  
 <td>PrivateKey</td>  
 <td>Path to client private key file</td>  
 <td>String</td>  
-<td></td>  
+<td>Required for "ssl://" endpoints</td>  
 </tr>  
 <tr class="even">  
 <td>RootCA</td>  
@@ -129,59 +161,70 @@ In no port number is specified then the EndPoint address is searched for a train
 <td>Certificate</td>  
 <td>Path to client certificate file. Used if broker used certificate authentication</td>  
 <td>String</td>  
-<td></td>  
+<td>Required for "ssl://" endpoints: the provider loads a client certificate for every TLS connection</td>  
 </tr>  
 
 <tr class="even">  
 <td>Username</td>  
 <td>Username if broker is using username and password authentication</td>  
 <td>String</td>  
-<td>Username and password should not be included as clear text in the configuration. It is strongly recommended to use placeholders and use the SFC integration with the AWS secrets manager.</td>
+<td>Username and password should not be included as clear text in the configuration. It is strongly recommended to use placeholders and use the SFC integration with the AWS secrets manager (<a href="../../docs/sfc-configuration.md#configuration-secrets">configuration secrets</a>).</td>
 </tr>
 
 <tr class="odd">  
 <td>Password</td>  
 <td>Password if broker is using username and password authentication</td>  
 <td>String</td>  
-<td>Username and password should not be included as clear text in the configuration. It is strongly recommended to use placeholders and use the SFC integration with the AWS secrets manager.</td>  
+<td>Username and password should not be included as clear text in the configuration. It is strongly recommended to use placeholders and use the SFC integration with the AWS secrets manager (<a href="../../docs/sfc-configuration.md#configuration-secrets">configuration secrets</a>).</td>  
 </tr>  
 
 <tr class="even">  
-<td>ConnectionTimeout</td>  
+<td>ConnectTimeout</td>  
 <td>Timeout for connecting to the broker in seconds</td>  
 <td>Int</td>  
-<td>Default is 10 seconds</td>
+<td>Default is 10 seconds. Known limitation: the configured value is currently not applied, the timeout is always 10 seconds.</td>
 </tr>
 
 <tr class="odd">  
+<td>VerifyHostname</td>  
+<td>Verify that the host name in the broker's certificate matches the broker address</td>  
+<td>Boolean</td>  
+<td>Default is true</td>
+</tr>
+
+<tr class="even">  
 <td>WaitAfterConnectError</td>  
 <td>Period in seconds to wait before trying to connect after a connection failure</td>  
 <td>Int</td>  
 <td>Default is 60 seconds</td>
-<tr class="even">
+</tr>
+<tr class="odd">
 <td>TopicName</td>  
 <td>Name of the topic which is used to publish configuration data.</td>  
 <td>String</td>  
-<td></td>  
+<td>Required</td>  
 </tr> 
-<tr class="odd">  
+<tr class="even">  
 <td>LocalConfigFile</td>  
 <td>Pathname of a file to which received configurations are written. </td>  
 <td>String</td>  
-<td>If the SFC process is executed it will check if this file exists and use it to load the 
-initial configuration which is sent by the config provider to the SFC core before subscribing and awaiting configurations published to the topic. If this
-setting is omitted then received configurations are not saved.</td>
-<tr class="even">  
+<td>Required. If the SFC process is executed it will check if this file exists and use it to load the 
+initial configuration which is sent by the config provider to the SFC core before subscribing and awaiting configurations published to the topic. A relative path resolves against the directory SFC is started from.</td>
+</tr>
+<tr class="odd">  
 <td>UseLocalConfigFileAtStartUp</td>  
 <td>Controls if the last received and stored local configuration file may be used as initial configuration data which is sent to the SFC core.</td>  
-<td>String</td>  
+<td>Boolean</td>  
 <td>Default is true. 
 
-Note that if this is set to false, or no LocalConfigFile is specified SFC can only start collecting and processing data after a first valid configuration
+Note that if this is set to false SFC can only start collecting and processing data after a first valid configuration
 is received on the configured topic.
 </td> 
 </tr>  
 </tbody>  
 </table>
 
-[Examples](../../docs/examples/README.md)
+On Windows, write the paths in this configuration with forward slashes, e.g. `"RootCA": "C:/sfc/certs/AmazonRootCA1.pem"`;
+a single backslash is a JSON escape.
+
+Docs used: [MQTT broker settings](../../docs/adapters/mqtt.md#mqttbrokerconfiguration) · [ConfigProvider](../../docs/core/sfc-configuration.md#configprovider) · [Custom configuration handlers](../../docs/sfc-extending.md#custom-configuration-handlers) · [Configuration secrets](../../docs/sfc-configuration.md#configuration-secrets) · [All examples](../../docs/examples/README.md)

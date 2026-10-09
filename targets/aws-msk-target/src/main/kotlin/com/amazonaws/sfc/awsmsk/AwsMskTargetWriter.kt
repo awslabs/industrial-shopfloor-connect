@@ -122,7 +122,7 @@ class AwsMskTargetWriter(
         val config = credentialClientConfig
         if (config == null) {
             log.info("Using default AWS credentials provider")
-            DefaultCredentialsProvider.create()
+            DefaultCredentialsProvider.builder().build()
         } else {
             log.info("Using SFC credential provider client ${mskTargetConfig.credentialProviderClient}")
             AwsIoTCredentialSessionProvider(credentialClientConfig, logger)

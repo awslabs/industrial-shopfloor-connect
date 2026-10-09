@@ -1,51 +1,37 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-
 import com.google.protobuf.gradle.*
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 group = "com.amazonaws.sfc"
 version = rootProject.extra.get("sfc_release")!!
 
-val protobufVersion = "3.21.7"
-val grpcKotlinVersion = "1.3.0"
-val grpcVersion = "1.54.1"
-val reflectionVersion = "1.6.0"
-val kotlinAnnotationVersion = "1.3.2"
-val commonsCliVersion = "1.5.0"
-val sfcCoreVersion = version
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinReflectionVersion = "1.6.0"
-
+// The protoc / protoc-gen versions MUST match the runtime libraries, so they come from the
+// same catalog entries rather than being repeated here.
+val protobufVersion = libs.versions.protobuf.get()
+val grpcKotlinVersion = libs.versions.grpcKotlin.get()
+val grpcVersion = libs.versions.grpc.get()
 
 plugins {
-    id("com.google.protobuf") version "0.9.4"
+    alias(libs.plugins.protobuf)
     id("sfc.kotlin-library-conventions")
-    idea
     `maven-publish`
 }
 
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation(libs.kotlinx.coroutines.core)
     implementation(project(":core:sfc-core"))
-    implementation("commons-cli:commons-cli:$commonsCliVersion")
-    api("com.google.protobuf:protobuf-java:$protobufVersion")
-    api("com.google.protobuf:protobuf-java-util:$protobufVersion")
-    api("io.grpc:grpc-kotlin-stub:$grpcKotlinVersion")
-    api("io.grpc:grpc-netty-shaded:$grpcVersion")
-    api("io.grpc:grpc-protobuf:$grpcVersion")
-    api("io.grpc:grpc-stub:$grpcVersion")
-    implementation("org.jetbrains.kotlin:kotlin-reflect:$reflectionVersion")
+    implementation(libs.commons.cli)
+    api(libs.protobuf.java)
+    api(libs.protobuf.java.util)
+    api(libs.grpc.kotlin.stub)
+    api(libs.grpc.netty.shaded)
+    api(libs.grpc.protobuf)
+    api(libs.grpc.stub)
+    implementation(libs.kotlin.reflect)
     // Java
-    compileOnly("javax.annotation:javax.annotation-api:$kotlinAnnotationVersion")
-}
-
-tasks.withType<KotlinCompile> {
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
-        freeCompilerArgs.set(listOf("-opt-in=kotlin.time.ExperimentalTime", "-opt-in=kotlin.ExperimentalUnsignedTypes"))
-    }
+    compileOnly(libs.javax.annotation.api)
 }
 
 protobuf {
@@ -88,16 +74,14 @@ idea {
 }
 
 publishing {
-
     publications {
         create<MavenPublication>("maven") {
             from(components["kotlin"])
             groupId = group as String
             artifactId = "sfc-ipc"
-            version = version
+            version = project.version.toString()
         }
     }
-
 }
 
 tasks.build {

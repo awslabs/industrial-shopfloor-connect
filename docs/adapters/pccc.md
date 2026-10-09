@@ -1,19 +1,65 @@
 # PCCC Protocol Configuration
 
-Configuration for PCCC protocol adapter, used script to read data from Allen Bradley/Rockwell PLCs using the PCCC (Programmable Controller Communication Commands) protocol.
+Configuration for the PCCC protocol adapter, which reads data from Allen-Bradley/Rockwell SLC 500 and MicroLogix PLCs over EtherNet/IP, using PCCC (Programmable Controller Communication Commands) typed reads. PLC-5 controllers are not supported, and L (LONG) files exist on MicroLogix controllers only.
+
+**Try it without hardware:** [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md) reads a simulated MicroLogix 1400 served by the `omni-plc-sim` PLC simulator. Its data table has the files used on this page (O0, I1, S2, B3, T4, C5, R6, N7, F8, ST9, L10 and A11), for example `N7:0` = -12345 and `ST9:0` = "SFC-SIM".
 
 - [PCCC Addressing](#pccc-addressing)
 
-In order to use this adapter as in [in-process](../sfc-running-adapters.md#running-protocol-adapters-in-process) type adapter the type must be added to the [AdapterTypes](../core/sfc-configuration.md#adaptertypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this adapter
+
+`AdapterType` is `PCCC` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"AdapterTypes" :{
-  "PCCC" : {
-    "JarFiles" : ["<location of deployment>/pccc/lib"]
-  },
-  "FactoryClassName" : "com.amazonaws.sfc.pccc.PcccAdapter"
+"AdapterTypes": {
+  "PCCC": { "FactoryClassName": "com.amazonaws.sfc.pccc.PcccAdapter" }
 }
 ```
+
+**In-process** - module bundle `pccc` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"AdapterTypes": {
+  "PCCC": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/pccc/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.pccc.PcccAdapter"
+  }
+}
+```
+
+**IPC** - no `AdapterTypes`; the adapter runs as its own service:
+
+```json
+"ProtocolAdapters": {
+  "PcccAdapter": {
+    "AdapterType": "PCCC",
+    "AdapterServer": "PcccServer"
+  }
+},
+"AdapterServers": {
+  "PcccServer": { "Address": "localhost", "Port": 50000 }
+}
+```
+
+Start the service before SFC, on the port of its `AdapterServers` entry:
+
+**Linux / macOS**
+
+```shell
+pccc/bin/pccc -port 50000
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\pccc\lib\*" com.amazonaws.sfc.pccc.PcccProtocolService -port 50000
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.pccc.PcccProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.pccc.PcccProtocolService -port 50000`).
+
+**Examples:** uberjar: [uberjar-plc-sim-s3tables](../../examples/uberjar-plc-sim-s3tables/README.md), [uberjar-pccc-file](../../examples/uberjar-pccc-file/README.md) · in-process: [in-process-pccc-s3](../../examples/in-process-pccc-s3/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 
@@ -31,13 +77,17 @@ The following data types, along with their respective addresses, can be used as 
 
 PCCC addressing formats differ based on the data type and memory area. Each data type necessitates a specific addressing format to accurately access the PLC memory.
 
+An address can have an offset (a `/` bit offset, a `.` offset or a field name) or an array length (`,` followed by the number of values), not both. Most of the address forms below have a channel in [in-process-pccc-s3.json](../../examples/in-process-pccc-s3/in-process-pccc-s3.json).
+
+> **Known limitation:** OUTPUT and INPUT addresses with a word offset (`O0:0.1`, `I1:0.1`) or an array length (`O0:0,2`, `I1:0,2`) can fail or return the wrong word in this release. Read whole words (`O0:0`) and single bits (`O0:0/15`) instead.
+
 
 
 Datatype OUTPUT, Prefix O
 
 Default file number 0
 
-Syntax: `0<filenumber>:<element index>[/bit offset][,arraylen]`
+Syntax: `O<file number>:<element index>[/bit offset][,array len]`
 
 **O0:0** First 16 output bits as Boolean values in logical order, the bit at offset 0 becomes the first item in the array.
 
@@ -45,7 +95,7 @@ Syntax: `0<filenumber>:<element index>[/bit offset][,arraylen]`
 
 
 
-**O0:0.1** Second set of 16 output bites as 16 Boolean values in logical order
+**O0:0.1** Second set of 16 output bits as 16 Boolean values in logical order
 
 ![img](./img/pccc/image2.png)
 
@@ -63,7 +113,7 @@ Syntax: `0<filenumber>:<element index>[/bit offset][,arraylen]`
 
 
 
-**O0:0/15** Fifteenth output bit at offset 15 as Boolean value
+**O0:0/15** Sixteenth output bit (offset 15) as Boolean value
 
 ![img](./img/pccc/image5.png)
 
@@ -87,7 +137,7 @@ Syntax: `I<file number>:<element index>[/bit offset][,array len]`
 
 
 
-**I1:0.1.** Second set of 16 input bites as 16 Boolean values in logical
+**I1:0.1** Second set of 16 input bits as 16 Boolean values in logical order
 
 ![img](./img/pccc/image7.png)
 
@@ -99,15 +149,29 @@ Syntax: `I<file number>:<element index>[/bit offset][,array len]`
 
 
 
-**I1:0/0**. First input bit at offset 0 as Boolean value
+**I1:0/0** First input bit at offset 0 as Boolean value
 
 ![img](./img/pccc/image9.png)
 
 
 
-**O0:0/15** Fifteenth output at offset 15 bit as Boolean value
+**I1:0/15** Sixteenth input bit (offset 15) as Boolean value
 
 ![img](./img/pccc/image10.png)
+
+
+
+---
+
+**Datatype STATUS, Prefix S**
+
+Default file number 2
+
+Syntax: `S<file number>:<element index>`
+
+Status words are read as 16-bit integer values; offsets and arrays are not supported.
+
+**S:4** (same as S2:4) Free-running clock as 16-bit integer value
 
 
 
@@ -117,7 +181,7 @@ Syntax: `I<file number>:<element index>[/bit offset][,array len]`
 
 Default file number 3
 
-Syntax: `B<file number>:<element index>[/bit offset]`
+Syntax: `B<file number>:<element index>[/bit offset][,array len]`
 
 **B3:0** First 16 binary bits as Boolean values in logical order, the bit shown below at offset 0 becomes the first item in the array.
 
@@ -125,19 +189,19 @@ Syntax: `B<file number>:<element index>[/bit offset]`
 
 
 
-**B3:0.1** Second set of 16 binary bites as 16 Boolean values in logical
+**B3:1** Second set of 16 binary bits as 16 Boolean values in logical order
 
 ![img](./img/pccc/image12.png)
 
 
 
-**B3:0/0.** First binary bit at offset as Boolean value
+**B3:0/0** First binary bit at offset 0 as Boolean value
 
 ![img](./img/pccc/image13.png)
 
 
 
-**B3:0/15** Fifteenth binary bit at offset 15 as Boolean value
+**B3:0/15** Sixteenth binary bit (offset 15) as Boolean value
 
 ![img](./img/pccc/image14.png)
 
@@ -154,6 +218,8 @@ Syntax:
 `T<file number>:<element index>[/bit offset]` for bit values
 
 `T<file number>:<element index>[.value by name]` for named numeric values
+
+Field names: `EN`, `TT`, `DN` (bits), `BASE`, `PRE` and `ACC` (values). Before a field name `/` and `.` are the same, so `T4:0/EN` equals `T4:0.EN`.
 
 **T4:0** Timer as a structure containing all elements
 
@@ -185,6 +251,8 @@ Syntax:
 
 `C<file number>:<element index>[.value by name]` for named numeric values
 
+Field names: `CU`, `CD`, `DN`, `OV`, `UN`, `UA` (bits), `PRE` and `ACC` (values).
+
 **C5:0** Counter as a structure containing all elements
 
 ![img](./img/pccc/image18.png)
@@ -197,7 +265,7 @@ Syntax:
 
 
 
-**C5:0.ACC Counter CU bit value**
+**C5:0/CU Counter CU bit value**
 
 ![img](./img/pccc/image20.png)
 
@@ -215,19 +283,21 @@ Syntax:
 
 `R<file number>:<element index>[.value by name]` for named numeric values
 
+Field names: `EN`, `EU`, `DN`, `EM`, `ER`, `UL`, `IN`, `FD` (bits), `LEN` and `POS` (values).
+
 **R6:0** Control as a structure containing all elements
 
 ![img](./img/pccc/image21.png)
 
 
 
-**R6:0.POS Counter POS numeric value**
+**R6:0.POS Control POS numeric value**
 
 ![img](./img/pccc/image22.png)
 
 
 
-**R6:0.ACC Control EN bit value**
+**R6:0/EN Control EN bit value**
 
 ![img](./img/pccc/image23.png)
 
@@ -235,11 +305,11 @@ Syntax:
 
 ---
 
-**Datatype OUTPUT, Prefix O**
+**Datatype INTEGER, Prefix N**
 
 Default file number 7
 
-Syntax: `N<file number>:<element index>[<array len>]`
+Syntax: `N<file number>:<element index>[,<array len>]`
 
 **N7:0 First 16 bits integer value**
 
@@ -263,7 +333,7 @@ Syntax: `N<file number>:<element index>[<array len>]`
 
 **Datatype FLOAT, Prefix F**
 
-Syntax: `F<file number>:<element index>[<array len>]`
+Syntax: `F<file number>:<element index>[,<array len>]`
 
 **F8:0 First float value**
 
@@ -305,7 +375,7 @@ Syntax: `ST<file number>:<element index>`
 
 **Datatype LONG, Prefix L (32 bit)**
 
-Syntax: `L<file number>:<element index>[<array len>]`
+Syntax: `L<file number>:<element index>[,<array len>]`
 
 **L10:0 First 32 bits integer value**
 
@@ -329,8 +399,6 @@ Syntax: `L<file number>:<element index>[<array len>]`
 
 **Datatype ASCII, Prefix A**
 
-Default file number 11
-
 Syntax: `A<file number>:<element index>[/character offset]`
 
 **A11:0 First character pair**
@@ -339,19 +407,19 @@ Syntax: `A<file number>:<element index>[/character offset]`
 
 
 
-**A11:0 Second character pair**
+**A11:1 Second character pair**
 
 ![img](./img/pccc/image36.png)
 
 
 
-**A11:0/0 First character of in first character pair**
+**A11:0/0 First character of the first character pair**
 
 ![img](./img/pccc/image37.png)
 
 
 
-**A11:0/0 Second character of in seconds character pair**
+**A11:1/1 Second character of the second character pair**
 
 ![img](./img/pccc/image38.png)
 
@@ -499,8 +567,7 @@ For supported datatype and address syntax see [PCCC Addressing](#pccc-addressing
       "properties": {
         "Address": {
           "type": "string",
-          "description": "PCCC address for the channel",
-          "pattern": "^[A-Z]:\\d+(\\.\\d+)?$"
+          "description": "PCCC address for the channel"
         }
       },
       "required": ["Address"]
@@ -529,7 +596,7 @@ Bit address:
 ```json
 {
   "Name": "RunningStatus",
-  "Address": "B3:0",
+  "Address": "B3:0/0",
   "Description": "Machine running status bit"
 }
 ```
@@ -565,7 +632,7 @@ Counter with bit:
 ```json
 {
   "Name": "PartCounter",
-  "Address": "C5:0.0",
+  "Address": "C5:0/DN",
   "Description": "Parts counter done bit"
 }
 ```
@@ -652,7 +719,7 @@ PLCs servers configured for this adapter. The PCCC source using the adapter must
 
 ## PcccControllerConfiguration
 
-[PccAdapter](#pcccadapterconfiguration) > [Controllers](#controllers)
+[PcccAdapter](#pcccadapterconfiguration) > [Controllers](#controllers)
 
 
 
@@ -665,7 +732,7 @@ The PcccControllerConfiguration class defines the connection parameters and sett
 
 **Properties:**
 
-- [Address](#address)
+- [Address](#address-1)
 - [ConnectPath](#connectpath)
 - [ConnectTimeout](#connecttimeout)
 - [MaxReadGap](#maxreadgap)
@@ -694,7 +761,9 @@ The ConnectPath property defines the routing path configuration used to establis
 
 **Type**: PcccConnectPathConfiguration
 
-Optional
+Optional, and not needed for controllers with an embedded EtherNet/IP port, such as the MicroLogix 1100 and 1400.
+
+Known limitation: in this release the adapter ignores ConnectPath and always connects directly to the controller at Address.
 
 ---
 
@@ -844,7 +913,7 @@ Default is 10000
       "type": "integer",
       "description": "Wait time after connection error in milliseconds",
       "minimum": 0,
-      "default": 5000
+      "default": 10000
     },
     "WaitAfterReadError": {
       "type": "integer",
@@ -859,7 +928,7 @@ Default is 10000
       "default": 10000
     }
   },
-  "required": ["Address", "ConnectPath"]
+  "required": ["Address"]
 }
 
 ```
@@ -882,9 +951,9 @@ Default is 10000
 
 ## PcccConnectPathConfiguration
 
-[PccAdapter](#pcccadapterconfiguration) > [Controllers](#controllers) > [PcccController](#pccccontrollerconfiguration) > [ConnectPath](#connectpath)
+[PcccAdapter](#pcccadapterconfiguration) > [Controllers](#controllers) > [PcccController](#pccccontrollerconfiguration) > [ConnectPath](#connectpath)
 
-The PcccConnectPathConfiguration class defines the connection path configuration for establishing communication with a PLC using the PCCC (Programmable Controller Communication Commands) protocol.
+The PcccConnectPathConfiguration class defines the connection path configuration for establishing communication with a PLC using the PCCC (Programmable Controller Communication Commands) protocol. See the known limitation under [ConnectPath](#connectpath).
 
 - [Schema](#pcccconnectpathconfiguration-schema)
 - [Examples](#pcccconnectpathconfiguration-examples)

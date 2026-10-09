@@ -1,0 +1,2344 @@
+{
+  "cases": [
+    {
+      "id": "AWS-SW-01",
+      "title": "SiteWise by alias: every record writes all four data types to both fixture assets and reads back from the real property history",
+      "tier": "aws",
+      "priority": "P0",
+      "intent": "The basic SiteWise contract against the real service. Each record is mapped by DataPath onto eight property aliases of the two stack fixture assets (/sfc-it/fixture/a1 and /a2, one INTEGER, DOUBLE, STRING and BOOLEAN measurement each), converted by the documented lowercase DataType (AwsSiteWiseTargetWriter.kt:696-710) and, with BatchSize 1, flushed at once (:207) as one BatchPutAssetPropertyValue holding one alias entry per property (:621-628). No TimestampPath is set, so all values of a record take the record's top-level timestamp (:465-468); the sink reads the four property histories, joins them by timestamp and keeps only rows whose label is this case run's marker, because the fixture is shared by every build and every mode. The two assets get different data (a1: counter 0-4, the same counter as a double, true; a2: counter 10-14, -2.25, false) so cross-wired aliases show. The schedule reads every 2 s because the fixture properties are shared by every case run and build and SiteWise allows 10 entries per second and 10 data points per timestamp second per property, not adjustable. The case fails if a value is lost, duplicated or reordered (the counters must cycle in timestamp order), if a value lands with another SiteWise type or on the other asset (strict-typed value sets), if the values of one record get different timestamps (their rows would lose the marker), if SiteWise rejects an entry (logged as a PutAssetPropertyValueEntry, which SFC still counts as a success, see AWS-SW-DEF-03) or if the request shape changes (Messages/Writes must be 8 entries per call).",
+      "pins": [
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:207",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:215-231",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:245-254",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:465-468",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:605-644",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:696-710",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:574-586",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/config/AwsSiteWiseAssetConfiguration.kt:58-74",
+        "ci/cdk/lib/sfc-it-stack.ts:259-276",
+        "ci/cdk/lib/sfc-it-stack.ts:459-465",
+        "ci/e2e/lib/sinks/sitewise.py:120-135"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sitewise",
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}",
+          "completeRows": true
+        },
+        "a2": {
+          "kind": "sitewise",
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A2}",
+          "completeRows": true
+        }
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 10
+        },
+        {
+          "sink": "a2",
+          "records": 10
+        }
+      ],
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Sw",
+              "name": "Writes",
+              "op": "ge",
+              "value": 10
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 10
+        },
+        {
+          "kind": "recordCount",
+          "sink": "a2",
+          "min": 10
+        },
+        {
+          "kind": "cycle",
+          "path": "counter",
+          "cycle": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "minLength": 6,
+          "comment": "history in timestamp order: no value lost, duplicated or reordered"
+        },
+        {
+          "kind": "valueSet",
+          "path": "counter",
+          "values": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "strictTypes": true,
+          "comment": "INTEGER property, integerValue"
+        },
+        {
+          "kind": "valueSet",
+          "path": "value",
+          "values": [
+            0.0,
+            1.0,
+            2.0,
+            3.0,
+            4.0
+          ],
+          "strictTypes": true,
+          "comment": "the Int counter converted by DataType double: doubleValue"
+        },
+        {
+          "kind": "valueSet",
+          "path": "ok",
+          "values": [
+            true
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "cycle",
+          "sink": "a2",
+          "path": "counter",
+          "cycle": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "minLength": 6
+        },
+        {
+          "kind": "valueSet",
+          "sink": "a2",
+          "path": "counter",
+          "values": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "valueSet",
+          "sink": "a2",
+          "path": "value",
+          "values": [
+            -2.25
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "valueSet",
+          "sink": "a2",
+          "path": "ok",
+          "values": [
+            false
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "Sw",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "Sw",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 8,
+          "comment": "BatchSize 1: one call per record, one entry per alias (2 assets x 4 properties)"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error building or storing property value",
+            "No value found for target",
+            "PutAssetPropertyValueEntry(",
+            "SiteWise batchPutAssetPropertyValue error",
+            "Error sending to SiteWise",
+            "Can not convert",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SW-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 2000,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Sw"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 4
+                }
+              },
+              "ctr2": {
+                "Name": "ctr2",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 10,
+                  "Max": 14
+                }
+              },
+              "neg": {
+                "Name": "neg",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": -2.25
+                }
+              },
+              "on": {
+                "Name": "on",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "off": {
+                "Name": "off",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": false
+                }
+              },
+              "label": {
+                "Name": "label",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "${SFC_E2E_MARKER}"
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetType": "AWS-SITEWISE",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Assets": [
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/counter",
+                    "DataType": "integer",
+                    "DataPath": "sources.sim.values.ctr.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/value",
+                    "DataType": "double",
+                    "DataPath": "sources.sim.values.ctr.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/label",
+                    "DataType": "string",
+                    "DataPath": "sources.sim.values.label.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/ok",
+                    "DataType": "boolean",
+                    "DataPath": "sources.sim.values.on.value"
+                  }
+                ]
+              },
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/counter",
+                    "DataType": "integer",
+                    "DataPath": "sources.sim.values.ctr2.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/value",
+                    "DataType": "double",
+                    "DataPath": "sources.sim.values.neg.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/label",
+                    "DataType": "string",
+                    "DataPath": "sources.sim.values.label.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/ok",
+                    "DataType": "boolean",
+                    "DataPath": "sources.sim.values.off.value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sitewise-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SwServer": {
+          "module": "aws-sitewise-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetServer": "SwServer"
+          }
+        },
+        "TargetServers": {
+          "SwServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SW-02",
+      "title": "SiteWise AssetCreation: SFC creates a per-run model and asset (marker and mode in the names), infers the four data types, sets aliases and tags, and the values read back",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "AssetCreation is how most SiteWise deployments of SFC start. On the first record the helper scans the account's models and assets (SiteWiseAssetHelper.kt:33-84), creates a model with one measurement per channel whose data type is inferred from the value (:415-478, :521-530), creates the asset (:107-137), sets every property's alias (:150-188) and from then on writes by assetId/propertyId (AwsSiteWiseTargetWriter.kt:300-330); records that arrive meanwhile wait in the target channel. BatchSize 10 (the default) with a 3 s Interval drains that backlog in entries of 10 values, below SiteWise's 10 entries per second per property. An asset that already exists under the rendered name is reused silently (SiteWiseAssetHelper.kt:216-230), so every name is per case run: the model sfc-it-<marker>-%source%-%mode%-model and the asset sfc-it-<marker>-%source% carry the marker, which ends in the mode code, and %mode%/%case% are rendered from the configuration's top-level Metadata (TargetData.kt:105). The janitor deletes models named sfc-it-b_<run>... with their assets (janitor.py:105-138), and the sink registers both for deletion as soon as it finds them. The case fails if this run does not create exactly one model and one asset (logCount), if metadata is not rendered into the model name and description, if a type is inferred wrongly (strict-typed value sets: INTEGER counter, DOUBLE 2.5, BOOLEAN true; the STRING label carries the marker the sink filters on), if values are lost while the writer was blocked creating the asset (the counter must cycle without a gap), if an alias is not stored by the service, or if not all four channels are written (Messages/Writes = 4). AssetTags and AssetModelTags (literal and %source%/%target% values) exercise the tagged CreateAsset/CreateAssetModel calls; their values are not read back (the sink has no ListTagsForResource). Descriptions and aliases are asserted on SFC's INFO log of the DescribeAsset/DescribeAssetModel responses, i.e. what the service stored. Known defect: %source% in AssetDescription renders as the target ID.",
+      "pins": [
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:76-96",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:205-212",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:300-330",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SiteWiseAssetHelper.kt:33-84",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SiteWiseAssetHelper.kt:107-137",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SiteWiseAssetHelper.kt:150-188",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SiteWiseAssetHelper.kt:208-292",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SiteWiseAssetHelper.kt:415-478",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SiteWiseAssetHelper.kt:480-487",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SiteWiseAssetHelper.kt:521-530",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SiteWiseAssetHelper.kt:556-575",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetData.kt:105",
+        "ci/cdk/lambda/janitor.py:105-138",
+        "ci/e2e/lib/sinks/sitewise.py:81-99",
+        "ci/cdk/lib/sfc-it-stack.ts:459-465"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sitewise",
+          "assetName": "sfc-it-<marker>-sim",
+          "completeRows": true
+        }
+      },
+      "records": 8,
+      "timeoutSeconds": 240,
+      "offlineSeconds": 25,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "cycle",
+          "path": "counter",
+          "cycle": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "minLength": 6,
+          "comment": "records that arrived while the model and asset were being created were queued, not lost"
+        },
+        {
+          "kind": "valueSet",
+          "path": "counter",
+          "values": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "strictTypes": true,
+          "comment": "Int channel -> INTEGER measurement"
+        },
+        {
+          "kind": "valueSet",
+          "path": "value",
+          "values": [
+            2.5
+          ],
+          "strictTypes": true,
+          "comment": "Double channel -> DOUBLE measurement"
+        },
+        {
+          "kind": "valueSet",
+          "path": "ok",
+          "values": [
+            true
+          ],
+          "strictTypes": true,
+          "comment": "Boolean channel -> BOOLEAN measurement"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "Sw",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "Sw",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 4,
+          "comment": "one entry per created property in every call"
+        },
+        {
+          "kind": "logCount",
+          "text": "Creating asset model \"",
+          "equals": 1,
+          "comment": "this run created its own model, once"
+        },
+        {
+          "kind": "logCount",
+          "text": "Creating asset \"",
+          "equals": 1
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Creating asset model \"sfc-it-b_[0-9a-f]{12}_aws_sw_02_(?:ip-sim-inprocess|ipc-sim-ipc|uj-sim-uberjar)-model\" for source \"sim\"",
+          "comment": "marker, %source% and the %mode% metadata rendered into the model name"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "AssetModelDescription=sfc-it model: source sim, case AWS-SW-02, mode (?:inprocess|ipc|uberjar)",
+          "comment": "metadata rendered into the model description the service stored"
+        },
+        {
+          "kind": "logContains",
+          "text": "Setting alias",
+          "min": 4
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Name=counter, Alias=/sfc-it/b_[0-9a-f]{12}_aws_sw_02_(?:ip|ipc|uj)/sim/counter",
+          "comment": "the alias as stored by the service (DescribeAsset after the updates)"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error setting alias",
+            "No property for channel",
+            "Error building or storing property value",
+            "PutAssetPropertyValueEntry(",
+            "SiteWise batchPutAssetPropertyValue error",
+            "Error sending to SiteWise",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SiteWiseAssetHelper.kt:560",
+        "summary": "renderAssetDescription passes the target ID as the source argument of renderTemplate, so %source% in AssetDescription - including the default description - renders as the target name",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "text": "AssetDescription=sfc-it asset: source Sw, target Sw, schedule S"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "text": "AssetDescription=sfc-it asset: source sim, target Sw, schedule S"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SW-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 2000,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Sw"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "counter": {
+                "Name": "counter",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 4
+                }
+              },
+              "value": {
+                "Name": "value",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 2.5
+                }
+              },
+              "label": {
+                "Name": "label",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "${SFC_E2E_MARKER}"
+                }
+              },
+              "ok": {
+                "Name": "ok",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetType": "AWS-SITEWISE",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 10,
+            "Interval": 3000,
+            "AssetCreation": {
+              "AssetModelName": "sfc-it-${SFC_E2E_MARKER}-%source%-%mode%-model",
+              "AssetModelDescription": "sfc-it model: source %source%, case %case%, mode %mode%",
+              "AssetName": "sfc-it-${SFC_E2E_MARKER}-%source%",
+              "AssetDescription": "sfc-it asset: source %source%, target %target%, schedule %schedule%",
+              "AssetPropertyName": "%channel%",
+              "AssetPropertyAlias": "/sfc-it/${SFC_E2E_MARKER}/%source%/%channel%",
+              "AssetModelTags": {
+                "sfc-it": "e2e",
+                "sfc-it-target": "%target%"
+              },
+              "AssetTags": {
+                "sfc-it": "e2e",
+                "sfc-it-source": "%source%"
+              }
+            }
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sitewise-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SwServer": {
+          "module": "aws-sitewise-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetServer": "SwServer"
+          }
+        },
+        "TargetServers": {
+          "SwServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SW-03",
+      "title": "SiteWise batching: BatchSize 12 groups the values per alias and splits them into entries of 10 values and requests of 10 entries",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "The default BatchSize is 10 (AwsSiteWiseTargetConfiguration.kt:59, :115), so production writes carry several values per property; the P0 case flushes per record and never reaches this code. With BatchSize 12 and no Interval the writer flushes on every 12th record (AwsSiteWiseTargetWriter.kt:205-212), groups the buffered values per alias, splits each property's 12 values into entries of at most 10 (:616) and the resulting 16 entries into requests of at most 10 entries (:635) - the two BatchPutAssetPropertyValue limits. The flush must therefore be exactly two calls, 60 values in 10 entries and 36 values in 6 (logged at :531-533). TimestampPath names the record timestamp explicitly here (:445-450). A flush comes every 24 s; the sink is read 5 s after the first one, so the entries of that flush are all visible and no second flush is in flight. The case fails if a value is lost or duplicated at an entry boundary (each counter must cycle over the 12 rows), if a request exceeds a SiteWise limit (rejected: WriteError), if the writer flushes per record or splits differently (the two log lines, Messages/Writes = 8), or if an entry is rejected.",
+      "pins": [
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:205-212",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:531-533",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:605-644",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:445-450",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/config/AwsSiteWiseTargetConfiguration.kt:58-74",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/config/AwsSiteWiseTargetConfiguration.kt:115",
+        "docs/targets/aws-sitewise.md:111-127"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sitewise",
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}",
+          "completeRows": true
+        },
+        "a2": {
+          "kind": "sitewise",
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A2}",
+          "completeRows": true
+        }
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 12
+        },
+        {
+          "sink": "a2",
+          "records": 12
+        }
+      ],
+      "timeoutSeconds": 150,
+      "offlineSeconds": 50,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Sw",
+              "name": "Writes",
+              "op": "ge",
+              "value": 2
+            }
+          }
+        },
+        {
+          "wait": {
+            "seconds": 5,
+            "comment": "SiteWise makes values visible in the property history a moment after the call returns, property by property; the gate counts rows by their label and no observable says that the other entries of the same flush are visible too. 5 s after the flush and 19 s before the next one the whole flush is readable."
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 12
+        },
+        {
+          "kind": "recordCount",
+          "sink": "a2",
+          "min": 12
+        },
+        {
+          "kind": "cycle",
+          "path": "counter",
+          "cycle": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "minLength": 12,
+          "comment": "values 11 and 12 of the flush travel in a second entry"
+        },
+        {
+          "kind": "cycle",
+          "sink": "a2",
+          "path": "counter",
+          "cycle": [
+            10,
+            11,
+            12,
+            13,
+            14
+          ],
+          "minLength": 12
+        },
+        {
+          "kind": "valueSet",
+          "path": "value",
+          "values": [
+            0.0,
+            1.0,
+            2.0,
+            3.0,
+            4.0
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "valueSet",
+          "path": "ok",
+          "values": [
+            true
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "valueSet",
+          "sink": "a2",
+          "path": "value",
+          "values": [
+            -2.25
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "valueSet",
+          "sink": "a2",
+          "path": "ok",
+          "values": [
+            false
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "logContains",
+          "text": "Writing batch of 60 values to 10 properties",
+          "comment": "first call of the flush: a1 counter/value/label/ok and a2 counter, 10+2 values each"
+        },
+        {
+          "kind": "logContains",
+          "text": "Writing batch of 36 values to 6 properties",
+          "comment": "second call: a2 value/label/ok"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "Sw",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "Sw",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 8,
+          "comment": "16 entries over 2 calls per flush; a per-record flush would give 8 entries in 1 call"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Writing batch of 8 values",
+            "Error building or storing property value",
+            "No value found for target",
+            "PutAssetPropertyValueEntry(",
+            "SiteWise batchPutAssetPropertyValue error",
+            "Error sending to SiteWise",
+            "Can not convert",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SW-03",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 2000,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Sw"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 4
+                }
+              },
+              "ctr2": {
+                "Name": "ctr2",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 10,
+                  "Max": 14
+                }
+              },
+              "neg": {
+                "Name": "neg",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": -2.25
+                }
+              },
+              "on": {
+                "Name": "on",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "off": {
+                "Name": "off",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": false
+                }
+              },
+              "label": {
+                "Name": "label",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "${SFC_E2E_MARKER}"
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetType": "AWS-SITEWISE",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 12,
+            "Assets": [
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/counter",
+                    "DataType": "integer",
+                    "DataPath": "sources.sim.values.ctr.value",
+                    "TimestampPath": "timestamp"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/value",
+                    "DataType": "double",
+                    "DataPath": "sources.sim.values.ctr.value",
+                    "TimestampPath": "timestamp"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/label",
+                    "DataType": "string",
+                    "DataPath": "sources.sim.values.label.value",
+                    "TimestampPath": "timestamp"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/ok",
+                    "DataType": "boolean",
+                    "DataPath": "sources.sim.values.on.value",
+                    "TimestampPath": "timestamp"
+                  }
+                ]
+              },
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/counter",
+                    "DataType": "integer",
+                    "DataPath": "sources.sim.values.ctr2.value",
+                    "TimestampPath": "timestamp"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/value",
+                    "DataType": "double",
+                    "DataPath": "sources.sim.values.neg.value",
+                    "TimestampPath": "timestamp"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/label",
+                    "DataType": "string",
+                    "DataPath": "sources.sim.values.label.value",
+                    "TimestampPath": "timestamp"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/ok",
+                    "DataType": "boolean",
+                    "DataPath": "sources.sim.values.off.value",
+                    "TimestampPath": "timestamp"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sitewise-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SwServer": {
+          "module": "aws-sitewise-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetServer": "SwServer"
+          }
+        },
+        "TargetServers": {
+          "SwServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SW-DEF-01",
+      "title": "SiteWise DataType \"Double\"/\"Boolean\" (capitalised) is accepted at startup and then drops every value of the property, with no WriteError (known defect)",
+      "tier": "aws",
+      "priority": "P2",
+      "intent": "A property's DataType is a Gson enum whose names are lowercase (@SerializedName, SitewiseDatatype.kt:14-26; the documented values are \"string\", \"integer\", \"double\", \"boolean\", docs/targets/aws-sitewise.md:936-951). Gson's enum adapter maps the serialized name and the constant name only, so \"double\" and \"DOUBLE\" work but \"Double\" - the spelling the simulator's own case-insensitive DataType uses in the same file (DataType.kt:55-56) - becomes null; the plain Gson of the config reader (ConfigReader.kt:133-138) and the property validation (SiteWiseAssetPropertyConfiguration.kt:99-109) accept it. For every value buildAssetValue passes the null on (AwsSiteWiseTargetWriter.kt:371), buildValue's when throws a NullPointerException on ordinal() (:698, checked in the compiled class) and buildAndStorePropertyValue only logs it (:256-259). The a1 properties use the documented lowercase names; a2 uses \"Double\" for value and \"Boolean\" for ok, with counter and label lowercase so the a2 rows still exist and carry the marker. Today a2 never receives a value or an ok, each call carries 6 entries instead of 8, and WriteError stays 0, so only the log shows the loss. The correct behaviour pinned is accepting the name case-insensitively, as the simulator does; rejecting the configuration at startup would also end the silent loss and make this case report the defect as fixed.",
+      "pins": [
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SitewiseDatatype.kt:14-26",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/config/SiteWiseAssetPropertyConfiguration.kt:46-52",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/config/SiteWiseAssetPropertyConfiguration.kt:99-109",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ConfigReader.kt:133-138",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:371",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:698",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:256-259",
+        "docs/targets/aws-sitewise.md:936-951",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/DataType.kt:55-56"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sitewise",
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}"
+        },
+        "a2": {
+          "kind": "sitewise",
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A2}"
+        }
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 8
+        },
+        {
+          "sink": "a2",
+          "records": 8
+        }
+      ],
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Sw",
+              "name": "Writes",
+              "op": "ge",
+              "value": 8
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "recordCount",
+          "sink": "a2",
+          "min": 8,
+          "comment": "a2 rows exist: counter and label (lowercase DataType) arrive"
+        },
+        {
+          "kind": "valueSet",
+          "path": "value",
+          "values": [
+            1.5
+          ],
+          "strictTypes": true,
+          "comment": "documented \"double\" works"
+        },
+        {
+          "kind": "valueSet",
+          "path": "ok",
+          "values": [
+            true
+          ],
+          "strictTypes": true,
+          "comment": "documented \"boolean\" works"
+        },
+        {
+          "kind": "cycle",
+          "path": "counter",
+          "cycle": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "minLength": 6
+        },
+        {
+          "kind": "cycle",
+          "sink": "a2",
+          "path": "counter",
+          "cycle": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "minLength": 6
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error building or storing property value for property /sfc-it/fixture/a1/",
+            "PutAssetPropertyValueEntry(",
+            "Error sending to SiteWise"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/SitewiseDatatype.kt:14-26",
+        "summary": "A DataType spelled other than all-lowercase or all-uppercase (\"Double\", \"Boolean\") deserializes to null, passes validation and makes buildValue throw a NullPointerException for every value: the property never receives data, only an error log line per value shows it, WriteError stays 0",
+        "assertCurrent": [
+          {
+            "kind": "keysAbsent",
+            "sink": "a2",
+            "paths": [
+              "value",
+              "ok"
+            ],
+            "comment": "every value of the two capitalised properties was dropped"
+          },
+          {
+            "kind": "logContains",
+            "text": "Error building or storing property value for property /sfc-it/fixture/a2/value",
+            "min": 8
+          },
+          {
+            "kind": "logContains",
+            "text": "Error building or storing property value for property /sfc-it/fixture/a2/ok",
+            "min": 8
+          },
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "Sw",
+              "name": "Messages"
+            },
+            "denominator": {
+              "source": "Sw",
+              "name": "Writes"
+            },
+            "op": "eq",
+            "value": 6,
+            "comment": "2 of 8 entries missing from every call"
+          },
+          {
+            "kind": "metric",
+            "source": "Sw",
+            "name": "WriteError",
+            "op": "eq",
+            "value": 0,
+            "comment": "the loss is invisible in metrics"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "valueSet",
+            "sink": "a2",
+            "path": "value",
+            "values": [
+              1.5
+            ],
+            "strictTypes": true
+          },
+          {
+            "kind": "valueSet",
+            "sink": "a2",
+            "path": "ok",
+            "values": [
+              true
+            ],
+            "strictTypes": true
+          },
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "Sw",
+              "name": "Messages"
+            },
+            "denominator": {
+              "source": "Sw",
+              "name": "Writes"
+            },
+            "op": "eq",
+            "value": 8
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SW-DEF-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 2000,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Sw"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 4
+                }
+              },
+              "dbl": {
+                "Name": "dbl",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 1.5
+                }
+              },
+              "on": {
+                "Name": "on",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "label": {
+                "Name": "label",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "${SFC_E2E_MARKER}"
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetType": "AWS-SITEWISE",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Assets": [
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/counter",
+                    "DataType": "integer",
+                    "DataPath": "sources.sim.values.ctr.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/value",
+                    "DataType": "double",
+                    "DataPath": "sources.sim.values.dbl.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/label",
+                    "DataType": "string",
+                    "DataPath": "sources.sim.values.label.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/ok",
+                    "DataType": "boolean",
+                    "DataPath": "sources.sim.values.on.value"
+                  }
+                ]
+              },
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/counter",
+                    "DataType": "integer",
+                    "DataPath": "sources.sim.values.ctr.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/value",
+                    "DataType": "Double",
+                    "DataPath": "sources.sim.values.dbl.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/label",
+                    "DataType": "string",
+                    "DataPath": "sources.sim.values.label.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/ok",
+                    "DataType": "Boolean",
+                    "DataPath": "sources.sim.values.on.value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sitewise-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SwServer": {
+          "module": "aws-sitewise-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetServer": "SwServer"
+          }
+        },
+        "TargetServers": {
+          "SwServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SW-DEF-02",
+      "title": "SiteWise DataType boolean: a Double 0.0 is written as true, only an Int 0 becomes false (known defect)",
+      "tier": "aws",
+      "priority": "P2",
+      "intent": "toSiteWiseBoolean converts a numeric value with `data != 0` (AwsSiteWiseTargetWriter.kt:792-794). With data typed Any, Kotlin compiles this to Intrinsics.areEqual(data, Integer.valueOf(0)) (checked in the compiled class), so only an Int zero is equal: a Double, Float, Long, Short or Byte zero - any numeric DataTypes.isNumeric accepts (DataTypes.kt:29) - is written as true. a1.ok gets a Double counter alternating 0.0/1.0, and the same channel feeds a1.value, so every history row shows the source value next to the boolean SiteWise stored; a2.ok gets an Int counter 0/1 as the control. IPC transports Double and Int unchanged (GrpcTargetValueAsNativeExt.kt:50-75), so all modes behave alike. Today every a1 row with value 0.0 has ok true; the correct behaviour is false, which the Int control already shows. The case fails if the zero rows are missing (the pin would be vacuous), if 1.0 or the Int path stop converting correctly, or if a conversion throws instead (logged \"Can not convert\").",
+      "pins": [
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:784-797",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/DataTypes.kt:29",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/SimulationHelper.kt:12-19",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcTargetValueAsNativeExt.kt:50-75"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sitewise",
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}"
+        },
+        "a2": {
+          "kind": "sitewise",
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A2}"
+        }
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 6
+        },
+        {
+          "sink": "a2",
+          "records": 6
+        }
+      ],
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Sw",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "recordCount",
+          "sink": "a2",
+          "min": 6
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "value": 0.0
+          },
+          "min": 2,
+          "comment": "rows where the source value was 0.0 exist, so the pin is not vacuous"
+        },
+        {
+          "kind": "cycle",
+          "path": "value",
+          "cycle": [
+            0.0,
+            1.0
+          ],
+          "minLength": 4
+        },
+        {
+          "kind": "valueSet",
+          "where": {
+            "value": 1.0
+          },
+          "path": "ok",
+          "values": [
+            true
+          ],
+          "strictTypes": true,
+          "comment": "1.0 -> true, before and after a fix"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "a2",
+          "where": {
+            "counter": 0
+          },
+          "path": "ok",
+          "values": [
+            false
+          ],
+          "strictTypes": true,
+          "comment": "control: Int 0 -> false"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "a2",
+          "where": {
+            "counter": 1
+          },
+          "path": "ok",
+          "values": [
+            true
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error building or storing property value",
+            "No value found for target",
+            "PutAssetPropertyValueEntry(",
+            "SiteWise batchPutAssetPropertyValue error",
+            "Error sending to SiteWise",
+            "Can not convert",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:792-794",
+        "summary": "toSiteWiseBoolean tests `data != 0` on an Any, which boxes 0 as Integer: a non-Int numeric zero (Double, Float, Long, Short, Byte) is not equal and is written to a BOOLEAN property as true",
+        "assertCurrent": [
+          {
+            "kind": "valueSet",
+            "where": {
+              "value": 0.0
+            },
+            "path": "ok",
+            "values": [
+              true
+            ],
+            "strictTypes": true,
+            "comment": "Double 0.0 stored as true"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "valueSet",
+            "where": {
+              "value": 0.0
+            },
+            "path": "ok",
+            "values": [
+              false
+            ],
+            "strictTypes": true
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SW-DEF-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 2000,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Sw"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctrD": {
+                "Name": "ctrD",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 1
+                }
+              },
+              "ctrI": {
+                "Name": "ctrI",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 1
+                }
+              },
+              "label": {
+                "Name": "label",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "${SFC_E2E_MARKER}"
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetType": "AWS-SITEWISE",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Assets": [
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/counter",
+                    "DataType": "integer",
+                    "DataPath": "sources.sim.values.ctrI.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/value",
+                    "DataType": "double",
+                    "DataPath": "sources.sim.values.ctrD.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/label",
+                    "DataType": "string",
+                    "DataPath": "sources.sim.values.label.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/ok",
+                    "DataType": "boolean",
+                    "DataPath": "sources.sim.values.ctrD.value"
+                  }
+                ]
+              },
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/counter",
+                    "DataType": "integer",
+                    "DataPath": "sources.sim.values.ctrI.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/value",
+                    "DataType": "double",
+                    "DataPath": "sources.sim.values.ctrI.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/label",
+                    "DataType": "string",
+                    "DataPath": "sources.sim.values.label.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/ok",
+                    "DataType": "boolean",
+                    "DataPath": "sources.sim.values.ctrI.value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sitewise-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SwServer": {
+          "module": "aws-sitewise-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetServer": "SwServer"
+          }
+        },
+        "TargetServers": {
+          "SwServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SW-DEF-03",
+      "title": "SiteWise: entries the service rejects (TimestampOutOfRangeException) are counted as WriteSuccess and never as WriteError (known defect)",
+      "tier": "aws",
+      "priority": "P2",
+      "intent": "BatchPutAssetPropertyValue reports per-entry failures in the errorEntries of a successful response. SFC counts Writes and WriteSuccess as soon as the call returns (AwsSiteWiseTargetWriter.kt:536, :574-586), acks the buffered data to its result handler (:554) and only logs the error entries (:556-558, :594-598); WriteError is counted only when the call itself throws (:538-543). SwOld writes a2.value with a TimestampPath (:445-453) pointing at 2020-01-01 - a Long constant through EpocSecondsToTimestamp (EpocSecondsToTimestamp.kt:17) - outside SiteWise's ingestion window of 7 days in the past (docs/targets/aws-sitewise.md:118), which is what a store-and-forward replay after a week-long outage looks like; SiteWise rejects every entry with TimestampOutOfRangeException. Sw, in the same schedule, writes a1 normally and proves the run reached the service with valid data. Today every rejected call is counted as a WriteSuccess and WriteError stays 0, so the loss is invisible to metrics and to a result handler such as store-and-forward. The case fails if the rejections stop appearing (the precondition) or if Sw is affected.",
+      "pins": [
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:529-559",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:574-586",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:594-598",
+        "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:445-453",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/transformations/EpocSecondsToTimestamp.kt:17",
+        "docs/targets/aws-sitewise.md:118"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sitewise",
+          "aliasPrefix": "${SFC_E2E_SW_ALIAS_A1}"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "allowWriteErrors": [
+        "SwOld"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "SwOld",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        },
+        {
+          "wait": {
+            "log": "TimestampOutOfRangeException",
+            "count": 6
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "cycle",
+          "path": "counter",
+          "cycle": [
+            0,
+            1,
+            2,
+            3,
+            4
+          ],
+          "minLength": 5
+        },
+        {
+          "kind": "valueSet",
+          "path": "value",
+          "values": [
+            1.5
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "logContains",
+          "text": "TimestampOutOfRangeException",
+          "min": 6,
+          "comment": "SiteWise rejected the old-timestamp entry of every SwOld call"
+        },
+        {
+          "kind": "logContains",
+          "text": "PropertyAlias=/sfc-it/fixture/a2/value",
+          "min": 6,
+          "comment": "the rejected entry, as SFC logs it"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "PropertyAlias=/sfc-it/fixture/a1/",
+            "Error building or storing property value",
+            "Error sending to SiteWise"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-sitewise-target/src/main/kotlin/com/amazonaws/sfc/awssitewise/AwsSiteWiseTargetWriter.kt:536",
+        "summary": "Entries SiteWise rejects in errorEntries are only logged: the call is counted as Writes/WriteSuccess before the response is inspected and WriteError is never incremented, so the data loss is invisible in metrics",
+        "assertCurrent": [
+          {
+            "kind": "metric",
+            "source": "SwOld",
+            "name": "WriteError",
+            "op": "eq",
+            "value": 0
+          },
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "SwOld",
+              "name": "WriteSuccess"
+            },
+            "denominator": {
+              "source": "SwOld",
+              "name": "Writes"
+            },
+            "op": "eq",
+            "value": 1,
+            "comment": "every fully rejected call counted as a success"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "metric",
+            "source": "SwOld",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SW-DEF-03",
+        "LogLevel": "Info",
+        "Transformations": {
+          "E2TS": [
+            {
+              "Operator": "EpocSecondsToTimestamp"
+            }
+          ]
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 2000,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Sw",
+              "SwOld"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 4
+                }
+              },
+              "dbl": {
+                "Name": "dbl",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 1.5
+                }
+              },
+              "on": {
+                "Name": "on",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "label": {
+                "Name": "label",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "${SFC_E2E_MARKER}"
+                }
+              },
+              "old": {
+                "Name": "old",
+                "Transformation": "E2TS",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Long",
+                  "Value": 1577836800
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetType": "AWS-SITEWISE",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Assets": [
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/counter",
+                    "DataType": "integer",
+                    "DataPath": "sources.sim.values.ctr.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/value",
+                    "DataType": "double",
+                    "DataPath": "sources.sim.values.dbl.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/label",
+                    "DataType": "string",
+                    "DataPath": "sources.sim.values.label.value"
+                  },
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A1}/ok",
+                    "DataType": "boolean",
+                    "DataPath": "sources.sim.values.on.value"
+                  }
+                ]
+              }
+            ]
+          },
+          "SwOld": {
+            "TargetType": "AWS-SITEWISE",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Assets": [
+              {
+                "Properties": [
+                  {
+                    "PropertyAlias": "${SFC_E2E_SW_ALIAS_A2}/value",
+                    "DataType": "double",
+                    "DataPath": "sources.sim.values.dbl.value",
+                    "TimestampPath": "sources.sim.values.old.value"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SITEWISE": {
+            "FactoryClassName": "com.amazonaws.sfc.awssitewise.AwsSiteWiseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sitewise-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SwServer": {
+          "module": "aws-sitewise-target"
+        },
+        "SwOldServer": {
+          "module": "aws-sitewise-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Sw": {
+            "TargetServer": "SwServer"
+          },
+          "SwOld": {
+            "TargetServer": "SwOldServer"
+          }
+        },
+        "TargetServers": {
+          "SwServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SwOldServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

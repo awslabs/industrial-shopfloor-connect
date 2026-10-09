@@ -242,13 +242,13 @@ class SiteWiseAssetHelper(private val client: AwsSiteWiseClient,
 
                 if (alias != null) {
 
-                    val assetProperty = asset!!.assetProperties().find { it.name() == assetModelProperty.name() }
+                    val assetProperty = asset.assetProperties().find { it.name() == assetModelProperty.name() }
                     if (assetProperty != null) {
-                        log.info("Setting alias \"$alias\" for assetModelProperty ${assetModelProperty.name()} (${assetModelProperty.id()}) \"$alias\" of asset ${asset?.assetName()} (${asset?.assetId()} for channel \"$channelName\"")
+                        log.info("Setting alias \"$alias\" for assetModelProperty ${assetModelProperty.name()} (${assetModelProperty.id()}) \"$alias\" of asset ${asset.assetName()} (${asset.assetId()} for channel \"$channelName\"")
                         try {
-                            setAssetPropertyAlias(asset!!, assetProperty, alias)
+                            setAssetPropertyAlias(asset, assetProperty, alias)
                         } catch (e: Exception) {
-                            log.error("Error setting alias \"$alias\" for assetModelProperty \${assetModelProperty.name()} (${assetModelProperty.id()}) of asset ${asset?.assetName()} (${asset?.assetId()}) for channel \"$channelName\", ${e.message}")
+                            log.error("Error setting alias \"$alias\" for assetModelProperty \${assetModelProperty.name()} (${assetModelProperty.id()}) of asset ${asset.assetName()} (${asset.assetId()}) for channel \"$channelName\", ${e.message}")
                         }
                     }
                 }
@@ -273,7 +273,7 @@ class SiteWiseAssetHelper(private val client: AwsSiteWiseClient,
         var assetExternalID = assetCreationConfiguration.renderAssetExternalID(target, source, targetData)
 
         if (assetExternalID != null) {
-            val assetForExtId = assetSummaries.find { it.externalId().toString().lowercase() == assetExternalID.toString().lowercase() }
+            val assetForExtId = assetSummaries.find { it.externalId().toString().lowercase() == assetExternalID.lowercase() }
             if (assetForExtId != null) {
                 log.error("Asset external ID \"$assetExternalID\" for source \"$source\" in target \"$target\" is already in use by asset  \"${assetForExtId.name()}\"")
                 assetExternalID = null
@@ -423,12 +423,12 @@ class SiteWiseAssetHelper(private val client: AwsSiteWiseClient,
         var assetModelExternalID = assetCreationConfiguration.renderAssetModelExternalID(target, source, targetData)
 
         if (assetModelExternalID != null) {
-            val assetModelExtId = assetModelSummaries.find { it.externalId().toString().lowercase() == assetModelExternalID.toString().lowercase() }
+            val assetModelExtId = assetModelSummaries.find { it.externalId().toString().lowercase() == assetModelExternalID.lowercase() }
             if (assetModelExtId != null) {
                 log.error("Asset model external ID \"$assetModelExternalID\" for source \"$source\" in target \"$target\" is already in use by asset  \"${assetModelExtId.name()}\"")
                 assetModelExternalID = null
             } else{
-                if (!"[a-zA-Z0-9_][a-zA-Z_\\-0-9.:]*[a-zA-Z0-9_]+".toRegex().matches(assetModelExternalID.toString())){
+                if (!"[a-zA-Z0-9_][a-zA-Z_\\-0-9.:]*[a-zA-Z0-9_]+".toRegex().matches(assetModelExternalID)){
                     log.error("External ID \"$assetModelExternalID\" for asset model \"$assetModelName\" is not valid")
                     assetModelExternalID = null
                 }
@@ -444,7 +444,7 @@ class SiteWiseAssetHelper(private val client: AwsSiteWiseClient,
             val propertyNameForChannel = assetCreationConfiguration.renderAssetPropertyName(target, source, channelName, targetData)
 
             var externalIdForChannel = assetCreationConfiguration.renderAssetModelPropertyExternalID(target, source, channelName, targetData)
-            if  ((externalIdForChannel != null ) && (!"[a-zA-Z0-9_][a-zA-Z_\\-0-9.:]*[a-zA-Z0-9_]+".toRegex().matches(externalIdForChannel.toString()))){
+            if  ((externalIdForChannel != null ) && (!"[a-zA-Z0-9_][a-zA-Z_\\-0-9.:]*[a-zA-Z0-9_]+".toRegex().matches(externalIdForChannel))){
                 log.error("External ID \"$externalIdForChannel\" for value $channelName is not valid")
                 externalIdForChannel = null
             }

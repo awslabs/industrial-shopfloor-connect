@@ -6,16 +6,60 @@ The Simulator Adapter is a special-purpose adapter that generates synthetic data
 
 Unlike other adapters that interface with industrial protocols and devices, the Simulator Adapter uses [simulation configurations](#simulations) to generate data values. Each channel in the adapter configuration contains one or more simulations that define how values should be generated.
 
-In order to use this adapter as in [in-process](../sfc-running-adapters.md#running-protocol-adapters-in-process) type adapter the type must be added to the [AdapterTypes](../core/sfc-configuration.md#adaptertypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this adapter
+
+`AdapterType` is `SIMULATOR` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"AdapterTypes" :{
-  "SIMULATOR" : {
-    "JarFiles" : ["<location of deployment>/simulator/lib"]
-  },
-  "FactoryClassName" :"com.amazonaws.sfc.simulator.SimulatorAdapter"
+"AdapterTypes": {
+  "SIMULATOR": { "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter" }
 }
 ```
+
+**In-process** - module bundle `simulator` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"AdapterTypes": {
+  "SIMULATOR": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/simulator/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+  }
+}
+```
+
+**IPC** - no `AdapterTypes`; the adapter runs as its own service:
+
+```json
+"ProtocolAdapters": {
+  "SimulatorAdapter": {
+    "AdapterType": "SIMULATOR",
+    "AdapterServer": "SimulatorServer"
+  }
+},
+"AdapterServers": {
+  "SimulatorServer": { "Address": "localhost", "Port": 50000 }
+}
+```
+
+Start the service before SFC, on the port of its `AdapterServers` entry:
+
+**Linux / macOS**
+
+```shell
+simulator/bin/simulator -port 50000
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\simulator\lib\*" com.amazonaws.sfc.simulator.SimulatorService -port 50000
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.simulator.SimulatorService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.simulator.SimulatorService -port 50000`).
+
+**Examples:** uberjar: [Quickstart step 2](../../README.md#2-helloworld-simulator-example), [simulator-to-s3tables-uberjar.json](../../examples/in-process-sim-s3tables/sfc-to-s3tables/simulator-to-s3tables-uberjar.json), [uberjar-sim-file](../../examples/uberjar-sim-file/README.md) · in-process: [in-process-sim-s3tables](../../examples/in-process-sim-s3tables/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 
@@ -45,7 +89,7 @@ Source configuration for the Simulator protocol adapter. This type extends the [
 ### Channels
 The channels of a simulator source hold the configuration for the [simulation](#simulations) that generates the simulation values. Each channel is represented as a map indexed by its channel identifier. Channels can be "commented out" by prefixing their identifier with a "#".
 
-**Type**: Map[String,[SimalatorChannelConfiguration](#simulatorchannelconfiguration)]
+**Type**: Map[String,[SimulatorChannelConfiguration](#simulatorchannelconfiguration)]
 
 At least 1 channel must be configured.
 
@@ -57,7 +101,7 @@ At least 1 channel must be configured.
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "definitions": {
-    "SimulationSourceConfiguration": {
+    "SimulatorSourceConfiguration": {
       "type": "object",
       "description": "Configuration for Simulator source adapter",
       "allOf": [
@@ -142,6 +186,8 @@ The SimulatorChannelConfiguration type extends the [ChannelConfiguration](../cor
 
 The configuration for the simulation that generates values for this channel. The simulation determines how and what kind of values are produced. Required property that must contain a valid  [simulation configuration](#simulations)  object.
 
+If a channel's simulation is not valid (for example an unknown or missing `SimulationType`, or a missing `DataType`, `Value`, `Values`, `Item`, `Items` or `Properties`), the simulator adapter is not created, so none of its sources produces data, not even from valid channels. The log then shows `SimulationType "..." is not valid, <reason>`.
+
 **Type:** Simulation
 
 
@@ -164,7 +210,7 @@ The configuration for the simulation that generates values for this channel. The
       "type": "object",
       "properties": {
         "Simulation": {
-          "type": "#/definitions/Simulation"
+          "$ref": "#/definitions/Simulation"
         }
       },
       "required": [
@@ -213,7 +259,7 @@ Defines a channel that utilizes the [sinus simulation](#sinus) algorithm to gene
 
 
 
-Defines a channel that utilizes the [random simulation](#random) algorithm to generate a byte value that ranges between 0 (inclusive)  and 100 (exclusive)
+Defines a channel that utilizes the [random simulation](#random) algorithm to generate a byte value that ranges between 0 (inclusive) and 100 (inclusive)
 
 ```json
 {
@@ -234,7 +280,7 @@ Defines a channel that utilizes the [random simulation](#random) algorithm to ge
 
 [SFC Configuration](../core/sfc-configuration.md) > [ProtocolAdapters](../core/sfc-configuration.md#protocoladapters) > [Adapter](../core/protocol-adapter-configuration.md) 
 
-SimulatorAdapterConfiguration extents  the [AdapterConfiguration](../core/protocol-adapter-configuration.md) for the Simulator
+SimulatorAdapterConfiguration extends the [AdapterConfiguration](../core/protocol-adapter-configuration.md) for the Simulator
 
 - [Schema](#simulatoradapterconfiguration-schema)
 - [Example](#simulatoradapterconfiguration-example)
@@ -278,6 +324,10 @@ SimulatorAdapterConfiguration extents  the [AdapterConfiguration](../core/protoc
 
 Simulations are used to generate values.
 
+`SimulationType` and `DataType` are not case-sensitive. A misspelled `DataType` is not reported: the simulation then returns null instead of values.
+
+Values are generated when the schedule reads the channel. Counter, Range and Random step once per read, List and Structure read each of their items once per read, and Constant never changes. Sawtooth, Sinus, Square and Triangle follow the wall clock, so `CycleLength` divided by the schedule's `Interval` is the number of samples per cycle, and a `Size` greater than 0 repeats the value of that moment. Reads that return no value (Interval or Buffered between emissions) are left out of the output.
+
 There are two types of simulations:
 
 - [Value simulations](#value-simulations) - These simulations generate actual values directly (like constant values, sine waves, or random numbers)
@@ -309,15 +359,32 @@ There are two types of simulations:
 ## Composite simulations
 
 - [Buffered](#buffered)
-- [Interval](#interval-2)
+- [Interval](#interval-1)
 - [List](#list)
 - [Structure](#structure)
+
+**All simulation types at a glance:**
+
+| SimulationType | Required | Optional (default) | Value changes |
+| --- | --- | --- | --- |
+| [Constant](#constant) | `DataType`, `Value` | none | never |
+| [Counter](#counter) | `DataType` | `Min` (0), `Max` (type maximum), `Step` (1), `Direction` (`UP`), `Size` (0) | per read |
+| `DateTime` | none | `UTC` (false) | per read |
+| [Random](#random) | `DataType` | `Min` (type minimum), `Max` (type maximum - 1), `Size` (0) | per read |
+| [Range](#range) | `DataType`, `Values` | `Random` (false), `Size` (0) | per read |
+| [Sawtooth](#sawtooth), [Sinus](#sinus), [Square](#square), [Triangle](#triangle) | `DataType` | `Min` (0), `Max` (100), `CycleLength` (10000 ms), `Size` (0), and for Sinus `Shift` (0) | wall clock |
+| [Buffered](#buffered) | `Item` | `Interval` (1000 ms) | batch per interval |
+| [Interval](#interval-1) | `Item` | `Interval` (1000 ms) | once per interval |
+| [List](#list) | `DataType`, `Items` | none | per read |
+| [Structure](#structure) | `Properties` | none | per read |
+
+`DateTime` returns the current time, with `"UTC": true` for UTC instead of the local time zone. It has no section below because its value is currently written as a structured object instead of an ISO-8601 timestamp.
 
 
 
 ## Constant
 
-The Constant simulation type of simulation returns a constant value or an array of values of a specific data type.
+The Constant simulation type of simulation returns a constant value of a specific data type.
 
 - [Schema](#constant-schema)
 - [Examples](#constant--examples)
@@ -332,7 +399,7 @@ The Constant simulation type of simulation returns a constant value or an array 
 
 ### DataType
 
-The data type of the returned constant value or the elements of an array, if applicable.
+The data type of the returned constant value.
 
 Possible values are:
 
@@ -352,6 +419,8 @@ Possible values are:
 
 **Type:** String
 
+Tip: prefer the signed types. In the uberjar and in-process modes `UByte`, `UShort` and `UInt` are written as JSON strings (for example `"200"`) and `ULong` as a double; over IPC they arrive as plain numbers.
+
 ---
 
 ### SimulationType
@@ -362,7 +431,7 @@ Type of the simulation, value is "**Constant**".
 
 ### Value
 
-The return value of the simulation function must be of the specified type or compatible with that type. The return value can be a single value or an array of values.
+The value returned on every read. It must be of the specified data type, or convertible to that type. A single value only; arrays are not supported.
 
 **Type:** Must match or be compatible with the Constant simulation's defined data type
 
@@ -379,11 +448,11 @@ The return value of the simulation function must be of the specified type or com
   "description": "Configuration constant simulation",
   "properties": {
     "SimulationType": {
-      "type": "String",
-      "enum": "Constant"
+      "type": "string",
+      "enum": ["Constant"]
     },
     "DataType": {
-      "type": "String",
+      "type": "string",
       "enum": [
         "Boolean",
         "Byte",
@@ -396,12 +465,12 @@ The return value of the simulation function must be of the specified type or com
         "Char",
         "UByte",
         "UShort",
+        "UInt",
         "ULong"
       ],
       "description": "Type of the returned value"
     },
     "Value": {
-      "type": "any",
       "description": "Value returned by the simulation"
     }
   },
@@ -417,7 +486,7 @@ The return value of the simulation function must be of the specified type or com
 
 ## Constant  examples
 
-Simulation returning a a 16-bit interger value of 100
+Simulation returning a 16-bit integer value of 100
 
 ```json
 {
@@ -453,13 +522,14 @@ Simulation returning float type value of 3.14
 
 
 
-Simulation returning array of bytes
+A Constant value is always a single value. To return the same array on every read, use a [Range](#range) simulation with `Size` set to the number of values.
 
 ```json
 {
- "SimulationType" : "Constant",
-  "DataType" : "Byte"
-  "Value" : [1,2,3,4]
+  "SimulationType" : "Range",
+  "DataType" : "Byte",
+  "Values" : [1, 2, 3, 4],
+  "Size" : 4
 }
 ```
 
@@ -475,20 +545,20 @@ For incrementing counters, ([Direction](#direction) is set to "UP"):
 
 - Starts at the minimum value (specified by [Min](#min) property, defaults to 0)
 - Increases by the [Step](#step) amount with each value returned, defaults to 1.
-- When reaching or exceeding the maximum value (specified by [Max](#max) property, or type's maximum), resets to the start value
+- When the next step would exceed the maximum value (specified by the [Max](#max) property, default the type's maximum), wraps to the [Min](#min) value
 
 For decrementing counters  ([Direction](#direction) is set to "DOWN"):
 
 - Starts at the maximum value (specified by [Max](#max) property, or type's maximum)
 - Decreases by the [Step](#step) amount with each value returned
-- When reaching or falling below the minimum value (specified by [Min](#min) property, or type's minimum), resets to the start value.
+- When the next step would go below the minimum value (specified by the [Min](#min) property, default 0 for both directions), wraps to the [Max](#max) value.
 
 - [Schema](#counter-schema)
 - [Examples](#counter-examples)
 
 **Properties:**
 
-- [DataType](#datatype-2)
+- [DataType](#datatype-1)
 
 - [Direction](#direction)
 
@@ -496,7 +566,7 @@ For decrementing counters  ([Direction](#direction) is set to "DOWN"):
 
 - [Min](#min)
 
-- [SimulationType](#simulationtype-2)
+- [SimulationType](#simulationtype-1)
 
 - [Size](#size)
 
@@ -567,9 +637,9 @@ Type of the simulation, value is "**Counter**".
 Controls output format:
 
 - When set to 0, returns individual values
-- When greater than 0, returns an array of values of the specified size, incrementing or decrementin the counter value for every returned item.
+- When greater than 0, returns an array of values of the specified size, incrementing or decrementing the counter value for every returned item.
 
-**Type:** Int
+**Type:** Int, default 0
 
 ---
 
@@ -596,11 +666,11 @@ The amount to change by each time (defaults to 1)
       "enum" : ["Counter"]
     },
     "Size": {
-      "type" : "int"
+      "type" : "integer"
     },
     "Direction": {
       "type" : "string",
-      "enum" : ["UP", "DOWN"]
+      "enum" : ["UP", "DOWN"],
       "default": "UP"
     },
     "Max": {
@@ -612,8 +682,8 @@ The amount to change by each time (defaults to 1)
     "Step": {
       "type" : "number"
     },
-     "DataType": {
-      "type": "String",
+    "DataType": {
+      "type": "string",
       "enum": [
         "Byte",
         "Short",
@@ -623,11 +693,11 @@ The amount to change by each time (defaults to 1)
         "Double",
         "UByte",
         "UShort",
+        "UInt",
         "ULong"
       ],
       "description": "Type of the returned value"
-    },
-    
+    }
   },
   "required": ["SimulationType", "DataType"]
 }
@@ -665,7 +735,7 @@ Returned Values:  0, 2, 4, .... 100, then reset to 0
 
 
 
-Counter counting down from 100 to 0,, then reset at 0 
+Counter counting down from 100 to 0, then reset to 100
 
 Returned values: 100, 99, 98, ... 0, 100, 99, 98...
 
@@ -681,41 +751,30 @@ Returned values: 100, 99, 98, ... 0, 100, 99, 98...
 
 
 
-Counter counting  up from  0 to 255, which is the maximum value for an Unsigned Byte value, then reset to 0
+Counter counting up from 0 to 255, which is the maximum value for an unsigned byte value, then reset to 0
 
 Returned values:  0,  1, 2,  3, ...255
 
 ```json
 {
-  "SimulationType" : "UByteCounter",
+  "SimulationType" : "Counter",
+  "DataType" : "UByte"
 }
 ```
 
 
 
-Counter counting down from  0 to -128 which is the minumum value for a Byte value, then rest to 0
+Counter counting down from 0 to -128, which is the minimum value for a byte value, then reset to 0
 
 Returned values 0, -1, -2, ... -128
 
 ```json
 {
-  "SimulationType" : "ByteCounter",
+  "SimulationType" : "Counter",
+  "DataType" : "Byte",
   "Direction" : "DOWN",
-  "Max" : 0
-}
-```
-
-
-
-Counter returning multiple values
-
-Returned values [0,1], [2,3], [4,5]...
-
-```json
-{
- "SimulationType" : "IntCounter",
-  "Direction" : "UP",
-  "ArraySize" : 2
+  "Max" : 0,
+  "Min" : -128
 }
 ```
 
@@ -752,22 +811,22 @@ Returned values [0,1],  [2,3], [4,5]...
 
 ## Random
 
-Random Simulation generates random values within a specified range. It requires a minimum value, maximum value, and data type. Optionally, it can generate an array of random values when an array size is specified. 
+Random Simulation generates random values within a specified range. It requires a `DataType`; `Min` and `Max` default to the range of that type. Optionally, it can generate an array of random values when an array size is specified. 
 
 - [Schema](#random-schema)
 - [Examples](#random-examples)
 
 **Properties:**
 
-- [DataType](#datatype-3)
+- [DataType](#datatype-2)
 
-- [Max](#max-2)
+- [Max](#max-1)
 
-- [Min](#min-2)
+- [Min](#min-1)
 
-- [SimulationType](#simulationtype-3)
+- [SimulationType](#simulationtype-2)
 
-- [Size](#size-2)
+- [Size](#size-1)
 
   
 
@@ -796,7 +855,7 @@ Possible values are:
 
 ### Max
 
-Maximum value (non-inclusive) for the random number generation. Must be greater than or equal to the minimum value and must be compatible with the specified data type. This value is ignored for [DataType](#datatype-3) "Boolean". When this proprty is ommited the maximum value of the specified [DataType](#datatype-3) is used.
+Upper bound for the random number generation. It must be compatible with the specified data type. It is exclusive for `Int`, `Long`, `Float`, `UByte`, `UShort`, `UInt` and `ULong`, and must then be greater than [Min](#min-1); otherwise the read fails and the source returns no data at all. It is inclusive for `Byte` and `Short`. For `Double` the values can currently exceed `Max`, up to `Max` + 1 (exclusive). This value is ignored for [DataType](#datatype-2) "Boolean". When this property is omitted the maximum value of the specified [DataType](#datatype-2) minus 1 is used.
 
 **Type :**  Number
 
@@ -804,7 +863,7 @@ Maximum value (non-inclusive) for the random number generation. Must be greater 
 
 ### Min
 
-Minimum value (inclusive) for the random number generation. Must be less than or equal to the maximum value and must be compatible with the specified data type. This value is ignored for [DataType](#datatype-3) "Boolean". When this proprty is ommited the minimum value of the specified [DataType](#datatype-3) is used.
+Minimum value (inclusive) for the random number generation. Must be less than or equal to the maximum value and must be compatible with the specified data type. This value is ignored for [DataType](#datatype-2) "Boolean". When this property is omitted the minimum value of the specified [DataType](#datatype-2) is used.
 
 **Type :**  Number
 
@@ -823,9 +882,9 @@ Type of the simulation, value is "**Random**".
 Controls output format:
 
 - When set to 0, returns individual values
-- When greater than 0, returns an array of values of the specified size, incrementing or decrementin the counter value for every returned item.
+- When greater than 0, returns an array of the specified size with a new random value for every item.
 
-**Type:** Int
+**Type:** Int, default 0
 
 
 
@@ -842,7 +901,7 @@ Controls output format:
       "enum" : ["Random"]
     },
     "Size": {
-      "type" : "int"
+      "type" : "integer"
     },
     "Max": {
       "type" : "number"
@@ -850,10 +909,10 @@ Controls output format:
     "Min": {
       "type" : "number"
     },
-     "DataType": {
-      "type": "String",
+    "DataType": {
+      "type": "string",
       "enum": [
-        "Boolean"
+        "Boolean",
         "Byte",
         "Short",
         "Int",
@@ -862,11 +921,11 @@ Controls output format:
         "Double",
         "UByte",
         "UShort",
+        "UInt",
         "ULong"
       ],
       "description": "Type of the returned value"
-    },
-    
+    }
   },
   "required": ["SimulationType", "DataType"]
 }
@@ -898,7 +957,7 @@ Random byte values between -128 (inclusive) and 127 (exclusive).
 
 
 
-Arrays containing 10 integer random values between 0 (inclusive) and 100 (inclusive).
+Arrays containing 10 integer random values between 0 (inclusive) and 100 (exclusive).
 
 ```json
 {
@@ -921,13 +980,13 @@ Returns values, or arrays of values, from a set of values configured for the sim
 
 **Properties:**
 
-- [DataType](#datatype-4)
+- [DataType](#datatype-3)
 
-- [Random](#random-2)
+- [Random](#random-1)
 
-- [SimulationType](#simulationtype-4)
+- [SimulationType](#simulationtype-3)
 
-- [Size](#size-3)
+- [Size](#size-2)
 
 - [Values](#values)
 
@@ -981,15 +1040,15 @@ Controls output format:
 - When set to 0, returns individual values
 - When greater than 0, returns an array of values of the specified size, selecting a new value from the range values for every item.
 
-**Type:** Int
+**Type:** Int, default 0
 
 ---
 
 ### Values
 
-One or more values used by the Range simulation that will be returned as output values. The values must be compatible with the type specified in the DataType property and can include array values. When the [Random](#random-2) property is set to true, items are selected randomly from these values. When [Random](#random-2) is false (default), values are returned sequentially in order, cycling back to the beginning after reaching the end of the list.
+One or more values used by the Range simulation that will be returned as output values. The values must be compatible with the type specified in the DataType property and can include array values. When the [Random](#random-1) property is set to true, items are selected randomly from these values. When [Random](#random-1) is false (default), values are returned sequentially in order, cycling back to the beginning after reaching the end of the list.
 
-Type: Any value compatible with type specified by [DataType](#datatype-4)
+Type: Any value compatible with type specified by [DataType](#datatype-3)
 
 
 
@@ -1006,10 +1065,10 @@ Type: Any value compatible with type specified by [DataType](#datatype-4)
       "enum" : ["Range"]
     },
     "Size": {
-      "type" : "int"
+      "type" : "integer"
     },
     "DataType": {
-      "type": "String",
+      "type": "string",
       "enum": [
         "Boolean",
         "Byte",
@@ -1022,11 +1081,19 @@ Type: Any value compatible with type specified by [DataType](#datatype-4)
         "Char",
         "UByte",
         "UShort",
+        "UInt",
         "ULong"
       ],
       "description": "Type of the returned value"
     },
-    
+    "Values": {
+      "type": "array",
+      "minItems": 1
+    },
+    "Random": {
+      "type" : "boolean",
+      "default" : false
+    }
   },
   "required": ["SimulationType", "DataType", "Values"]
 }
@@ -1087,11 +1154,11 @@ Returns values using a sawtooth wave pattern, where values increase linearly fro
 
 - [CycleLength](#cyclelength)
 
-- [DataType](#datatype-5)
-- [Max](#max-3)
-- [Min](#min-3)
-- [SimulationType](#simulationtype-5)
-- [Size](#size-4)
+- [DataType](#datatype-4)
+- [Max](#max-2)
+- [Min](#min-2)
+- [SimulationType](#simulationtype-4)
+- [Size](#size-3)
 
 
 
@@ -1100,6 +1167,8 @@ Returns values using a sawtooth wave pattern, where values increase linearly fro
 ### CycleLength
 
 Length of a sawtooth cycle in milliseconds, representing the time taken for the value to increase linearly from the minimum to maximum value before resetting back to the minimum value. The default cyclelength  is 10000 (10 sec).
+
+**Type:** Long (milliseconds), default 10000
 
 ---
 
@@ -1126,7 +1195,7 @@ Possible values are:
 
 ### Max
 
-Maximum value (non-inclusive) for the sawtooth number generation. Must be greater than or equal to the [minimum](#min-3) value and must be compatible with the specified [data type](#datatype-5). The default value is 100.
+Maximum value (inclusive) for the sawtooth number generation. Must be greater than or equal to the [minimum](#min-2) value and must be compatible with the specified [data type](#datatype-4). The default value is 100.
 
 **Type :**  Number
 
@@ -1134,7 +1203,7 @@ Maximum value (non-inclusive) for the sawtooth number generation. Must be greate
 
 ### Min
 
-Minimum value (inclusive) for the sawtooth number generation. Must be less than or equal to the [maximum](#max-3) value and must be compatible with the specified [data type](#datatype-5). The default value is 0.
+Minimum value (inclusive) for the sawtooth number generation. Must be less than or equal to the [maximum](#max-2) value and must be compatible with the specified [data type](#datatype-4). The default value is 0.
 
 **Type :**  Number
 
@@ -1153,9 +1222,9 @@ Name of the simulation, value is "**Sawtooth**".
 Controls output format:
 
 - When set to 0, returns individual values
-- When greater than 0, returns an array of values of the specified size,.
+- When greater than 0, returns an array of values of the specified size.
 
-**Type:** Int
+**Type:** Int, default 0
 
 ## Sawtooth schema
 
@@ -1170,7 +1239,7 @@ Controls output format:
       "enum" : ["Sawtooth"]
     },
     "Size": {
-      "type" : "int"
+      "type" : "integer"
     },
     "Max": {
       "type" : "number"
@@ -1182,8 +1251,8 @@ Controls output format:
       "type" : "integer",
       "default" : 10000
     },
-     "DataType": {
-      "type": "String",
+    "DataType": {
+      "type": "string",
       "enum": [
         "Byte",
         "Short",
@@ -1193,11 +1262,11 @@ Controls output format:
         "Double",
         "UByte",
         "UShort",
+        "UInt",
         "ULong"
       ],
       "description": "Type of the returned value"
-    },
-    
+    }
   },
   "required": ["SimulationType", "DataType"]
 }
@@ -1237,11 +1306,11 @@ Integer values within the range of 100 (inclusive) and the range of 200 (inclusi
 
 
 
-Simulation return arrays values  containing 10 integer  values between 0 (inclusive) and 100 (inclusive).
+Simulation returning an array of 10 copies of the current value, an integer between 0 (inclusive) and 100 (inclusive).
 
 ```json
 {
-  "SimulationType" : "SawTooth",
+  "SimulationType" : "Sawtooth",
   "DataType" : "Int",
   "Min": 0,
   "Max" : 100,
@@ -1260,19 +1329,21 @@ Returns values using a sine wave pattern, where values oscillate smoothly betwee
 
 **Properties:**
 
-- [CycleLength](#cyclelength-2)
-- [DataType](#datatype-6)
-- [Max](#max-4)
-- [Min](#min-4)
-- [SimulationType](#simulationtype-6)
-- [Size](#size-5)
+- [CycleLength](#cyclelength-1)
+- [DataType](#datatype-5)
+- [Max](#max-3)
+- [Min](#min-3)
+- [SimulationType](#simulationtype-5)
+- [Size](#size-4)
 - [Shift](#shift)
 
 ---
 
 ### CycleLength
 
-Length of a sine wave cycle in milliseconds, representing the time taken for one complete oscillation from [minimum](#min-4) to [maximum](#max-4) and back to [minimum](#min-4) value, completing a full 360-degree cycle. The default cyclelength  is 10000 (10 sec).
+Length of a sine wave cycle in milliseconds, representing the time taken for one complete oscillation from [minimum](#min-3) to [maximum](#max-3) and back to [minimum](#min-3) value, completing a full 360-degree cycle. The default cyclelength  is 10000 (10 sec).
+
+**Type:** Long (milliseconds), default 10000
 
 ---
 
@@ -1299,7 +1370,7 @@ Possible values are:
 
 ### Max
 
-Maximum value (non-inclusive) for the sinus number generation. Must be greater than or equal to the [minimum](#min-4) value and must be compatible with the specified [data type](#datatype-6). The default value is 100.
+Maximum value (inclusive) for the sinus number generation. Must be greater than or equal to the [minimum](#min-3) value and must be compatible with the specified [data type](#datatype-5). The default value is 100.
 
 **Type :**  Number
 
@@ -1307,7 +1378,7 @@ Maximum value (non-inclusive) for the sinus number generation. Must be greater t
 
 ### Min
 
-Minimum value (inclusive) for the sinus number generation. Must be less than or equal to the [maximum](#max-4) value and must be compatible with the specified [data type](#datatype-6). The default value is 0.
+Minimum value (inclusive) for the sinus number generation. Must be less than or equal to the [maximum](#max-3) value and must be compatible with the specified [data type](#datatype-5). The default value is 0.
 
 **Type :**  Number
 
@@ -1326,15 +1397,17 @@ Type of the simulation, value is "**Sinus**".
 Controls output format:
 
 - When set to 0, returns individual values
-- When greater than 0, returns an array of values of the specified size,.
+- When greater than 0, returns an array of values of the specified size.
 
-**Type:** Int
+**Type:** Int, default 0
 
 ---
 
 ### Shift
 
-The Shift property specifies the starting phase angle (in degrees) of the sine wave, accepting values between 0 and 360 degrees. This determines where in the sine wave cycle the simulation begins generating values. For example, a shift of 90 degrees would start the sine wave at its maximum value, while a shift of 180 degrees would start at zero but decreasing.
+The Shift property specifies the starting phase angle (in degrees) of the sine wave. The value is taken modulo 360. This determines where in the sine wave cycle the simulation begins generating values. The generated value is the midpoint between [Min](#min-3) and [Max](#max-3) plus the sine of the angle times half the range, so with the default shift of 0 the wave starts at that midpoint and rises, a shift of 90 degrees starts at the maximum value, and a shift of 180 degrees starts at the midpoint and falls.
+
+**Type:** Int (degrees), default 0
 
 ## Sinus schema
 
@@ -1349,7 +1422,7 @@ The Shift property specifies the starting phase angle (in degrees) of the sine w
       "enum" : ["Sinus"]
     },
     "Size": {
-      "type" : "int"
+      "type" : "integer"
     },
     "Max": {
       "type" : "number"
@@ -1364,8 +1437,8 @@ The Shift property specifies the starting phase angle (in degrees) of the sine w
     "Shift": {
       "type" : "integer"
     },
-     "DataType": {
-      "type": "String",
+    "DataType": {
+      "type": "string",
       "enum": [
         "Byte",
         "Short",
@@ -1375,11 +1448,11 @@ The Shift property specifies the starting phase angle (in degrees) of the sine w
         "Double",
         "UByte",
         "UShort",
+        "UInt",
         "ULong"
       ],
       "description": "Type of the returned value"
-    },
-    
+    }
   },
   "required": ["SimulationType", "DataType"]
 }
@@ -1391,7 +1464,7 @@ The Shift property specifies the starting phase angle (in degrees) of the sine w
 
 Integer values within the range of 0 to 100
 
-```
+```json
 {
    "SimulationType" : "Sinus",
    "DataType" : "Int",
@@ -1406,7 +1479,7 @@ Integer values within the range of 0 to 100
 
 Integer values within the range of 100 to 200.
 
-```
+```json
 {
    "SimulationType" : "Sinus",
    "DataType" : "Int",
@@ -1428,17 +1501,17 @@ Returns values using a square wave pattern, where values alternate between minim
 
 **Properties:**
 
-- [CycleLength](#cyclelength-3)
+- [CycleLength](#cyclelength-2)
 
-- [DataType](#datatype-7)
+- [DataType](#datatype-6)
 
-- [Max](#max-5)
+- [Max](#max-4)
 
-- [Min](#min-5)
+- [Min](#min-4)
 
-- [SimulationType](#simulationtype-7)
+- [SimulationType](#simulationtype-6)
 
-- [Size](#size-6)
+- [Size](#size-5)
 
   
 
@@ -1447,6 +1520,8 @@ Returns values using a square wave pattern, where values alternate between minim
 ### CycleLength
 
 Length of a square wave cycle in milliseconds, representing the time taken for one complete cycle consisting of both the high (maximum) and low (minimum) states before repeating the pattern. The default cyclelength  is 10000 (10 sec).
+
+**Type:** Long (milliseconds), default 10000
 
 ---
 
@@ -1464,7 +1539,6 @@ Possible values are:
 - `Float`
 - `Double`
 - `String`
-- `Char`
 - `UByte`
 - `UShort`
 - `UInt`
@@ -1472,11 +1546,13 @@ Possible values are:
 
 **Type:** String
 
+With `Boolean` the wave is false for the first half of each cycle and true for the second half.
+
 ---
 
 ### Max
 
-Maximum value for the square wave generation. Must be greater than or equal to the [minimum](#min-5) value and must be compatible with the specified [data type](#datatype-7). The value represents the upper level of the square wave. The default value is 100.
+Maximum value for the square wave generation. Must be greater than or equal to the [minimum](#min-4) value and must be compatible with the specified [data type](#datatype-6). The value represents the upper level of the square wave. The default value is 100.
 
 **Type :**  Number
 
@@ -1484,7 +1560,7 @@ Maximum value for the square wave generation. Must be greater than or equal to t
 
 ### Min
 
-Minimum value for the square wave generation. Must be less than or equal to the [maximum](#max-5) value and must be compatible with the specified [data type](#datatype-7). The value represents the lower level of the square wave. The default value is 0.
+Minimum value for the square wave generation. Must be less than or equal to the [maximum](#max-4) value and must be compatible with the specified [data type](#datatype-6). The value represents the lower level of the square wave. The default value is 0.
 
 **Type :**  Number
 
@@ -1503,9 +1579,9 @@ Type of the simulation, value is "**Square**".
 Controls output format:
 
 - When set to 0, returns individual values
-- When greater than 0, returns an array of values of the specified size,.
+- When greater than 0, returns an array of values of the specified size.
 
-**Type:** Int
+**Type:** Int, default 0
 
 ---
 
@@ -1524,7 +1600,7 @@ Controls output format:
       "enum" : ["Square"]
     },
     "Size": {
-      "type" : "int"
+      "type" : "integer"
     },
     "Max": {
       "type" : "number"
@@ -1537,7 +1613,7 @@ Controls output format:
       "default" : 10000
     },
     "DataType": {
-      "type": "String",
+      "type": "string",
       "enum": [
         "Boolean",
         "Byte",
@@ -1547,14 +1623,13 @@ Controls output format:
         "Float",
         "Double",
         "String",
-        "Char",
         "UByte",
         "UShort",
+        "UInt",
         "ULong"
       ],
       "description": "Type of the returned value"
-    },
-    
+    }
   },
   "required": ["SimulationType", "DataType"]
 }
@@ -1566,7 +1641,7 @@ Controls output format:
 
 Integer values within the range of 0 to 100
 
-```
+```json
 {
    "SimulationType" : "Square",
    "DataType" : "Int",
@@ -1581,7 +1656,7 @@ Integer values within the range of 0 to 100
 
 Integer values within the range of 100 to 200.
 
-```
+```json
 {
    "SimulationType" : "Square",
    "DataType" : "Int",
@@ -1598,18 +1673,18 @@ Integer values within the range of 100 to 200.
 
 Returns values using a triangle wave pattern, where values increase and decrease linearly between minimum and maximum values. The pattern creates a series of triangular shapes with equal rising and falling slopes, repeating continuously throughout the simulation.
 
-- [Schema](#square-schema)
-- [Examples](#square-examples)
+- [Schema](#triangle-schema)
+- [Examples](#triangle-examples)
 
 **Properties:**
 
 - [CycleLength](#cyclelength-3)
 
-- [DataType](#datatype-8)
+- [DataType](#datatype-7)
 
-- [Max](#max-6)
+- [Max](#max-5)
 
-- [Min](#min-6)
+- [Min](#min-5)
 
 - [SimulationType](#simulationtype-7)
 
@@ -1621,7 +1696,9 @@ Returns values using a triangle wave pattern, where values increase and decrease
 
 ### CycleLength
 
-Length of a square wave cycle in milliseconds, representing the time taken for one complete cycle consisting of both the high (maximum) and low (minimum) states before repeating the pattern. The default cyclelength  is 10000 (10 sec).
+Length of a triangle cycle in milliseconds. Note that the current implementation completes two rise-and-fall periods per CycleLength: each ramp takes CycleLength divided by 4. The default cyclelength  is 10000 (10 sec).
+
+**Type:** Long (milliseconds), default 10000
 
 ---
 
@@ -1631,7 +1708,6 @@ The data type of the returned triangle value or the elements of an array, if app
 
 Possible values are:
 
-- `Boolean`
 - `Byte`
 - `Short`
 - `Int`
@@ -1639,7 +1715,6 @@ Possible values are:
 - `Float`
 - `Double`
 - `String`
-- `Char`
 - `UByte`
 - `UShort`
 - `UInt`
@@ -1651,7 +1726,7 @@ Possible values are:
 
 ### Max
 
-Maximum value for the triangle wave generation. Must be greater than or equal to the [minimum](#min-6) value and must be compatible with the specified [data type](#datatype-8). The value represents the upper level of the square wave. The default value is 100.
+Maximum value for the triangle wave generation. Must be greater than or equal to the [minimum](#min-5) value and must be compatible with the specified [data type](#datatype-7). The value represents the upper level of the triangle wave. The default value is 100.
 
 **Type :**  Number
 
@@ -1659,7 +1734,7 @@ Maximum value for the triangle wave generation. Must be greater than or equal to
 
 ### Min
 
-Minimum value for the triangle wave generation. Must be less than or equal to the [maximum](#max-6) value and must be compatible with the specified [data type](#datatype-8). The value represents the lower level of the square wave. The default value is 0.
+Minimum value for the triangle wave generation. Must be less than or equal to the [maximum](#max-5) value and must be compatible with the specified [data type](#datatype-7). The value represents the lower level of the triangle wave. The default value is 0.
 
 **Type :**  Number
 
@@ -1678,9 +1753,9 @@ Name of the simulation, value is "**Triangle**".
 Controls output format:
 
 - When set to 0, returns individual values
-- When greater than 0, returns an array of values of the specified size,.
+- When greater than 0, returns an array of values of the specified size.
 
-**Type:** Int
+**Type:** Int, default 0
 
 ---
 
@@ -1692,14 +1767,14 @@ Controls output format:
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "description": "Configuration square simulation",
+  "description": "Configuration triangle simulation",
   "properties": {
    "SimulationType": {
       "type": "string",
       "enum" : ["Triangle"]
     },
     "Size": {
-      "type" : "int"
+      "type" : "integer"
     },
     "Max": {
       "type" : "number"
@@ -1712,7 +1787,7 @@ Controls output format:
       "default" : 10000
     },
     "DataType": {
-      "type": "String",
+      "type": "string",
       "enum": [
         "Byte",
         "Short",
@@ -1721,14 +1796,13 @@ Controls output format:
         "Float",
         "Double",
         "String",
-        "Char",
         "UByte",
         "UShort",
+        "UInt",
         "ULong"
       ],
       "description": "Type of the returned value"
-    },
-    
+    }
   },
   "required": ["SimulationType", "DataType"]
 }
@@ -1740,7 +1814,7 @@ Controls output format:
 
 Integer values within the range of 0 to 100
 
-```
+```json
 {
    "SimulationType" : "Triangle",
    "DataType" : "Int",
@@ -1753,7 +1827,7 @@ Integer values within the range of 0 to 100
 
 Integer values within the range of 100 to 200.
 
-```
+```json
 {
    "SimulationType" : "Triangle",
    "DataType" : "Int",
@@ -1779,7 +1853,7 @@ The Buffered simulation acts as a wrapper around another simulation, collecting 
 
 - [Item](#item)
 
-- [SimulationType](#simulationtype-9)
+- [SimulationType](#simulationtype-8)
 
   
 
@@ -1795,7 +1869,7 @@ Length of the collection period in milliseconds during which values from the [em
 
 ### Item
 
-The embedded simulation that generates the actual values to be buffered. This simulation runs continuously, and its values are collected and timestamped during each [interval period](#interval) before being returned as a batch. 
+The embedded simulation that generates the actual values to be buffered. It is sampled once per read, and the samples are timestamped and kept until the [interval period](#interval) ends, when they are returned as a batch. 
 
 **Type**: Simulation
 
@@ -1852,15 +1926,7 @@ This simulation buffers values returned from the embedded Random simulation, whi
 }
 ```
 
-If the simulation is queried for a value every second, it will return no values for the first four queries. However, on the fifth query, it will return the following collected values:
-
- `[`
-	`(2025-03-19T16:51:30.941798Z, 99),`
-	`(2025-03-19T16:51:30.970677Z, 67,`
-	`(2025-03-19T16:51:30.989699Z, 38),`
-	`(2025-03-19T16:51:31.008582Z, 60),`
-	`(2025-03-19T16:51:31.024338Z, 55)`
-`]`
+Read every second, the channel returns no value until the 5000 ms interval has passed; the first read after that returns all samples collected since the previous batch (about five, taken about a second apart). Each sample reaches the targets as a separate record carrying the time at which it was sampled.
 
 
 
@@ -1873,11 +1939,11 @@ The Interval simulation wraps another simulation and controls when its values ar
 
 **Properties:**
 
-- [Interval](#interval-3)
+- [Interval](#interval-2)
 
 - [Item](#item-1)
 
-- [SimulationType](#simulationtype-10)
+- [SimulationType](#simulationtype-9)
 
   
 
@@ -1893,7 +1959,7 @@ Length of the interval period in milliseconds. The simulation will only return a
 
 ### Item
 
-The embedded simulation that generates values is queried for its value every time the Interval simulation is queried. However, it only returns its value after the specified [interval](#interval-3) period has elapsed.
+The embedded simulation that generates the values. It is queried only when the [interval](#interval-2) period has elapsed; between emissions the channel returns no value and is left out of the output. A Counter inside an Interval therefore advances once per interval, not once per read.
 
 **Type**: Simulation
 
@@ -1935,7 +2001,7 @@ Type of the simulation, value is "**Interval**".
 
 ## Interval example
 
-This simulation buffers values returned from the embedded Random simulation, which generates random integers between 0 and 100. When queried for values, it does not return any until the 5000ms interval period has expired, after which it returns just the last value.
+This simulation returns a new random integer between 0 and 100 from the embedded Random simulation at most once every 5000 ms. Reads in between return no value.
 
 ```json
 {
@@ -1963,11 +2029,11 @@ The List simulation contains multiple embedded simulations and returns their val
 
 **Properties:**
 
-- [DataType](#datatype-9)
+- [DataType](#datatype-8)
 
 - [Items](#items)
 
-- [SimulationType](#simulationtype-11)
+- [SimulationType](#simulationtype-10)
 
 ---
 
@@ -1999,7 +2065,7 @@ Possible values are:
 
 ### Items
 
-A list of one or more embedded simulations that generate the values. The data type of each simulation must be the same as, or compatible with, the data type specified in the [DataType](#datatype-8) property of the List simulation.
+A list of one or more embedded simulations that generate the values. The data type of each simulation must be the same as, or compatible with, the data type specified in the [DataType](#datatype-8) property of the List simulation. The items must return single values: with a numeric `DataType`, an item that returns an array, a map or a batch (any item with `Size` greater than 0, or a List, Structure or Buffered item) makes the read fail, and the source returns no data. Use a [Structure](#structure) to combine such values, or set `DataType` to `String`.
 
 **Type**:  List of  Simulation
 
@@ -2031,7 +2097,11 @@ Type of the simulation, value is "**List**".
         "$ref": "#/definitions/Simulation"
       },
       "minItems": 1
-     }
+    },
+    "DataType": {
+      "type": "string",
+      "description": "Type of the values returned by the items"
+    }
   },
   "required": ["SimulationType", "Items", "DataType"]
 }
@@ -2123,7 +2193,7 @@ Type of the simulation, value is "**Structure**".
       "minProperties": 1
 }
   },
-  "required": ["SimulationType", "Properties", "DataType"]
+  "required": ["SimulationType", "Properties"]
 }
 ```
 
@@ -2131,12 +2201,11 @@ Type of the simulation, value is "**Structure**".
 
 ## Structure example
 
-This simulation collects the values from three embedded simulations and returns the values of these simulations, as a list of values, every time it is queried.
+This simulation collects the values from three embedded simulations and returns them as one value, keyed by property name, every time it is queried. A Structure has no `DataType` of its own: every property keeps the type of its own simulation.
 
 ```json
 {
   "SimulationType": "Structure",
-  "DataType": "Int",
   "Properties": {
     "random": {
       "SimulationType": "Random",
@@ -2160,104 +2229,65 @@ This simulation collects the values from three embedded simulations and returns 
 }
 ```
 
-The output values for this simulation are a composed type containing the values of each embedded simulation.
+The output values for this simulation are a composed type containing the values of each embedded simulation, which the targets receive as a JSON object.
 
-`{random=6, sinus=0, triangle=5}`
+`{"random": 6, "sinus": 0, "triangle": 5}`
 
 
 
 ## Simulation to OPC UA example
 
-Im process example using Simulator adapter writing to OPC UA target.
-
-Environment variable `$DeploymentDir` must be set to SFC deployment directory.
+Simulated signals published by SFC's own OPC UA server, from the uberjar (so without `JarFiles`) and without any hardware. The server is reachable at `opc.tcp://localhost:4841/sfc` (`ServerTcpPort` 4841, default path `sfc`). Save it as `sim-to-opcua.json` and run `sfcx -config sim-to-opcua.json -info`.
 
 ```json
 {
   "AWSVersion": "2022-04-02",
+  "Name": "Simulator to OPC UA target",
+  "Description": "Exposes simulated signals on SFC's own OPC UA server. No external system required.",
+  "Version": 1,
+  "LogLevel": "Info",
   "Schedules": [
     {
-      "Name": "SimulationData",
-      "Interval": 1000,
-      "Sources": {
-        "SimulatorSource": [
-          "*"
-        ]
-      },
-      "Targets": [
-        "DebugTarget",
-        "OpcuaTarget"
-      ],
-      "TimestampLevel": "Both"
+      "Name": "SimSchedule",
+      "Interval": 100,
+      "Active": true,
+      "TimestampLevel": "Both",
+      "Sources": { "Simulator": [ "*" ] },
+      "Targets": [ "OpcuaTarget" ]
     }
   ],
   "Sources": {
-    "SimulatorSource": {
-      "Name": "SimulatorSource",
-      "ProtocolAdapter": "Simulator",
-      "Channels": {
-        "counter": {
-          "Simulation": {
-            "SimulationType": "Counter",
-            "DataType": "Int",
-            "Min": 0,
-            "Max": 100
-          }
-        },
-        "sinus": {
-          "Simulation": {
-            "SimulationType": "Sinus",
-            "DataType": "Byte",
-            "Min": 0,
-            "Max": 100
-          }
-        },
-        "triangle": {
-          "Simulation": {
-            "SimulationType": "Triangle",
-            "DataType": "Byte",
-            "Min": 0,
-            "Max": 100
-          }
-        }
-      }
-    }
-  },
-  "ProtocolAdapters": {
     "Simulator": {
-      "AdapterType": "SIMULATOR"
-    }
-  },
-  "AdapterTypes": {
-    "SIMULATOR": {
-      "JarFiles": [
-        "${Deployment}/simulator/lib"
-      ],
-      "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+      "Name": "Sim",
+      "ProtocolAdapter": "SimulatorAdapter",
+      "Description": "Simulated signals feeding the SFC OPC UA server",
+      "Channels": {
+        "sinus":    { "Simulation": { "SimulationType": "Sinus",    "DataType": "Double", "Min": 0, "Max": 100 } },
+        "triangle": { "Simulation": { "SimulationType": "Triangle", "DataType": "Double", "Min": 0, "Max": 100 } },
+        "sawtooth": { "Simulation": { "SimulationType": "Sawtooth", "DataType": "Double", "Min": 0, "Max": 100 } },
+        "square":   { "Simulation": { "SimulationType": "Square",   "DataType": "Double", "Min": 0, "Max": 100 } },
+        "random":   { "Simulation": { "SimulationType": "Random",   "DataType": "Byte",   "Min": 0, "Max": 100 } },
+        "counter":  { "Simulation": { "SimulationType": "Counter",  "DataType": "Int",    "Min": 0, "Max": 1000 } }
+      }
     }
   },
   "Targets": {
     "OpcuaTarget": {
-      "TargetType": "OPCUA-TARGET"
-    },
-    "DebugTarget": {
-      "TargetType": "DEBUG-TARGET"
+      "TargetType": "OPCUA-TARGET",
+      "AutoCreate": true,
+      "ServerTcpPort": 4841
     }
   },
   "TargetTypes": {
-    "OPCUA-TARGET": {
-      "JarFiles": [
-        "${Deployment}/opcua-target/lib"
-      ],
-      "FactoryClassName": "com.amazonaws.sfc.opcuatarget.OpcuaTargetWriter"
-    },
-    "DEBUG-TARGET": {
-      "JarFiles": [
-        "${Deployment}/debug-target/lib"
-      ],
-      "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
-    }
+    "OPCUA-TARGET": { "FactoryClassName": "com.amazonaws.sfc.opcuatarget.OpcuaTargetWriter" }
+  },
+  "AdapterTypes": {
+    "SIMULATOR": { "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter" }
+  },
+  "ProtocolAdapters": {
+    "SimulatorAdapter": { "AdapterType": "SIMULATOR" }
   }
 }
 ```
 
+For simulated signals written as Apache Iceberg tables to Amazon S3 Tables, in-process or from the uberjar, see [in-process-sim-s3tables](../../examples/in-process-sim-s3tables/README.md).

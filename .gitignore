@@ -1,7 +1,20 @@
+# BuildConfig.kt is generated into build/generated; kept ignored so that the copies older working
+# trees still have under src/main/kotlin are never committed.
 **/BuildConfig.kt
 
 build/
 .gradle/
+
+# Integration-test run output: reports, per-case logs and sink data. Regenerated on every run.
+ci/e2e/out/
+e2e-out/
+# CDK synth output and installed node modules for the integration-test stack.
+ci/cdk/cdk.out/
+ci/cdk/node_modules/
+# CDK context lookups and deploy outputs: they carry the deploying AWS account's ID.
+ci/cdk/cdk.context.json
+ci/cdk/outputs.json
+
 .idea/
 *.db
 .cline
@@ -9,3 +22,4 @@ build/
 .vscode
 .kotlin
 .DS_Store
+*.pyc

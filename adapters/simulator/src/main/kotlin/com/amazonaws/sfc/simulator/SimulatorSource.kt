@@ -46,7 +46,7 @@ class SimulatorSource(private val sourceID: String,
                                 value.all { it is Pair<*, *> && it.first is Instant && it.second != null }
                         if (isBufferedValue) {
                             ChannelReadValue(
-                                value = (value as List<*>).map { v ->
+                                value = value.map { v ->
                                     val pair = v as Pair<*, *>
                                     ChannelReadValue(value = pair.second, timestamp = pair.first as Instant)
                                 },

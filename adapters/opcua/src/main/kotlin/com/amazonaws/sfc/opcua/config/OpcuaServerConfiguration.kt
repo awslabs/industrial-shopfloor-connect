@@ -12,7 +12,7 @@ import com.amazonaws.sfc.config.ConfigurationException
 import com.amazonaws.sfc.config.Validate
 import com.amazonaws.sfc.crypto.CertificateConfiguration
 import com.google.gson.annotations.SerializedName
-import org.eclipse.milo.opcua.stack.core.channel.MessageLimits
+import org.eclipse.milo.opcua.stack.core.channel.EncodingLimits
 import kotlin.time.Duration
 import kotlin.time.DurationUnit
 import kotlin.time.toDuration
@@ -269,8 +269,8 @@ class OpcuaServerConfiguration : Validate {
         const val DEFAULT_WAIT_AFTER_CONNECT_ERROR = 10000L
         const val DEFAULT_READ_BATCH_SIZE = 500
         const val DEFAULT_CONNECTION_WATCHDOG_INTERVAL = 1000L
-        const val DEFAULT_MAX_MESSAGE_SIZE = MessageLimits.DEFAULT_MAX_MESSAGE_SIZE
-        const val DEFAULT_MAX_CHUNK_SIZE = MessageLimits.DEFAULT_MAX_CHUNK_SIZE
+        const val DEFAULT_MAX_MESSAGE_SIZE = EncodingLimits.DEFAULT_MAX_MESSAGE_SIZE
+        const val DEFAULT_MAX_CHUNK_SIZE = EncodingLimits.DEFAULT_MAX_CHUNK_SIZE
 
         private const val CONFIG_ADDRESS = "Address"
         private const val CONFIG_PORT = "Port"

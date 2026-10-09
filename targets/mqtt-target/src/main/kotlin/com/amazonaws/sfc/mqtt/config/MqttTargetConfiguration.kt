@@ -67,7 +67,7 @@ class MqttTargetConfiguration : TargetConfiguration(), Validate {
         val m = hasPort.find(_endPoint)
         if (m == null) _endPoint else {
             if (_port == null) {
-                _port = m.groups[1]!!.value.toInt()
+                _port = m.groups[2]!!.value.toInt()
             }
             m.groups[0]?.value.toString()
         }
@@ -77,9 +77,9 @@ class MqttTargetConfiguration : TargetConfiguration(), Validate {
             _endPoint
         } else {
             if (certificate != null || privateKey != null || rootCA != null) {
-                "${MqttConnectionProtocol.SSL.protocolPrefix}_endPoint"
+                "${MqttConnectionProtocol.SSL.protocolPrefix}$_endPoint"
             } else {
-                "${MqttConnectionProtocol.TCP.protocolPrefix}_endPoint"
+                "${MqttConnectionProtocol.TCP.protocolPrefix}$_endPoint"
             }
         }
     }

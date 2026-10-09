@@ -2,26 +2,81 @@
 
 [SFC Configuration](../core/sfc-configuration.md) > [Sources](../core/sfc-configuration.md#sources) >  [Source](../core/source-configuration.md) 
 
-The MQTT source protocol adapter enables SFC to collect data from MQTT brokers by subscribing to specified topics. It supports various MQTT protocol versions and provides flexible configuration options for secure broker connections, topic filtering, and message handling. The adapter can process both structured and unstructured MQTT messages, converting them into the standardized SFC channel format for further processing and storage.
+The MQTT source protocol adapter enables SFC to collect data from MQTT brokers by subscribing to specified topics. It subscribes with MQTT 3.1.1 (Eclipse Paho) at QoS 1, over plain TCP or TLS, with optional username/password authentication, wildcard topics and topic name mapping. The adapter can process both structured and unstructured MQTT messages, converting them into the standardized SFC channel format for further processing and storage.
 
-This adapter is particularly useful in IoT scenarios where devices and sensors publish their data to MQTT topics, allowing SFC to integrate seamlessly with existing MQTT-based infrastructure. It supports features like QoS levels, SSL/TLS security, and client authentication to ensure reliable and secure data collection from MQTT sources.
+This adapter is particularly useful in IoT scenarios where devices and sensors publish their data to MQTT topics, allowing SFC to integrate seamlessly with existing MQTT-based infrastructure. The client ID is generated (`MqttAdapter-<adapter>-<UUID>`). The adapter only reads; to publish to a broker, use the [MQTT target](../targets/mqtt.md).
 
-In order to use this adapter as in [in-process](../sfc-running-adapters.md#running-protocol-adapters-in-process) type adapter the type must be added to the [AdapterTypes](../core/sfc-configuration.md#adaptertypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this adapter
+
+`AdapterType` is `MQTT` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"AdapterTypes" :{
-  "MQTT" : {
-    "JarFiles" : ["<location of deployment>/mqtt/lib"]
-  },
-  "FactoryClassName" : "com.amazonaws.sfc.mqtt.MqttAdapter"
+"AdapterTypes": {
+  "MQTT": { "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter" }
 }
 ```
+
+**In-process** - module bundle `mqtt` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"AdapterTypes": {
+  "MQTT": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/mqtt/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+  }
+}
+```
+
+**IPC** - no `AdapterTypes`; the adapter runs as its own service:
+
+```json
+"ProtocolAdapters": {
+  "MqttAdapter": {
+    "AdapterType": "MQTT",
+    "AdapterServer": "MqttServer"
+  }
+},
+"AdapterServers": {
+  "MqttServer": { "Address": "localhost", "Port": 50000 }
+}
+```
+
+Start the service before SFC, on the port of its `AdapterServers` entry:
+
+**Linux / macOS**
+
+```shell
+mqtt/bin/mqtt -port 50000
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\mqtt\lib\*" com.amazonaws.sfc.mqtt.MqttProtocolService -port 50000
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.mqtt.MqttProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.mqtt.MqttProtocolService -port 50000`).
+
+**Examples:** uberjar: [uberjar-mqtt-file](../../examples/uberjar-mqtt-file/README.md) · in-process: [in-process-iot-core-opcua-write](../../examples/in-process-iot-core-opcua-write/README.md) · all: [examples catalog](../examples/README.md)
+
+## Known limitations
+
+- With `ReadMode` `KeepLast` (the default), the uberjar and in-process modes currently deliver an internal object (`_value`, `timestamp`, `valueCount`) instead of the value. Set `"ReadMode": "KeepAll"`.
+- In the `Sources` of a schedule, list MQTT sources with `["*"]`. A schedule that names MQTT channels receives no values from them.
+- Give each channel of a source its own topics. When two channels of a source subscribe to the same topic, only the last one receives messages.
+- `ChangeFilter` and `ValueFilter` of MQTT channels are not applied.
+- After a short broker disconnect the client reconnects without its subscriptions, and the source receives nothing until SFC is restarted.
+- In the uberjar, one adapter instance serves all MQTT sources with the settings of the MQTT adapter it was first created for, so the `ReadMode`, `MaxRetainSize`, `MaxRetainPeriod` and `ReceivedDataChannel*` settings of other MQTT adapters are ignored.
+- In IPC mode the channel `Name` is ignored; values are named after the topic.
+- For `ssl://` endpoints the adapter trusts the certificate that the broker presents, so the broker is not authenticated.
+- Payloads are decoded with the JVM's default character set. On Java 17 that is often not UTF-8 (on Windows, or on Linux with the C locale), so non-ASCII text arrives garbled; Java 18 and newer default to UTF-8.
 
 **Configuration:**
 
 - [MqttSourceConfiguration](#mqttsourceconfiguration)
 - [MqttChannelConfiguration](#mqttchannelconfiguration)
-- [TopicNameMapping](#topicnamemapping)
 - [MqttAdapterConfiguration](#mqttadapterconfiguration)
 - [MqttBrokerConfiguration](#mqttbrokerconfiguration)
 - [TopicNameMappingConfiguration](#topicnamemappingconfiguration-type)
@@ -110,6 +165,7 @@ At least 1 channel must be configured.
 
 ```json
 {
+  "Name": "MqttSource1",
   "ProtocolAdapter" : "mqtt-adapter",
   "AdapterBroker": "mqtt-broker-1",
   "Channels": {
@@ -129,6 +185,8 @@ The MQTT channel configuration defines how to read data from a specific MQTT top
 The configuration includes settings for topic subscription, message processing rules, and value extraction methods to ensure proper data collection from MQTT topics into the SFC system.
 
 The MqttChannelConfiguration type extends the [ChannelConfiguration](../core/channel-configuration.md) class with channel properties for the MQTT protocol adapter.
+
+**How values are named:** a value gets the channel's `Name` if it is set, otherwise the name made by its [TopicNameMappingConfiguration](#topicnamemappingconfiguration) (a topic that no mapping matches is dropped unless [IncludeUnmappedTopics](#includeunmappedtopics) is true), otherwise the topic it was received on (for example `sensors/temperature/room1`), not the channel identifier. Do not combine `Name` with `+` or `#` wildcards, because every matching topic would get the same name. In IPC mode the `Name` is currently ignored.
 
 - [Schema](#mqttchannelconfiguration-schema)
 - [Examples](#mqttchannelconfiguration-examples)
@@ -172,7 +230,7 @@ This wildcard functionality allows you to subscribe to multiple related topics w
 
 **Type**: String[]
 
-The must be at least one topic in the list of topics.
+There must be at least one topic in the list of topics.
 
 [^top](#mqtt-protocol-configuration)
 
@@ -198,7 +256,7 @@ The must be at least one topic in the list of topics.
           "type": "string",
           "description": "Selector for filtering messages"
         },
-        "TopicNameMapping": {
+        "TopicNameMappingConfiguration": {
           "$ref": "#/definitions/TopicNameMappingConfiguration",
           "description": "Configuration for mapping topic names"
         },
@@ -234,12 +292,13 @@ The must be at least one topic in the list of topics.
 ```json
 {
   "Topics": [
-    "Topics" :[ "sensors/temperature/#"]
+    "sensors/temperature/#"
   ],
-  "TopicNameMappingConfiguration":{
+  "TopicNameMappingConfiguration": {
     "Mappings": {
-      "test/(\\w+)": "temperature-$1"
+      "^sensors/temperature/(\\w+)$": "temperature-$1"
     }
+  }
 }
 ```
 
@@ -256,8 +315,6 @@ Mapping from topic names to alternative names. As a channel can have multiple to
 For example, when using wildcard subscriptions that match multiple topics (like "sensor/+/temperature"), you can map the actual topic names to more consistent value names. This ensures that data from different topics follows a predictable naming pattern, making it easier to process and organize the collected data, regardless of the original topic structure. 
 
 The mapping helps maintain consistency in data handling, especially when dealing with multiple data sources or dynamic topic patterns.
-
-**Type**: [TopicNameMapping](#topicnamemappingconfiguration)
 
 Example:
 
@@ -313,6 +370,8 @@ This element is a map that uses regular expression strings as indexes. The entri
 
 The replacement string can include substitution parameters for capturing groups in the regular expression.
 
+Only the part of the topic name that the expression matches is replaced, so anchor patterns with `^` and `$` to map the whole topic name.
+
 For example, if you have a mapping:
 
 ```json
@@ -331,35 +390,7 @@ This allows for flexible and powerful topic name transformations, helping to sta
 
 **Type**: Map[String,String]
 
-The must be at least one topic in the list of topics.
-
----
-### TopicNameMapping
-Mapping from topic names to alternative names. As a channel can have multiple topics, that also can include wildcards, this mapping can be used to build consistent and expected value names.
-
-**Type**: [TopicNameMapping](#topicnamemappingconfiguration-type)
-
-Example:
-
-Channel subscription is:
-
-```json
-	"Topics" :[ "test"/#"]
-```
-
-
-
-The mapping is:
-
-```json
-	"Mappings": {
-		"test/(\\w+)": "test-$1"
-	}
-```
-
-The mapping above matches updates for sub-levels of the test topic, it will use the name of the sub-level to create a name for the received data.
-
-If an update is received for data in topic "test/a" then the name of the data value will be "test-a"
+At least one mapping must be configured.
 
 [^top](#mqtt-protocol-configuration)
 
@@ -414,7 +445,7 @@ Basic mapping with matching pattern for wildcards
 {
   "IncludeUnmappedTopics": false,
   "Mappings": {
-    "device/(\\w+)/temperature": "sensors/temp/{1}"
+    "^device/(\\w+)/temperature$": "sensors/temp/$1"
   }
 }
 ```
@@ -427,9 +458,9 @@ Multiple mappings with unmapped topics included:
 {
   "IncludeUnmappedTopics": true,
   "Mappings": {
-    "device/(\\w+)/temperature": "sensors/tempe/{1}",
-    "device/(\\w+)/humidity": "sensors//humid/{1}",
-    "factory/line-(\w+)": "production/line/{1}"
+    "^device/(\\w+)/temperature$": "sensors/temp/$1",
+    "^device/(\\w+)/humidity$": "sensors/humid/$1",
+    "^factory/line-(\\w+)$": "production/line/$1"
   }
 }
 ```
@@ -440,9 +471,9 @@ Multiple mappings with unmapped topics included:
 
 [SFC Configuration](../core/sfc-configuration.md) > [ProtocolAdapters](../core/sfc-configuration.md#protocoladapters) > [Adapter](../core/protocol-adapter-configuration.md) 
 
-The MqttAdapterConfiguration class defines the configuration settings for an MQTT adapter in the SFC system. It enables communication with MQTT brokers by specifying connection parameters, channel configurations, security settings, and message handling options. This configuration manages how the system interacts with MQTT brokers, including topic subscriptions, message publishing, and connection management
+The MqttAdapterConfiguration class defines the configuration settings for an MQTT adapter in the SFC system. It enables communication with MQTT brokers by specifying connection parameters, channel configurations, security settings, and message handling options. This configuration manages how the system interacts with MQTT brokers, including topic subscriptions and connection management
 
-MqttAdapterConfiguration extension the [AdapterConfiguration](../core/protocol-adapter-configuration.md) with properties for the MQTT Protocol adapter.
+MqttAdapterConfiguration extends the [AdapterConfiguration](../core/protocol-adapter-configuration.md) with properties for the MQTT Protocol adapter.
 
 - [Schema](#mqttadapterconfiguration-schema)
 - [Examples](#mqttadapterconfiguration-examples)
@@ -477,11 +508,11 @@ For example:
 - This prevents unbounded growth of stored messages while still maintaining a useful history
 - The time period is measured in milliseconds from when the message was received
 
-This setting is particularly useful when dealing with high-frequency MQTT messages or when system memory constraints need to be considered
+This setting is particularly useful when dealing with high-frequency MQTT messages or when system memory constraints need to be considered. The limit applies separately to each value name of each channel (see [How values are named](#mqttchannelconfiguration)).
 
 **Type**: Integer
 
-The default value is 3.600.00 (1 hour). If set to 0 there is no maximum period.
+The default value is 3600000 (1 hour). If set to 0 there is no maximum period.
 
 ---
 
@@ -495,7 +526,7 @@ For example:
 - When the limit is reached, the oldest messages are discarded to make room for new ones
 - This creates a rolling buffer of the most recent messages
 
-This setting is particularly useful for preventing memory issues in systems that handle high volumes of MQTT messages while still maintaining access to recent message history
+This setting is particularly useful for preventing memory issues in systems that handle high volumes of MQTT messages while still maintaining access to recent message history. The limit applies separately to each value name of each channel (see [How values are named](#mqttchannelconfiguration)).
 
 **Type**: Integer
 
@@ -516,9 +547,9 @@ If set to 0 there is no maximum number of values.
 
 - KeepLast  to collect last values received in read interval each topic, discarding earlier messages (Default)
 
-- KeepAll to collect values received in read interval up to the maximum specified by MaxRetainSize values of not older than specified by MaxRetainPeriod
+- KeepAll to collect values received in read interval up to the maximum specified by MaxRetainSize values or not older than specified by MaxRetainPeriod
 
-  
+In the uberjar and in-process modes `KeepLast` currently delivers an internal object instead of the value; use `KeepAll` (see [Known limitations](#known-limitations)).
 
 
 ---
@@ -580,12 +611,12 @@ Default is 1000
         "MaxRetainPeriod" :{
           "type" : "integer",
           "description": "Max value retain period",
-          "default" : 0
+          "default" : 3600000
         },
         "MaxRetainSize" :{
           "type" : "integer",
           "description": "Max value retain size",
-          "default" : 0
+          "default" : 10000
         },
         "ReadMode": {
           "type": "string",
@@ -624,23 +655,26 @@ Minimal configuration:
   "AdapterType" : "MQTT",
   "Brokers": {
     "default-broker": {
-      // MqttBrokerConfiguration properties here
+      "EndPoint": "tcp://localhost:1883",
+      "Port": 1883
     }
   }
 }
 ```
 
-Multiple brokers with KeepAll mode with a restriction of 100 values other than 60 seconds:
+Multiple brokers with KeepAll mode, keeping at most 100 values that are no older than 60 seconds:
 
 ```json
 {
   "AdapterType" : "MQTT",
   "Brokers": {
     "primary-broker": {
-      // MqttBrokerConfiguration properties here
+      "EndPoint": "tcp://broker1.example.com:1883",
+      "Port": 1883
     },
     "backup-broker": {
-      // MqttBrokerConfiguration properties here
+      "EndPoint": "tcp://broker2.example.com:1883",
+      "Port": 1883
     }
   },
   "ReadMode": "KeepAll",
@@ -667,17 +701,18 @@ Key configuration elements include:
 - Authentication credentials
 - Connection behavior settings
 - Security configurations (TLS/SSL)
-- Client identification parameters
 - Connection retry and timeout settings
 
-This configuration allows you to specify all the necessary parameters for connecting to and communicating with a specific MQTT broker, ensuring secure and reliable message exchange. 
+This configuration allows you to specify all the necessary parameters for connecting to and communicating with a specific MQTT broker.
+
+TLS is used when [EndPoint](#endpoint) starts with `ssl://`. For `ssl://` endpoints set [Certificate](#certificate), [PrivateKey](#privatekey) and [RootCA](#rootca). On Windows write these paths with forward slashes, for example `"C:/sfc/certs/client-cert.pem"`; a single backslash is a JSON escape.
 
 - [Schema](#mqttbrokerconfiguration-schema)
 - [Examples](#mqttbrokerconfiguration-examples)
 
 **Properties:**
 - [Certificate](#certificate)
-- [ConnectionTimeout](#connectiontimeout)
+- [ConnectTimeout](#connecttimeout)
 - [EndPoint](#endpoint)
 - [Password](#password)
 - [Port](#port)
@@ -685,55 +720,41 @@ This configuration allows you to specify all the necessary parameters for connec
 - [RootCA](#rootca)
 - [SslServerCertificate](#sslservercertificate)
 - [Username](#username)
-- [VerifyHostName](#verifyhostname)
+- [VerifyHostname](#verifyhostname)
 - [WaitAfterConnectError](#waitafterconnecterror)
 
 ---
 ### Certificate
-Path to client certificate file. Used if broker used certificate authentication. This property specifies the file path to the client's X.509 certificate for SSL/TLS authentication with the MQTT broker.
+Path to the client certificate file. This property specifies the file path to the client's X.509 certificate for SSL/TLS authentication with the MQTT broker.
 
 Key aspects:
 
-- Required when the MQTT broker is configured to use certificate-based authentication
+- Required for `ssl://` endpoints: the adapter loads the client certificate and private key for every TLS connection
 - Should point to a valid X.509 certificate file in PEM format.
 - Used in conjunction with the private key for client authentication
-- Enables secure, certificate-based mutual authentication between client and broker
-- Typically used in production environments where enhanced security is required
 
 **Type**: String
 
 ---
-### ConnectionTimeout
+### ConnectTimeout
 Timeout for connecting to the broker in seconds.
 
 **Type**: Int
 
 Default is 10 seconds
 
+Currently not applied: the adapter always uses 10 seconds.
+
 ---
 ### EndPoint
-The EndPoint property specifies the network address of the MQTT broker that the client will connect to.
+The URL of the MQTT broker:
 
-Broker endpoint address
-Optionally with training port number (see [Port](#port))
+- `tcp://host:port` for plain MQTT, for example `"tcp://127.0.0.1:1883"`. Without a port in the URL the client connects to port 1883.
+- `ssl://host` for MQTT over TLS, for example `"ssl://mqtt.example.com"`. The client connects to port 8883; do not put a port in an `ssl://` URL.
 
-If no scheme is specified in the address, then it will be added based on the Connection type.
-("tcp://" for PlainText or "ssl://" for ServerSideTLS or MutualTLS)
+Without a scheme, `tcp://` is added, or `ssl://` when [Certificate](#certificate), [PrivateKey](#privatekey) or [RootCA](#rootca) is set. A port in the URL also sets [Port](#port) when Port is not configured.
 
 **Type** : String
-
-Format examples:
-
-- Basic address: "localhost" or "192.168.1.100"
-- With port: "localhost:1883" or "192.168.1.100:8883"
-- With scheme: "tcp://localhost" or "ssl://192.168.1.100"
-
-The connection type determines the default scheme:
-
-- PlainText connections use "tcp://"
-- ServerSideTLS and MutualTLS use "ssl://"
-
-If you specify a port both in the endpoint and in the Port property, the Port property takes precedence.
 
 ---
 ### Password
@@ -752,9 +773,6 @@ Security considerations:
 - Use placeholders in configuration files
 
 
-**Type**: String
-
-
 
 ---
 ### Port
@@ -762,23 +780,9 @@ Port on MQTT broker
 
 **Type** : Integer 
 
-Commonly port numbers are:
+Required unless the [EndPoint](#endpoint) URL contains the port, which then sets it. The connection itself uses the port in the EndPoint URL, or 1883 (`tcp://`) / 8883 (`ssl://`) when the URL has none; for `ssl://` endpoints the adapter also reads the broker's certificate from this port.
 
-- 1883 for PlaintText
-- 8883 for ServerSideTLS
-- 8884 for MutualTLS
-- 443 for AWS IoT Core endpoints
-
-In no port number is specified then the EndPoint address is searched for a training port number.
-
-The port number defines the TCP port where the MQTT broker is listening for incoming connections. The choice of port often reflects the security level of the connection:
-
-- Port 1883: Standard unencrypted MQTT communications
-- Port 8883: Secure MQTT over TLS/SSL with server-side verification
-- Port 8884: Secure MQTT over TLS/SSL with mutual authentication
-- Port 443: Used for AWS IoT Core, allows MQTT traffic through standard HTTPS ports
-
-If no port is specified in this property, the system will look for a port number in the EndPoint address (e.g., "broker.example.com:1883").
+Common port numbers are 1883 for plain MQTT and 8883 for MQTT over TLS, including AWS IoT Core endpoints.
 
 ---
 ### PrivateKey
@@ -786,36 +790,23 @@ Path to client private key file
 
 **Type** : String
 
-The private key is a crucial component for secure MQTT connections using mutual TLS (mTLS) authentication. It works in conjunction with the client certificate to establish a secure, authenticated connection to the MQTT broker.
+The private key works in conjunction with the client certificate to establish an authenticated TLS connection to the MQTT broker.
 
 Key aspects of private key usage:
 
 - Forms one half of the public/private key pair for client authentication
 - Must correspond to the public key in the client certificate
 - Used to prove the client's identity to the broker
-- Required for MutualTLS connection type
+- Required for `ssl://` endpoints
 - Should be kept secure and protected from unauthorized access
-
-Security considerations:
-
-- Store private key in a secure location with appropriate file permissions
-- Never share or expose the private key
-- Use strong encryption for the private key file
-- Consider using hardware security modules (HSM) for key storage in production
-- Rotate keys according to security policies
 
 ---
 ### RootCA
-Path to root certificate file. The Root CA file in an MQTT client is used for server certificate verification when establishing a secure connection with the broker (using TLS/SSL) 
+Path to root certificate file. The CA certificates in this file are added to the certificates the adapter trusts for TLS connections with the broker.
 
-Type** : String
+**Type**: String
 
-The Root CA (Certificate Authority) certificate is essential for TLS/SSL connections as it:
-
-- Validates the broker's identity by verifying its certificate
-- Prevents man-in-the-middle attacks
-- Establishes trust in the connection
-- Required for both ServerSideTLS and MutualTLS connection types
+Set it for `ssl://` endpoints.
 
 Usage scenarios:
 
@@ -823,37 +814,13 @@ Usage scenarios:
 2. Private CA certificates: When using self-signed or internal CA certificates
 3. AWS IoT Core: When connecting to AWS IoT endpoints using their specific root CA
 
-**Type**: String
-
 ---
 ### SslServerCertificate
-Path to server certificate file to verify the identity of the broker. [[1\]](https://stackoverflow.com/questions/65134467)
+Path to a file with the broker's certificate.
 
 **Type** : String
 
-If no certificate file is specified it is obtained from the server.
-Used for connections of type ServerSideTLS and MutualTLS
-
-The server certificate is used to:
-
-- Verify the broker's identity
-- Ensure secure communication with the correct server
-- Prevent unauthorized servers from impersonating the legitimate broker
-- Establish encrypted communications
-
-Usage contexts:
-
-1. ServerSideTLS: Client verifies broker's identity
-2. MutualTLS: Part of two-way authentication process
-3. Custom certificate validation scenarios
-
-Important considerations:
-
-- Certificate must be valid and not expired
-- Certificate must be issued by a trusted CA
-- Chain of trust must be verifiable
-- If not specified, the certificate presented by the server during connection will be used
-- Should match the domain name of the broker
+Currently not applied: the adapter reads the certificate from the broker instead and trusts it (see [Known limitations](#known-limitations)).
 
 ---
 ### Username
@@ -865,19 +832,18 @@ Username and password should not be included as clear text in the configuration.
 
 ---
 
-### VerifyHostName
+### VerifyHostname
 
 Flag to enable verification of hostname
 
 **Type** : Boolean
 
-The VerifyHostName setting controls whether the client should verify that the hostname in the broker's certificate matches the actual hostname being connected to. This is an important security feature for TLS connections. 
+The VerifyHostname setting controls whether the client should verify that the hostname in the broker's certificate matches the actual hostname being connected to.
 
 Key aspects:
 
-- Helps prevent man-in-the-middle attacks
 - Verifies the server's identity matches its certificate
-- Important for ServerSideTLS and MutualTLS connections
+- Applies to `ssl://` endpoints
 - Should typically be enabled in production environments
 
 Default is true
@@ -906,9 +872,9 @@ This setting controls the retry backoff period when connection attempts fail. It
       "type": "string",
       "description": "Client certificate file path"
     },
-    "ConnectionTimeout": {
+    "ConnectTimeout": {
       "type": "integer",
-      "description": "Connection timeout in seconds".
+      "description": "Connection timeout in seconds",
       "default" : 10
     },
     "EndPoint": {
@@ -939,7 +905,7 @@ This setting controls the retry backoff period when connection attempts fail. It
       "type": "string",
       "description": "Username for authentication"
     },
-    "VerifyHostName":{
+    "VerifyHostname":{
       "type" : "boolean",
       "default" : true
     },
@@ -947,12 +913,11 @@ This setting controls the retry backoff period when connection attempts fail. It
     "WaitAfterConnectError": {
       "type": "integer",
       "description": "Wait time in seconds after connection error",
-      "defaul1": 10
+      "default": 60
     }
   },
   "required": [
-    "EndPoint",
-    "Port"
+    "EndPoint"
   ]
 }
 ```
@@ -963,7 +928,7 @@ Basic configuration with required fields only:
 
 ```json
 {
-  "EndPoint": "localhost",
+  "EndPoint": "tcp://localhost:1883",
   "Port": 1883
 }
 ```
@@ -974,27 +939,29 @@ SSL/TLS with certificate-based authentication:
 
 ```json
 {
-  "EndPoint": "mqtt.example.com",
+  "EndPoint": "ssl://mqtt.example.com",
   "Port": 8883,
   "Certificate": "/path/to/client-cert.pem",
   "PrivateKey": "/path/to/private-key.pem",
   "RootCA": "/path/to/root-ca.pem",
-  "VerifyHostName": true
+  "VerifyHostname": true
 }
 ```
 
 
 
-Example 5 - AWS IoT Core configuration:
+AWS IoT Core configuration:
 
 ```json
 {
-  "EndPoint": "xxxxxxxxxxxxxxx-ats.iot.region.amazonaws.com",
+  "EndPoint": "ssl://xxxxxxxxxxxxxxx-ats.iot.region.amazonaws.com",
   "Port": 8883,
   "Certificate": "/certs/device-certificate.pem.crt",
   "PrivateKey": "/certs/private.pem.key",
   "RootCA": "/certs/AmazonRootCA1.pem",
-  "ConnectionTimeout": 15
+  "ConnectTimeout": 15
 }
 ```
+
+**Runnable examples:** [in-process-iot-core-opcua-write](../../examples/in-process-iot-core-opcua-write/README.md) (TLS to AWS IoT Core) · [mqtt-config-provider](../../examples/mqtt-config-provider/README.md) (the same broker settings in a configuration provider)
 

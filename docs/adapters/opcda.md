@@ -1,9 +1,11 @@
 
 # OPCDA Protocol Configuration
 
-The OPC Data Access (DA) adapter for SFC enables integration with legacy industrial automation systems by connecting to OPC DA servers. It allows reading and writing of real-time process data from devices and systems that support the classic OPC DA specification, commonly found in manufacturing and process control environments. The adapter supports browsing of available tags, synchronous and asynchronous data access, and handles data type conversions between OPC DA and SFC's internal format
+> **Platform:** Windows only (DCOM). Not included in this repository or its releases.
 
-Due to the OPC DA dependency on Windows DCOM this adapter can only be executed as an IPC server.
+The OPC Data Access (DA) adapter for SFC enables integration with legacy industrial automation systems by connecting to OPC DA servers. It reads real-time process data from devices and systems that support the classic OPC DA specification, commonly found in manufacturing and process control environments, by subscription or by polling (see [SourceReadingMode](#sourcereadingmode)).
+
+Due to the OPC DA dependency on Windows DCOM this adapter can only be executed as an IPC server on Windows, see [.NET Core based protocol adapters](../sfc-dotnet.md). The SFC core connects to it through its entry in `ProtocolAdapters`, which keeps its `AdapterType` and adds an `AdapterServer` that names an entry in [AdapterServers](../core/sfc-configuration.md#adapterservers) with the `Address` and `Port` of the service.
 
 ---
 - [OpcdaSourceConfiguration](#opcdasourceconfiguration)
@@ -31,7 +33,7 @@ Source configuration for the OPCDA protocol adapter. This type extends the [Sour
 
 ---
 ### AdapterOpcdaServer
-Identifier that references a specific OPC DA server configuration defined in the adapter's Servers section, linking the source to its corresponding server connection settings.
+Identifier that references a specific OPC DA server configuration defined in the adapter's OpcdaServers section, linking the source to its corresponding server connection settings.
 
 **Type**: String
 
@@ -110,7 +112,7 @@ Basic configuration with subscription:
 
 ```json
 {
-  "ProtocolAdapter" : "OpddaAdapter",
+  "ProtocolAdapter" : "OpcdaAdapter",
   "AdapterOpcdaServer": "MainServer",
   "Channels": {
     "Temperature": {
@@ -125,7 +127,7 @@ Multiple channels with polling
 
 ```json
 {
-  "ProtocolAdapter" : "OpddaAdapter",
+  "ProtocolAdapter" : "OpcdaAdapter",
   "AdapterOpcdaServer": "ProductionServer",
   "SourceReadingMode": "Polling",
   "Channels": {
@@ -151,7 +153,7 @@ Multiple channels with subscription
 
 ```json
 {
-  "ProtocolAdapter" : "OpddaAdapter",
+  "ProtocolAdapter" : "OpcdaAdapter",
   "AdapterOpcdaServer": "ProcessControl",
   "SourceReadingMode": "Subscription",
   "Channels": {
@@ -168,8 +170,6 @@ Multiple channels with subscription
   }
 }
 ```
-
-Copy
 
 ## OpcdaChannelConfiguration
 
@@ -280,7 +280,7 @@ Collection of OPC DA server configurations available to the adapter, each identi
     {
       "type": "object",
       "properties": {
-        "Servers": {
+        "OpcdaServers": {
           "type": "object",
           "description": "Map of OPC DA server configurations",
           "additionalProperties": {
@@ -290,7 +290,7 @@ Collection of OPC DA server configurations available to the adapter, each identi
         }
       },
       "required": [
-        "Servers"
+        "OpcdaServers"
       ]
     }
   ]
@@ -303,7 +303,7 @@ Collection of OPC DA server configurations available to the adapter, each identi
 ```json
 {
   "AdapterType" : "OpcdaAdapter",
-  "Servers": {
+  "OpcdaServers": {
     "MainServer": {
       "Url": "opcda://localhost/Matrikon.OPC.Simulation"
     }
@@ -404,8 +404,7 @@ Default is 10000, the minimum value is 1000
     },
     "ReadTimeout": {
       "type": "integer",
-      "description": "Timeout in milliseconds for read operations",
-      "default": 1000
+      "description": "Timeout in milliseconds for read operations"
     },
     "SamplingRate": {
       "type": "integer",
@@ -438,7 +437,7 @@ Default is 10000, the minimum value is 1000
 {
   "Url": "opcda://opc.server.com/Prosys.OPC.Simulation",
   "ReadBatchSize": 100,
-  "ConnectTimeout": 45
+  "ConnectTimeout": 45000
 }
 
 ```

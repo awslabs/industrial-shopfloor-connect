@@ -1,8 +1,10 @@
 ## SecretsManagerConfiguration
 
-[SFC Configuration](./sfc-configuration.md#metrics) > [SecretsManager](./sfc-configuration.md#secretsmanager) 
+[SFC Configuration](./sfc-configuration.md) > [SecretsManager](./sfc-configuration.md#secretsmanager) 
 
 Manages secure storage and access of secrets using AWS Secrets Manager and local encryption. Supports AWS credentials from IoT credentials provider or SDK credential chain, with options for local secret storage using Greengrass V2 deployment keys or custom encryption keys.
+
+A configured secret is used through a placeholder, e.g. `"Password": "${db-creds}"` for a secret with Alias `db-creds`. See [Configuration secrets](../sfc-configuration.md#configuration-secrets) for `${name}` placeholders and [Deferred placeholder replacement](../sfc-configuration.md#deferred-placeholder-replacement) for IPC services.
 
 - [Schema](#schema)
 - [Examples](#examples)
@@ -10,7 +12,7 @@ Manages secure storage and access of secrets using AWS Secrets Manager and local
 
 **Properties:**
 - [CertificatesAndKeysByFileReference](#certificatesandkeysbyfilereference)
-- [CreatePrivateKeyIfNotExists](#createprivatekeyifnotexists)
+- [CreatePrivateKeyIfNotExist](#createprivatekeyifnotexist)
 - [CredentialProviderClient](#credentialproviderclient)
 - [GreenGrassDeploymentPath](#greengrassdeploymentpath)
 - [PrivateKeyFile](#privatekeyfile)
@@ -28,8 +30,10 @@ Controls whether private keys are passed by filename reference to external IPC s
 Default is false
 
 ---
-### CreatePrivateKeyIfNotExists
+### CreatePrivateKeyIfNotExist
 Determines whether to automatically generate a new private key file for encrypting local secrets if one doesn't exist. When true (default), creates the key file automatically; when false, requires manual key file creation.
+
+Only takes effect when [PrivateKeyFile](#privatekeyfile) is set. If neither PrivateKeyFile nor [GreenGrassDeploymentPath](#greengrassdeploymentpath) is set, SFC reads `sfc-secrets-manager-private-key.pem` in [StoredSecretsDir](#storedsecretsdir) and fails if that file does not exist.
 
 **Type**: Boolean
 
@@ -46,13 +50,13 @@ If no CredentialProviderClient is configured the [AWS Java SDK credential provid
 
 ---
 ### GreenGrassDeploymentPath
-Specifies the path to a Greengrass V2 deployment whose private key will be used for local secret encryption. Typically, /greengrass/v2, requires access to effectiveConfig.yaml in the config subdirectory. The running process must have proper permissions to access these restricted files.
+Specifies the path to a Greengrass V2 deployment whose private key will be used for local secret encryption. Typically, /greengrass/v2 (on Windows typically `C:\greengrass\v2`, written as `"C:/greengrass/v2"` in JSON), requires access to effectiveConfig.yaml in the config subdirectory. The running process must have proper permissions to access these restricted files.
 
 **Type**: String
 
 ---
 ### PrivateKeyFile
-Specifies the filename for the private key used to encrypt locally stored secrets. If not specified, defaults to "sfc-secrets-manager-private-key.pem".
+Specifies the filename for the private key used to encrypt locally stored secrets. If not specified, defaults to "sfc-secrets-manager-private-key.pem" in [StoredSecretsDir](#storedsecretsdir).
 
 **Type**: String
 
@@ -66,21 +70,21 @@ Specifies the AWS region where the Secrets Manager service is located (e.g., "us
 ### Secrets
 Defines the secrets to be retrieved from AWS Secrets Manager using this configuration. 
 
-**Type**: [CloudSecretConfiguration](./cloud-secret-configuration.md)
+**Type**: [[CloudSecretConfiguration](./cloud-secret-configuration.md)]
 
 ---
 ### StoredSecretsDir
-Specifies the directory path where secret files and private key files are stored. If not set, defaults to the home directory of the user running the process.
+Specifies the directory for the default private key file (see [PrivateKeyFile](#privatekeyfile)). If not set, defaults to the home directory of the user running the process (on Windows the user profile folder, `%USERPROFILE%`, or the service account's profile folder when SFC runs as a service).
 
 **Type**: String
 
 ---
 ### StoredSecretsFile
-Specifies the filename for storing encrypted secrets. If not set, defaults to "sfc-secrets-manager-secrets".
+Specifies the path of the file for storing encrypted secrets. If not set, defaults to "sfc-secrets-manager-secrets" in the working directory. A relative path resolves against the directory SFC is started from, not against StoredSecretsDir.
 
 **Type**: String
 
-Default is " sfc-secrets-manager-secrets"
+Default is "sfc-secrets-manager-secrets"
 
 [^top](#secretsmanagerconfiguration)
 
@@ -100,23 +104,21 @@ Default is " sfc-secrets-manager-secrets"
       "default": false,
       "description": "Flag indicating if certificates and keys are referenced by file"
     },
-    "CreatePrivateKeyIfNotExists": {
+    "CreatePrivateKeyIfNotExist": {
       "type": "boolean",
       "default": true,
       "description": "Flag indicating if private key should be created if it doesn't exist"
     },
     "CredentialProviderClient": {
-      "$ref": "#/definitions/CredentialProviderConfiguration",
-      "description": "Configuration for the credential provider client defined in top level section"
+      "type": "string",
+      "description": "Name of an AwsIotCredentialProviderClients entry"
     },
     "GreenGrassDeploymentPath": {
       "type": "string",
-      "pattern": "^(/[^/]+)+$|^/$",
       "description": "Path to Greengrass deployment"
     },
     "PrivateKeyFile": {
       "type": "string",
-      "pattern": "^([A-Za-z]:)?[\\/\\\\](?:[^\\/\\\\\\n\\r\\t\\f\\v]+[\\/\\\\])*[^\\/\\\\\\n\\r\\t\\f\\v]*$",
       "description": "Path to private key file"
     },
     "Region": {
@@ -134,35 +136,13 @@ Default is " sfc-secrets-manager-secrets"
     },
     "StoredSecretsDir": {
       "type": "string",
-      "pattern": "^([A-Za-z]:)?[\\/\\\\](?:[^\\/\\\\\\n\\r\\t\\f\\v]+[\\/\\\\])*[^\\/\\\\\\n\\r\\t\\f\\v]*$",
-      "description": "Directory path for stored secrets"
+      "description": "Directory for the default private key file"
     },
     "StoredSecretsFile": {
       "type": "string",
-      "pattern": "^([A-Za-z]:)?[\\/\\\\](?:[^\\/\\\\\\n\\r\\t\\f\\v]+[\\/\\\\])*[^\\/\\\\\\n\\r\\t\\f\\v]*$",
       "description": "File path for stored secrets"
     }
-  },
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "GreenGrassDeploymentPath": { "type": "string" }
-        },
-        "required": ["GreenGrassDeploymentPath"]
-      },
-      "then": {
-        "properties": {
-          "PrivateKeyFile": { "type": "string" },
-          "StoredSecretsDir": { "type": "string" },
-          "Region": { "type": "string" }
-        }
-      },
-      "else": {
-        "required": ["PrivateKeyFile", "StoredSecretsDir", "Region"]
-      }
-    }
-  ]
+  }
 }
 ```
 
@@ -193,7 +173,7 @@ Basic configuration:
 
 
 
-Using settings from Greengrass configuration (works also when nou using as GreenGrass component)
+Using settings from Greengrass configuration (also works when not running as a Greengrass component)
 
 ```json
 {
@@ -208,9 +188,11 @@ Using settings from Greengrass configuration (works also when nou using as Green
         "SecretId": "proxy-credentials",
         "Alias": "proxy-creds"
      }
-  ],
+  ]
 }
 ```
+
+On Windows: `"GreenGrassDeploymentPath": "C:/greengrass/v2"`.
 
 
 
@@ -224,14 +206,14 @@ Explicit settings for storing secrets:
   "Secrets": [
     {
       "Alias": "AppSec1",
-      "SecretARN": "arn:aws:secretsmanager:us-east-1:123456789012:secret:app-secret-1"
+      "SecretId": "arn:aws:secretsmanager:us-east-1:123456789012:secret:app-secret-1"
     },
     {
       "Alias": "AppSec2",
-      "SecretARN": "arn:aws:secretsmanager:us-east-1:123456789012:secret:app-secret-2"
+      "SecretId": "arn:aws:secretsmanager:us-east-1:123456789012:secret:app-secret-2"
     }
   ],
   "StoredSecretsDir": "./secrets",
-  "StoredSecretsFile": "stored-secrets.json"
+  "StoredSecretsFile": "./secrets/stored-secrets.json"
 }
 ```

@@ -1,0 +1,2517 @@
+{
+  "cases": [
+    {
+      "id": "AWS-S3T-01",
+      "title": "S3 Tables fixture sim_a with AutoCreate false: the six filtered reads arrive exactly once as typed Iceberg rows, flushed by the Interval timer",
+      "tier": "aws",
+      "priority": "P0",
+      "intent": "The basic S3 Tables contract against the real service, on the stack's fixture table sim_a. The fixture is shared by every mode and build, so rows are told apart by label = the run marker (@.metadata.marker). With AutoCreate false the writer only lists and loads the existing table (AwsS3TablesTargetWriter.kt:259-292), converts each mapping's JMESPath value to the column's Iceberg type (AwsS3TablesTypesHelper.kt:22-39), buffers the rows and lets the 1 s Interval timer flush them as a Parquet data file plus one append commit (AwsS3TablesTargetWriter.kt:375-379, :669-695). Band ValueFilters (an 'and' of ge and lt, AndFilter.kt:15-17) pass ctr and half only on reads 75..80, so exactly six rows can ever carry the marker; every other read lacks the required columns and is skipped silently because WarnIfValueMissing is false (AwsS3TablesTargetWriter.kt:474-481). The 75 lead-in reads (15 s at 200 ms) keep the window clear of IPC start-up: sfc-main drops a record for an IPC target whose InitializeTarget has not returned yet (ScheduleWriter.kt:243-249, IpcTargetWriter.kt:404-405), and a failed attempt is retried only after WAIT_AFTER_ERROR = 10 s (IpcTargetWriter.kt:94-97, :460), so a window on reads 0..5 can lose its first rows and RecordsWritten then never reaches 6. The S3 Tables setup itself drops nothing: the service answers InitializeTarget as soon as the writer exists (IpcTargetServer.kt:287-302) and the setup runs inside the writer while records queue (AwsS3TablesTargetWriter.kt:358-369). In-process and uberjar writers are always initialized (TargetWriter.kt:23-24), so there the lead-in only costs 15 s. The first wait is the line logged after the setup's last catalog call (AwsS3TablesTargetWriter.kt:282-286), so a timeout tells a stalled setup from a stalled write. The case fails if a row is lost or committed twice (exactly 6 rows, counter exactly 75..80, RecordsWritten exactly 6), if a column has the wrong value or type (strict int, double and bool; UTC ISO timestamps, one per read), if the marker misses the label column (no row is found), if SFC tries to create anything, or on any WriteError.",
+      "pins": [
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:259-292",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:358-389",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:414-506",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:603-667",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:669-695",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTypesHelper.kt:22-39",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTypesHelper.kt:81-111",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTypesHelper.kt:179-208",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTypesHelper.kt:302-322",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/AwsS3TablesTargetConfiguration.kt:52-71",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetData.kt:37-48",
+        "ci/cdk/lib/sfc-it-stack.ts:234-257",
+        "ci/cdk/lib/sfc-it-stack.ts:445-454",
+        "ci/e2e/lib/sinks/s3tables.py:65-75",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:243-249",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetWriter.kt:94-97",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetWriter.kt:404-405",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetWriter.kt:460",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcTargetServer.kt:287-302",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetWriter.kt:23-24",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/AndFilter.kt:15-17"
+      ],
+      "requires": [
+        "python:pyiceberg"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3tables",
+          "table": "sim_a"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 30,
+      "steps": [
+        {
+          "wait": {
+            "log": "Schema for table \"sfc_it.sim_a\" is",
+            "comment": "the setup loaded sim_a from the catalog (AwsS3TablesTargetWriter.kt:282-286); in IPC the line is in the target service's log"
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "S3T",
+              "name": "RecordsWritten",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 6,
+          "comment": "only reads 75..80 carry ctr and half; a seventh row is a duplicate commit"
+        },
+        {
+          "kind": "valueSet",
+          "path": "counter",
+          "values": [
+            75,
+            76,
+            77,
+            78,
+            79,
+            80
+          ],
+          "strictTypes": true,
+          "comment": "Int counter into the int column: every window read once, no gap"
+        },
+        {
+          "kind": "valueSet",
+          "path": "value",
+          "values": [
+            37.5,
+            38.0,
+            38.5,
+            39.0,
+            39.5,
+            40.0
+          ],
+          "strictTypes": true,
+          "comment": "Double counter (Step 0.5) into the double column, in step with ctr"
+        },
+        {
+          "kind": "valueSet",
+          "path": "ok",
+          "values": [
+            true
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": "event_time",
+          "regex": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?\\+00:00",
+          "comment": "@.timestamp (an Instant) stored as timestamptz and read back in UTC"
+        },
+        {
+          "kind": "distinct",
+          "path": "event_time",
+          "min": 6,
+          "comment": "the target data timestamp of each read, not a constant"
+        },
+        {
+          "kind": "metric",
+          "source": "S3T",
+          "name": "RecordsWritten",
+          "op": "eq",
+          "value": 6,
+          "comment": "SFC's own count agrees with the table"
+        },
+        {
+          "kind": "logContains",
+          "text": "Table \"sfc_it.sim_a\" does exist"
+        },
+        {
+          "kind": "logContains",
+          "text": "Buffer interval of 1s reached",
+          "comment": "the Interval timer is the flush path here"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "does not exist, creating",
+            "Created table",
+            "Missing required value",
+            "Error setting up AWS  S3 Tables",
+            "Error writing buffered messages",
+            "Error in writer",
+            "is not compatible with field type",
+            "does not match the table",
+            "NoClassDefFoundError",
+            "ClassNotFoundException",
+            "NoSuchMethodError"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3T-01",
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Reads75to80": {
+            "Operator": "and",
+            "Value": [
+              {
+                "Operator": "ge",
+                "Value": 75
+              },
+              {
+                "Operator": "lt",
+                "Value": 81
+              }
+            ]
+          },
+          "Halves75to80": {
+            "Operator": "and",
+            "Value": [
+              {
+                "Operator": "ge",
+                "Value": 37.5
+              },
+              {
+                "Operator": "lt",
+                "Value": 40.5
+              }
+            ]
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3T"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "ValueFilter": "Reads75to80",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "half": {
+                "Name": "half",
+                "ValueFilter": "Halves75to80",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 0.5
+                }
+              },
+              "ok": {
+                "Name": "ok",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetType": "AWS-S3-TABLES",
+            "Region": "${SFC_E2E_REGION}",
+            "TableBucket": "${SFC_E2E_S3T_BUCKET}",
+            "Namespace": "${SFC_E2E_S3T_NAMESPACE}",
+            "AutoCreate": false,
+            "BufferCount": 100,
+            "Interval": 1000,
+            "WarnIfValueMissing": false,
+            "Tables": [
+              {
+                "TableName": "${SFC_E2E_S3T_TABLE_A}",
+                "Schema": [
+                  {
+                    "Name": "event_time",
+                    "Type": "timestamptz",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "counter",
+                    "Type": "int",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "value",
+                    "Type": "double",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "label",
+                    "Type": "string",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "ok",
+                    "Type": "boolean",
+                    "Optional": false
+                  }
+                ],
+                "Mappings": [
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    },
+                    "value": {
+                      "ValueQuery": "@.sources.sim.values.half.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "ok": {
+                      "ValueQuery": "@.sources.sim.values.ok.value"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-tables-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3TServer": {
+          "module": "aws-s3-tables-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetServer": "S3TServer"
+          }
+        },
+        "TargetServers": {
+          "S3TServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-S3T-02",
+      "title": "S3 Tables, one target into two fixture tables: sim_a and the day-partitioned sim_b with two Mappings, flushed once by a BufferCount summed over both tables; Messages is always 0 (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "One target writes the unpartitioned sim_a and sim_b, which the stack partitions by day(event_time), so sim_b takes the partitioned path (PartitionKey per record, AwsS3TablesTargetWriter.kt:632-640, :739-753). sim_b has two Mappings, so every read yields two sim_b rows (:423-487): one from ctr/half with ok true, one from hi/k with ok false. BufferCount counts the rows of all tables (:404-410): band ValueFilters pass ctr, half and hi only on reads 75..80, whose 6 + 12 = 18 rows trigger exactly one flush - one commit for sim_a, one per day partition for sim_b - and the 120 s Interval cannot fire within the case; every other read lacks ctr/hi and is skipped with the Missing-required-value warning (:474-481). The 75 lead-in reads keep the window clear of the IPC start-up drop (ScheduleWriter.kt:243-249, see AWS-S3T-01): one lost row would leave 17 rows buffered and the flush would never come. The partition spec is checked as SFC logs it (AwsS3TablesTargetWriter.kt:288-290): Iceberg renders it as '[\\n  1000: event_time_day: day(1)\\n]', and SFC's logger removes the whitespace inside every [...] that holds no nested brackets (Logger.kt:141, :695-713), so the line ends in '[1000:event_time_day:day(1)]'. The case fails if a table or a mapping is dropped or duplicated, if one mapping's rows carry the other's values, if the flush is split or not count-triggered across tables, or if the partitioned write fails.",
+      "pins": [
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:393-412",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:414-506",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:603-667",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:739-753",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:781-798",
+        "ci/cdk/lib/sfc-it-stack.ts:241-257",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:288-290",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/Logger.kt:141",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/Logger.kt:695-713",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:243-249"
+      ],
+      "requires": [
+        "python:pyiceberg"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3tables",
+          "table": "sim_a"
+        },
+        "b": {
+          "kind": "s3tables",
+          "table": "sim_b"
+        }
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 6
+        },
+        {
+          "sink": "b",
+          "records": 12
+        }
+      ],
+      "timeoutSeconds": 90,
+      "offlineSeconds": 30,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "S3T",
+              "name": "RecordsWritten",
+              "op": "ge",
+              "value": 18
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 6
+        },
+        {
+          "kind": "valueSet",
+          "path": "counter",
+          "values": [
+            75,
+            76,
+            77,
+            78,
+            79,
+            80
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "recordCount",
+          "sink": "b",
+          "equals": 12,
+          "comment": "two mappings, two rows per read"
+        },
+        {
+          "kind": "valueSet",
+          "sink": "b",
+          "where": {
+            "ok": true
+          },
+          "path": "counter",
+          "values": [
+            75,
+            76,
+            77,
+            78,
+            79,
+            80
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "valueSet",
+          "sink": "b",
+          "where": {
+            "ok": true
+          },
+          "path": "value",
+          "values": [
+            37.5,
+            38.0,
+            38.5,
+            39.0,
+            39.5,
+            40.0
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "valueSet",
+          "sink": "b",
+          "where": {
+            "ok": false
+          },
+          "path": "counter",
+          "values": [
+            175,
+            176,
+            177,
+            178,
+            179,
+            180
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "valueSet",
+          "sink": "b",
+          "where": {
+            "ok": false
+          },
+          "path": "value",
+          "values": [
+            9.75
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "b",
+          "path": "event_time",
+          "regex": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?\\+00:00"
+        },
+        {
+          "kind": "metric",
+          "source": "S3T",
+          "name": "RecordsWritten",
+          "op": "eq",
+          "value": 18
+        },
+        {
+          "kind": "logContains",
+          "text": "Written 6 buffered records for table \"sim_a\""
+        },
+        {
+          "kind": "logContains",
+          "text": "Written 12 buffered records for table \"sim_b\""
+        },
+        {
+          "kind": "logCount",
+          "text": "buffered records for table",
+          "equals": 2,
+          "comment": "a single BufferCount flush wrote both tables"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Partition specification for \"sfc_it\\.sim_b\" is \\[\\d+:event_time_day:day\\(\\d+\\)\\]",
+          "comment": "the fixture's partition spec, as loaded from the catalog and logged with the whitespace inside [...] removed (Logger.kt:695-713)"
+        },
+        {
+          "kind": "logContains",
+          "text": "Missing required value for table \"sim_b\" tableMapping 1, field \"counter\" in target S3T",
+          "comment": "reads outside the window: mapping 1 skipped per mapping, with the default WarnIfValueMissing"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "does not exist, creating",
+            "Error setting up AWS  S3 Tables",
+            "Error writing buffered messages",
+            "Error in writer",
+            "is not compatible with field type",
+            "does not match the table",
+            "NoClassDefFoundError",
+            "ClassNotFoundException",
+            "NoSuchMethodError"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:662",
+        "summary": "Messages is computed from the buffers' serials after every successfully written buffer was cleared (:652), so a flush that wrote rows always reports Messages 0",
+        "assertCurrent": [
+          {
+            "kind": "metric",
+            "source": "S3T",
+            "name": "Messages",
+            "op": "eq",
+            "value": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "metric",
+            "source": "S3T",
+            "name": "Messages",
+            "op": "ge",
+            "value": 6,
+            "comment": "the six reads whose rows were written"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3T-02",
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Reads75to80": {
+            "Operator": "and",
+            "Value": [
+              {
+                "Operator": "ge",
+                "Value": 75
+              },
+              {
+                "Operator": "lt",
+                "Value": 81
+              }
+            ]
+          },
+          "Halves75to80": {
+            "Operator": "and",
+            "Value": [
+              {
+                "Operator": "ge",
+                "Value": 37.5
+              },
+              {
+                "Operator": "lt",
+                "Value": 40.5
+              }
+            ]
+          },
+          "Hi75to80": {
+            "Operator": "and",
+            "Value": [
+              {
+                "Operator": "ge",
+                "Value": 175
+              },
+              {
+                "Operator": "lt",
+                "Value": 181
+              }
+            ]
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3T"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "ValueFilter": "Reads75to80",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "half": {
+                "Name": "half",
+                "ValueFilter": "Halves75to80",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 0.5
+                }
+              },
+              "hi": {
+                "Name": "hi",
+                "ValueFilter": "Hi75to80",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 100,
+                  "Max": 100000
+                }
+              },
+              "t": {
+                "Name": "t",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "f": {
+                "Name": "f",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": false
+                }
+              },
+              "k": {
+                "Name": "k",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 9.75
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetType": "AWS-S3-TABLES",
+            "Region": "${SFC_E2E_REGION}",
+            "TableBucket": "${SFC_E2E_S3T_BUCKET}",
+            "Namespace": "${SFC_E2E_S3T_NAMESPACE}",
+            "AutoCreate": false,
+            "BufferCount": 18,
+            "Interval": 120000,
+            "Tables": [
+              {
+                "TableName": "${SFC_E2E_S3T_TABLE_A}",
+                "Schema": [
+                  {
+                    "Name": "event_time",
+                    "Type": "timestamptz",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "counter",
+                    "Type": "int",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "value",
+                    "Type": "double",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "label",
+                    "Type": "string",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "ok",
+                    "Type": "boolean",
+                    "Optional": false
+                  }
+                ],
+                "Mappings": [
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    },
+                    "value": {
+                      "ValueQuery": "@.sources.sim.values.half.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "ok": {
+                      "ValueQuery": "@.sources.sim.values.t.value"
+                    }
+                  }
+                ]
+              },
+              {
+                "TableName": "${SFC_E2E_S3T_TABLE_B}",
+                "Schema": [
+                  {
+                    "Name": "event_time",
+                    "Type": "timestamptz",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "counter",
+                    "Type": "int",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "value",
+                    "Type": "double",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "label",
+                    "Type": "string",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "ok",
+                    "Type": "boolean",
+                    "Optional": false
+                  }
+                ],
+                "Mappings": [
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    },
+                    "value": {
+                      "ValueQuery": "@.sources.sim.values.half.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "ok": {
+                      "ValueQuery": "@.sources.sim.values.t.value"
+                    }
+                  },
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.hi.value"
+                    },
+                    "value": {
+                      "ValueQuery": "@.sources.sim.values.k.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "ok": {
+                      "ValueQuery": "@.sources.sim.values.f.value"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-tables-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3TServer": {
+          "module": "aws-s3-tables-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetServer": "S3TServer"
+          }
+        },
+        "TargetServers": {
+          "S3TServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-S3T-03",
+      "title": "S3 Tables AutoCreate in the fixture bucket: a per-run namespace and two tables with their own schema and partition spec; the last-parsed partition transform overwrites the first table's (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "AutoCreate below an existing table bucket: the namespace sfc_it_<marker> does not exist, so the writer creates it (AwsS3TablesTargetWriter.kt:316-334), then each missing table with its configured schema and partition spec through the Iceberg REST catalog (:268-275, AwsS3TablesHelper.kt:214-223), loads it back and validates the configured schema against it (:281-314). The marker makes the namespace unique per mode and build; the sink deletes it afterwards, and the janitor sweeps sfc_it_b_<run>* in the fixture bucket (janitor.py:78-85). The schema SFC logs for each table is the catalog's, so it shows what was created (long, float, optional). The two tables partition with the same transform on different columns - events truncate[10](counter), flags truncate[3](label) - which is what exposes the shared enum state the known defect pins. Fails if the namespace or a table is not created, a column is created with another type or nullability, or the rows of either table do not arrive exactly once.",
+      "pins": [
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:259-295",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:316-334",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesHelper.kt:201-223",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesHelper.kt:280-295",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/TableConfiguration.kt:105-112",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/PartitionTransform.kt:7-49",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/TablePartitionConfiguration.kt:21-27",
+        "ci/e2e/lib/sinks/s3tables.py:36-43",
+        "ci/cdk/lambda/janitor.py:78-85",
+        "ci/cdk/lib/sfc-it-stack.ts:449-454"
+      ],
+      "requires": [
+        "python:pyiceberg"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3tables",
+          "namespace": "sfc_it_<marker>",
+          "table": "events",
+          "cleanup": "namespace"
+        },
+        "b": {
+          "kind": "s3tables",
+          "namespace": "sfc_it_<marker>",
+          "table": "flags"
+        }
+      },
+      "gates": [
+        {
+          "sink": "main",
+          "records": 6
+        },
+        {
+          "sink": "b",
+          "records": 6
+        }
+      ],
+      "timeoutSeconds": 90,
+      "offlineSeconds": 30,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "S3T",
+              "name": "RecordsWritten",
+              "op": "ge",
+              "value": 12
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 6
+        },
+        {
+          "kind": "valueSet",
+          "path": "counter",
+          "values": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "strictTypes": true,
+          "comment": "Int counter into a long column"
+        },
+        {
+          "kind": "valueSet",
+          "path": "ratio",
+          "values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5
+          ],
+          "strictTypes": true,
+          "comment": "Double into a float column"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "event_time",
+          "regex": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?\\+00:00"
+        },
+        {
+          "kind": "recordCount",
+          "sink": "b",
+          "equals": 6
+        },
+        {
+          "kind": "valueSet",
+          "sink": "b",
+          "path": "counter",
+          "values": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "valueSet",
+          "sink": "b",
+          "path": "flag",
+          "values": [
+            true
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Created namespace \"sfc_it_b_[0-9a-f]{12}_aws_s3t_03_[a-z]+\" for bucket"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Created table \"sfc_it_b_[0-9a-f]{12}_aws_s3t_03_[a-z]+\\.events\" for bucket"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Created table \"sfc_it_b_[0-9a-f]{12}_aws_s3t_03_[a-z]+\\.flags\" for bucket"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "\\d+: counter: required long",
+          "comment": "the catalog's schema of events"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "\\d+: ratio: optional float"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "\\d+: flag: required boolean",
+          "comment": "the catalog's schema of flags"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "\\d+: counter: required int"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Partition specification for \"sfc_it_[a-z0-9_]+\\.flags\" is \\[\\s*\\d+: label_trunc: truncate\\[3\\]\\(\\d+\\)"
+        },
+        {
+          "kind": "metric",
+          "source": "S3T",
+          "name": "RecordsWritten",
+          "op": "eq",
+          "value": 12
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error setting up AWS  S3 Tables",
+            "Error writing buffered messages",
+            "Error in writer",
+            "is not compatible with field type",
+            "does not match the table",
+            "NoClassDefFoundError",
+            "ClassNotFoundException",
+            "NoSuchMethodError"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/PartitionTransform.kt:18-19",
+        "summary": "PartitionTransform is an enum whose constants carry mutable param and source, and of() hands out the shared constant after overwriting them (:38-47), so the last table parsed wins: 'events' is created with flags' truncate[3](label) instead of its own truncate[10](counter)",
+        "assertCurrent": [
+          {
+            "kind": "logRegex",
+            "regex": "Partition specification for \"sfc_it_[a-z0-9_]+\\.events\" is \\[\\s*\\d+: label_trunc: truncate\\[3\\]\\(\\d+\\)"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logRegex",
+            "regex": "Partition specification for \"sfc_it_[a-z0-9_]+\\.events\" is \\[\\s*\\d+: counter_trunc: truncate\\[10\\]\\(\\d+\\)"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3T-03",
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Reads0to5": {
+            "Operator": "lt",
+            "Value": 6
+          },
+          "Halves0to5": {
+            "Operator": "lt",
+            "Value": 3
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3T"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "ValueFilter": "Reads0to5",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "half": {
+                "Name": "half",
+                "ValueFilter": "Halves0to5",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 0.5
+                }
+              },
+              "t": {
+                "Name": "t",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetType": "AWS-S3-TABLES",
+            "Region": "${SFC_E2E_REGION}",
+            "TableBucket": "${SFC_E2E_S3T_BUCKET}",
+            "Namespace": "sfc_it_${SFC_E2E_MARKER}",
+            "AutoCreate": true,
+            "BufferCount": 100,
+            "Interval": 1000,
+            "WarnIfValueMissing": false,
+            "Tables": [
+              {
+                "TableName": "events",
+                "Schema": [
+                  {
+                    "Name": "event_time",
+                    "Type": "timestamptz",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "counter",
+                    "Type": "long",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "label",
+                    "Type": "string",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "ratio",
+                    "Type": "float",
+                    "Optional": true
+                  }
+                ],
+                "Partition": {
+                  "truncate[10]": "counter"
+                },
+                "Mappings": [
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "ratio": {
+                      "ValueQuery": "@.sources.sim.values.half.value"
+                    }
+                  }
+                ]
+              },
+              {
+                "TableName": "flags",
+                "Schema": [
+                  {
+                    "Name": "event_time",
+                    "Type": "timestamptz",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "counter",
+                    "Type": "int",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "label",
+                    "Type": "string",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "flag",
+                    "Type": "boolean",
+                    "Optional": false
+                  }
+                ],
+                "Partition": {
+                  "truncate[3]": "label"
+                },
+                "Mappings": [
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "flag": {
+                      "ValueQuery": "@.sources.sim.values.t.value"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-tables-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3TServer": {
+          "module": "aws-s3-tables-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetServer": "S3TServer"
+          }
+        },
+        "TargetServers": {
+          "S3TServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-S3T-04",
+      "title": "S3 Tables AutoCreate from the table bucket up (uberjar only): bucket, namespace and an identity(label) table; with PartitionOptimization false the rows are filed under the first record's partition, so a pruned query misses them (known defect)",
+      "tier": "aws",
+      "priority": "P2",
+      "intent": "The whole AutoCreate chain, starting with the table bucket (AwsS3TablesTargetWriter.kt:336-356): the per-run bucket sfc-it-b-<run>-s3t04-uj matches the project role's bucket/sfc-it-b-* grants and the janitor's sweep, and the sink deletes it with its namespace and table afterwards. uberjar only: an account has about 10 table buckets per region, so one bucket per build is the budget. The table is partitioned by identity(label) with PartitionOptimization false; two mappings give every read one row with a decoy label <marker>_x (first in the buffer) and one with label = marker, and tag carries the marker in both, so the main sink (filter on tag) sees all 12 rows of the single BufferCount flush; the bylabel sink filters on label, the partition column, which is where the known defect shows. Fails if the bucket, namespace or table is not created, if a row is lost or duplicated, or if either mapping's rows are missing.",
+      "pins": [
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:253-257",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:316-356",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:603-667",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:739-753",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesHelper.kt:192-198",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/TableConfiguration.kt:31-34",
+        "ci/cdk/lib/sfc-it-stack.ts:445-454",
+        "ci/cdk/lambda/janitor.py:87-99",
+        "ci/e2e/lib/sinks/s3tables.py:26-48",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/Logger.kt:141",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/log/Logger.kt:695-713"
+      ],
+      "requires": [
+        "python:pyiceberg"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3tables",
+          "bucket": "sfc-it-<run>-s3t04-<mode>",
+          "namespace": "sfc_it_<marker>",
+          "table": "t",
+          "markerColumn": "tag",
+          "cleanup": "bucket"
+        },
+        "bylabel": {
+          "kind": "s3tables",
+          "bucket": "sfc-it-<run>-s3t04-<mode>",
+          "namespace": "sfc_it_<marker>",
+          "table": "t"
+        }
+      },
+      "records": 12,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 30,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "S3T",
+              "name": "RecordsWritten",
+              "op": "ge",
+              "value": 12
+            },
+            "comment": "also keeps the sinks from polling a bucket SFC has not created yet"
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 12
+        },
+        {
+          "kind": "valueSet",
+          "path": "counter",
+          "values": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "ok": true
+          },
+          "equals": 6,
+          "comment": "mapping 0, decoy label"
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "ok": false
+          },
+          "equals": 6,
+          "comment": "mapping 1, label = marker"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "event_time",
+          "regex": "\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,6})?\\+00:00"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Table bucket \"sfc-it-b-[0-9a-f]{12}-s3t04-uj\" does not exist, creating"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Created bucket \"arn:aws[a-z-]*:s3tables:[a-z0-9-]+:\\d{12}:bucket/sfc-it-b-[0-9a-f]{12}-s3t04-uj\""
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Created namespace \"sfc_it_b_[0-9a-f]{12}_aws_s3t_04_[a-z]+\" for bucket \"sfc-it-b-[0-9a-f]{12}-s3t04-uj\""
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Created table \"sfc_it_b_[0-9a-f]{12}_aws_s3t_04_[a-z]+\\.t\" for bucket"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Partition specification for \"sfc_it_[a-z0-9_]+\\.t\" is \\[\\d+:label:identity\\(\\d+\\)\\]",
+          "comment": "logged as '[1000:label:identity(<id>)]': SFC's logger strips the whitespace inside a [...] without nested brackets (Logger.kt:695-713)"
+        },
+        {
+          "kind": "logContains",
+          "text": "Written 12 buffered records for table \"t\""
+        },
+        {
+          "kind": "metric",
+          "source": "S3T",
+          "name": "RecordsWritten",
+          "op": "eq",
+          "value": 12
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error setting up AWS  S3 Tables",
+            "Error writing buffered messages",
+            "Error in writer",
+            "is not compatible with field type",
+            "does not match the table",
+            "NoClassDefFoundError",
+            "ClassNotFoundException",
+            "NoSuchMethodError"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:749-751",
+        "summary": "With PartitionOptimization false every buffered record is written under the first record's partition key, so the data file tagged label=<marker>_x also holds the label=<marker> rows and a scan filtering on the partition column prunes them away",
+        "assertCurrent": [
+          {
+            "kind": "recordCount",
+            "sink": "bylabel",
+            "equals": 0,
+            "comment": "pyiceberg prunes the only data file: its partition says label=<marker>_x"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "sink": "bylabel",
+            "equals": 6
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3T-04",
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "Reads0to5": {
+            "Operator": "lt",
+            "Value": 6
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3T"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "ValueFilter": "Reads0to5",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "decoy": {
+                "Name": "decoy",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "${SFC_E2E_MARKER}_x"
+                }
+              },
+              "t": {
+                "Name": "t",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "f": {
+                "Name": "f",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": false
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetType": "AWS-S3-TABLES",
+            "Region": "${SFC_E2E_REGION}",
+            "TableBucket": "sfc-it-${SFC_E2E_RUN_DASH}-s3t04-${SFC_E2E_MODE_CODE}",
+            "Namespace": "sfc_it_${SFC_E2E_MARKER}",
+            "AutoCreate": true,
+            "BufferCount": 12,
+            "Interval": 120000,
+            "WarnIfValueMissing": false,
+            "Tables": [
+              {
+                "TableName": "t",
+                "Schema": [
+                  {
+                    "Name": "event_time",
+                    "Type": "timestamptz",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "counter",
+                    "Type": "int",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "label",
+                    "Type": "string",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "tag",
+                    "Type": "string",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "ok",
+                    "Type": "boolean",
+                    "Optional": false
+                  }
+                ],
+                "Partition": {
+                  "identity": "label"
+                },
+                "PartitionOptimization": false,
+                "Mappings": [
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.sources.sim.values.decoy.value"
+                    },
+                    "tag": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "ok": {
+                      "ValueQuery": "@.sources.sim.values.t.value"
+                    }
+                  },
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "tag": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "ok": {
+                      "ValueQuery": "@.sources.sim.values.f.value"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-S3T-NEG-01",
+      "title": "S3 Tables with AutoCreate false and one missing table: the whole target never initialises, every record is rejected and nothing is written; the error names \"tableName\" instead of the table (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "With AutoCreate false a missing table is a permanent configuration error. Setup lists the bucket's tables, finds and loads sim_a, then throws for the missing sfc_e2e_absent (AwsS3TablesTargetWriter.kt:259-279); the writer only logs the setup error and stays uninitialised (:363-369). From then on every record is rejected with 'is not loaded' (:496-497) and every Interval flush logs 'not initialized' and discards the buffers (:611-613, :666) - so even the healthy sim_a, loaded before the failure, gets no row. Fails if SFC creates the table despite AutoCreate false, writes or meters any write, or stops rejecting records with the table's name. The missing table never exists, so there is nothing to read back for it; sim_a is read back instead.",
+      "pins": [
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:259-295",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:358-369",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:393-412",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:491-497",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:603-614",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:666",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/AwsS3TablesTargetConfiguration.kt:52-55"
+      ],
+      "requires": [
+        "python:pyiceberg"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3tables",
+          "table": "sim_a"
+        }
+      },
+      "allowWriteErrors": [
+        "S3T"
+      ],
+      "timeoutSeconds": 90,
+      "offlineSeconds": 30,
+      "steps": [
+        {
+          "wait": {
+            "log": "does not exist, and AutoCreate is false"
+          }
+        },
+        {
+          "wait": {
+            "log": "Table \"sfc_e2e_absent\" is not loaded",
+            "count": 3
+          }
+        },
+        {
+          "wait": {
+            "log": "AWS S3 Tables target \"S3T\" not initialized"
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 0,
+          "comment": "nothing from this run reached sim_a, the table that does exist"
+        },
+        {
+          "kind": "logContains",
+          "text": "Table \"sfc_it.sim_a\" does exist"
+        },
+        {
+          "kind": "logContains",
+          "text": "Error setting up AWS  S3 Tables"
+        },
+        {
+          "kind": "logContains",
+          "text": "does not exist, and AutoCreate is false"
+        },
+        {
+          "kind": "logContains",
+          "text": "Table \"sfc_e2e_absent\" is not loaded",
+          "min": 3,
+          "comment": "one rejection per record"
+        },
+        {
+          "kind": "logContains",
+          "text": "AWS S3 Tables target \"S3T\" not initialized"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "does not exist, creating",
+            "Created table",
+            "Loading table \"sfc_it.sfc_e2e_absent\"",
+            "buffered records for table"
+          ]
+        },
+        {
+          "kind": "metric",
+          "source": "S3T",
+          "name": "Writes",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "kind": "metric",
+          "source": "S3T",
+          "name": "RecordsWritten",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:277",
+        "summary": "The AutoCreate=false error for a missing table is not interpolated: it says Table \"tableName\" does not exist, so the log never names the missing table",
+        "assertCurrent": [
+          {
+            "kind": "logContains",
+            "text": "Table \"tableName\" does not exist, and AutoCreate is false"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "text": "sfc_e2e_absent\" does not exist, and AutoCreate is false"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3T-NEG-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3T"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "half": {
+                "Name": "half",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 0.5
+                }
+              },
+              "ok": {
+                "Name": "ok",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetType": "AWS-S3-TABLES",
+            "Region": "${SFC_E2E_REGION}",
+            "TableBucket": "${SFC_E2E_S3T_BUCKET}",
+            "Namespace": "${SFC_E2E_S3T_NAMESPACE}",
+            "AutoCreate": false,
+            "Interval": 1000,
+            "Tables": [
+              {
+                "TableName": "${SFC_E2E_S3T_TABLE_A}",
+                "Schema": [
+                  {
+                    "Name": "event_time",
+                    "Type": "timestamptz",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "counter",
+                    "Type": "int",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "value",
+                    "Type": "double",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "label",
+                    "Type": "string",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "ok",
+                    "Type": "boolean",
+                    "Optional": false
+                  }
+                ],
+                "Mappings": [
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    },
+                    "value": {
+                      "ValueQuery": "@.sources.sim.values.half.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "ok": {
+                      "ValueQuery": "@.sources.sim.values.ok.value"
+                    }
+                  }
+                ]
+              },
+              {
+                "TableName": "sfc_e2e_absent",
+                "Schema": [
+                  {
+                    "Name": "event_time",
+                    "Type": "timestamptz",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "counter",
+                    "Type": "int",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "value",
+                    "Type": "double",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "label",
+                    "Type": "string",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "ok",
+                    "Type": "boolean",
+                    "Optional": false
+                  }
+                ],
+                "Mappings": [
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    },
+                    "value": {
+                      "ValueQuery": "@.sources.sim.values.half.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "ok": {
+                      "ValueQuery": "@.sources.sim.values.ok.value"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-tables-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3TServer": {
+          "module": "aws-s3-tables-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetServer": "S3TServer"
+          }
+        },
+        "TargetServers": {
+          "S3TServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-S3T-NEG-02",
+      "title": "S3 Tables refuses a configured Schema that does not match the existing table and names each column; every record is then dropped without a WriteError (known defect)",
+      "tier": "aws",
+      "priority": "P2",
+      "intent": "Before writing, the writer compares every configured column with the loaded table (AwsS3TablesTargetWriter.kt:298-314). The fixture's counter is int and it has no column extra, so the target must refuse to start with one message naming both problems, instead of failing every Parquet write later with an unhelpful error. Every record is then rejected ('is not loaded', :496-497), nothing is metered as a write and nothing with this run's marker reaches sim_a. Fails if the mismatch goes undetected (rows, a write or a write error would appear), if the message does not name the column and both types, or if any row lands in the fixture.",
+      "pins": [
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:281-292",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:298-314",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:363-369",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:496-497",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:603-614",
+        "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/config/TableConfiguration.kt:37-39",
+        "ci/cdk/lib/sfc-it-stack.ts:234-240"
+      ],
+      "requires": [
+        "python:pyiceberg"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "s3tables",
+          "table": "sim_a"
+        }
+      },
+      "allowWriteErrors": [
+        "S3T"
+      ],
+      "timeoutSeconds": 90,
+      "offlineSeconds": 30,
+      "steps": [
+        {
+          "wait": {
+            "log": "does not match the table"
+          }
+        },
+        {
+          "wait": {
+            "log": "Table \"sim_a\" is not loaded",
+            "count": 3
+          }
+        },
+        {
+          "wait": {
+            "log": "AWS S3 Tables target \"S3T\" not initialized"
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 0
+        },
+        {
+          "kind": "logContains",
+          "text": "Configured schema for table \"sfc_it.sim_a\" does not match the table"
+        },
+        {
+          "kind": "logContains",
+          "text": "column \"counter\" is long in the configuration but int in the table"
+        },
+        {
+          "kind": "logContains",
+          "text": "column \"extra\" is not in the table"
+        },
+        {
+          "kind": "logContains",
+          "text": "Error setting up AWS  S3 Tables"
+        },
+        {
+          "kind": "logContains",
+          "text": "Table \"sim_a\" is not loaded",
+          "min": 3
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "buffered records for table",
+            "Error writing buffered messages"
+          ]
+        },
+        {
+          "kind": "metric",
+          "source": "S3T",
+          "name": "Writes",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "kind": "metric",
+          "source": "S3T",
+          "name": "RecordsWritten",
+          "op": "eq",
+          "value": 0
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-s3-tables-target/src/main/kotlin/com/amazonaws/sfc/awss3tables/AwsS3TablesTargetWriter.kt:611-613",
+        "summary": "A target whose setup failed (:367-369) drops every record - buildRecords throws 'is not loaded' (:496-497) and the flush only logs 'not initialized' - without counting a WriteError; only the generic Errors counter of the log lines moves",
+        "assertCurrent": [
+          {
+            "kind": "metric",
+            "source": "S3T",
+            "name": "WriteError",
+            "op": "eq",
+            "value": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "metric",
+            "source": "S3T",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-S3T-NEG-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "S3T"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "half": {
+                "Name": "half",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Double",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 0.5
+                }
+              },
+              "ok": {
+                "Name": "ok",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetType": "AWS-S3-TABLES",
+            "Region": "${SFC_E2E_REGION}",
+            "TableBucket": "${SFC_E2E_S3T_BUCKET}",
+            "Namespace": "${SFC_E2E_S3T_NAMESPACE}",
+            "AutoCreate": false,
+            "Interval": 1000,
+            "Tables": [
+              {
+                "TableName": "${SFC_E2E_S3T_TABLE_A}",
+                "Schema": [
+                  {
+                    "Name": "event_time",
+                    "Type": "timestamptz",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "counter",
+                    "Type": "long",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "value",
+                    "Type": "double",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "label",
+                    "Type": "string",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "ok",
+                    "Type": "boolean",
+                    "Optional": false
+                  },
+                  {
+                    "Name": "extra",
+                    "Type": "string",
+                    "Optional": false
+                  }
+                ],
+                "Mappings": [
+                  {
+                    "event_time": {
+                      "ValueQuery": "@.timestamp"
+                    },
+                    "counter": {
+                      "ValueQuery": "@.sources.sim.values.ctr.value"
+                    },
+                    "value": {
+                      "ValueQuery": "@.sources.sim.values.half.value"
+                    },
+                    "label": {
+                      "ValueQuery": "@.metadata.marker"
+                    },
+                    "ok": {
+                      "ValueQuery": "@.sources.sim.values.ok.value"
+                    },
+                    "extra": {
+                      "ValueQuery": "@.schedule"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-S3-TABLES": {
+            "FactoryClassName": "com.amazonaws.sfc.awss3tables.AwsS3TablesTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-s3-tables-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "S3TServer": {
+          "module": "aws-s3-tables-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "S3T": {
+            "TargetServer": "S3TServer"
+          }
+        },
+        "TargetServers": {
+          "S3TServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

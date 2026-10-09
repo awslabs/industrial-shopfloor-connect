@@ -24,7 +24,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.runBlocking
-import org.apache.commons.cli.HelpFormatter
+import org.apache.commons.cli.help.HelpFormatter
+import org.apache.commons.cli.help.TextHelpAppendable
 import kotlin.system.exitProcess
 
 /**
@@ -88,9 +89,9 @@ abstract class ServiceMain {
             if (configProvider == null) {
                 if (needsConfig) {
                     logs.error("No configuration found from configuration file or environment variable \"$ENV_VARIABLE_CONFIG\"")
-                    val helpFormatter = HelpFormatter()
-                    helpFormatter.width = 132
-                    helpFormatter.printHelp(" ", CommandLine.commonOptions())
+                    val helpOut = TextHelpAppendable(System.out).apply { maxWidth = CommandLine.HELP_WIDTH }
+                    HelpFormatter.builder().setHelpAppendable(helpOut).get()
+                        .printHelp(" ", null, CommandLine.commonOptions(), null, false)
                     exitProcess(1)
                 }
                 memoryMonitor = MemoryMonitor(scope = this, logger = serviceLogger)

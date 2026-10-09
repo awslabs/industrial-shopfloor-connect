@@ -6,20 +6,64 @@ The OPC UA target adapter for SFC implements an OPC UA server that exposes sourc
 
 An alternative OPC UA target to this adapter is the [OPCUA Writer](./opcua-writer.md) target adapter, which does not host the OPCUA UA server within the target, but writes the data to an external server.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `OPCUA-TARGET` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "OPCUA-TARGET": {
-      "JarFiles" : ["<location of deployment>/opcua-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.opcuatarget.OpcuaTargetWriter"
-   }
+"TargetTypes": {
+  "OPCUA-TARGET": { "FactoryClassName": "com.amazonaws.sfc.opcuatarget.OpcuaTargetWriter" }
 }
 ```
 
+**In-process** - module bundle `opcua-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"TargetTypes": {
+  "OPCUA-TARGET": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/opcua-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.opcuatarget.OpcuaTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "OpcuaTarget": {
+    "TargetType": "OPCUA-TARGET",
+    "TargetServer": "OpcuaTargetServer"
+  }
+},
+"TargetServers": {
+  "OpcuaTargetServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+opcua-target/bin/opcua-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\opcua-target\lib\*" com.amazonaws.sfc.opcuatarget.OpcuaTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.opcuatarget.OpcuaTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.opcuatarget.OpcuaTargetService -port 50001`).
+
+**Examples:** uberjar: [Simulation to OPC UA](../adapters/simulator.md#simulation-to-opc-ua-example) (no hardware), [uberjar-opcua-file](../../examples/uberjar-opcua-file/README.md) · in-process: [in-process-s7-opcua](../../examples/in-process-s7-opcua/README.md) · all: [examples catalog](../examples/README.md)
 
 
-**Configuration:**
+
+**Data models and mapping:**
 
 
 
@@ -56,7 +100,7 @@ There are two different mapping methods available for associating target data wi
 The most straightforward method to expose the data received by the target adapter as an OPC UA model is to allow the 
 adapter to  automatically generate the model based on the structure and values of the incoming data.
 
-Below is an example of the target data received by the adapter. The schedule named "ConveyorData" collects data from a single source called "FluidConveyor," from which five values are read.
+Below is an example of the target data received by the adapter. The schedule named "ConveyorData" collects data from a single source called "FluidConveyor," from which six values are read.
 
 ```json
 {
@@ -111,6 +155,8 @@ The automatic creation of OPCUA nodes is controlled by the "AutoCreate" setting,
 
 Data is now exposed through an automatically generated model, where all nodes are read-only for clients. 
 When a client connects to the server through any of the available endpoints, the model becomes viewable, subject to the configured network interfaces, security policies, and modes.
+
+The nodes are created under Objects/SFC in namespace `urn:amazonaws.sfc` (namespace index 2). Their string node ids are built from the schedule, source and channel names, with the first letter of each name upper-cased, e.g. `ns=2;s=ConveyorData/FluidConveyor/Power` for the data above. When [DataModels](#datamodels) are configured as well, automatically created nodes are added under the first model.
 
 <img src="./img/opcua/opcua-1.png" />
 
@@ -184,7 +230,7 @@ named "Value" for the actual channel value, along with additional variable nodes
 The rule is that when metadata or aggregated values are present for a value, a folder is created for 
 that value. If these are not present, a variable node is created.
 
-Full example at [examples/in-process-s7-opcua, config file s7-opcua-auto-create.json](../../examples/in-process-s7-opcua/README.md)
+Full examples: [s7-opcua-auto-create.json](../../examples/in-process-s7-opcua/s7-opcua-auto-create.json) in [in-process-s7-opcua](../../examples/in-process-s7-opcua/README.md) (S7 PLC, in-process) and, with no hardware, the [Simulation to OPC UA example](../adapters/simulator.md#simulation-to-opc-ua-example) (uberjar).
 
 ## Query mapping
 
@@ -198,7 +244,7 @@ which has a structure different from the target data. For each variable node in 
 a JMESPath query is specified to query the target data. If the query returns a value, the variable node is 
 updated with that value.
 
-"Temperature" is configured as a [folder](#foldernodeconfiguration) node because it includes metadata. This metadata, along with the actual value, is stored as [variable](#variablenodeconfiguration) nodes within the "MotorTemperature" folder node. Additionally, this variable has a transformation applied to convert the value into degrees Celsius and round it to an integer to match the datatype in the model. The transformation, "ToCelsius", is defined in the ["Transformations"](../core/sfc-configuration.md#transformations) section of the [SFC configuration](../core/sfc-configuration.md).
+"Temperature" is configured as a [folder](#foldernodeconfiguration) node because it includes metadata. This metadata, along with the actual value, is stored as [variable](#variablenodeconfiguration) nodes within the "MotorTemperature" folder node. Additionally, this variable has a transformation applied to convert the value into degrees Celsius and convert it to an integer (ToInt truncates the decimals) to match the datatype in the model. The [Celsius](../core/transformation-operator-configuration.md#celsius) operator converts Fahrenheit to Celsius ((value - 32) * 5 / 9), so the value read from the source is taken to be in Fahrenheit, while the Unit metadata names the unit of the converted value. The transformation, "ToCelsius", is defined in the ["Transformations"](../core/sfc-configuration.md#transformations) section of the [SFC configuration](../core/sfc-configuration.md).
 
 <details>
 <summary>Show Transformations</summary>
@@ -210,7 +256,7 @@ updated with that value.
          { "Operator" : "ToInt"}
 
     ]
-  },
+  }
 ```
 
 </details>
@@ -342,6 +388,8 @@ This configuration results in the model below.
 
 <img src="./img/opcua/opcua-3.png" />
 
+Full example: [s7-opcua-datamodel.json](../../examples/in-process-s7-opcua/s7-opcua-datamodel.json) in [in-process-s7-opcua](../../examples/in-process-s7-opcua/README.md) (S7 PLC, in-process).
+
 ---
 
 
@@ -383,16 +431,8 @@ When set to true, the adapter automatically creates nodes for data elements that
 Default is true
 
 ---
-
-### Certificate
-
-Defines the settings for the server's security certificate, which is used for secure communication and authentication. This configuration determines how the server's certificate is created, stored, and managed for establishing secure connections with clients.
-
-**Type**: [CertificateConfiguration](../core/certificate-configuration.md)n
-
----
 ### CertificateValidation
-Configuration settings for OPC UA server certificate validation and security. Certificate validation is a security process that verifies the authenticity and trustworthiness of digital certificates used in secure communications.
+Configuration settings for the validation of client certificates by the OPC UA server. Certificate validation is a security process that verifies the authenticity and trustworthiness of digital certificates used in secure communications.
 
 **Type**: [OpcuaCertificateValidationConfiguration](#opcuacertificatevalidationconfiguration)
 
@@ -412,13 +452,17 @@ When set to true, any variable node that doesn't have a specific initialization 
 
 **Type**: Boolean
 
+Default is true
+
+Known limitation: in this release the InitValuesWithNull key is not read, so the default always applies and variable nodes without an [InitValue](#initvalue) start as null.
 
 ---
 ### ServerAnonymousDiscoveryEndPoint
 Controls the availability of an anonymous discovery endpoint for the OPC UA server.
 
-When enabled, creates a dedicated endpoint with no security requirements specifically for discovery purposes. This follows OPC UA Part 6 specifications and is considered a best practice, allowing clients to discover the server's capabilities before establishing a secure connection.
+When enabled, creates a dedicated endpoint with no security requirements specifically for discovery purposes, at `opc.tcp://<host>:<ServerTcpPort>/<ServerPath>/discovery`. This follows OPC UA Part 6 specifications and is considered a best practice, allowing clients to discover the server's capabilities before establishing a secure connection.
 
+While this is true, or "None" is in [ServerSecurityPolicies](#serversecuritypolicies), anonymous user sessions are accepted on all endpoints, including the signed and encrypted ones. To refuse anonymous sessions, set it to false and omit "None". With a security policy other than "None", X.509 user tokens are accepted for any user certificate; user name tokens are always rejected.
 
 **Type**: Boolean
 
@@ -426,15 +470,15 @@ Default is true
 
 ---
 ### ServerMessageSecurityModes
-Specifies the supported message security modes for the OPC UA server.
+Specifies the message security modes the OPC UA server offers for the security policies other than "None".
 
-Type: Array of Strings
+Accepts one or more of these values (case-sensitive):
 
-Defines how messages between clients and the server are secured. Accepts one or more of these values:
-
-- "None" (Default): No message security
+- "None": No message security. It has no effect in this list: the unsecured None/None endpoint on the ServerPath exists only when "None" is in [ServerSecurityPolicies](#serversecuritypolicies), and the discovery endpoint is controlled by [ServerAnonymousDiscoveryEndPoint](#serveranonymousdiscoveryendpoint)
 - "Sign": Messages are digitally signed
 - "SignAndEncrypt": Messages are both signed and encrypted
+
+Default is all three, so every policy other than "None" in ServerSecurityPolicies is offered with Sign and with SignAndEncrypt.
 
 **Type**: [String]
 
@@ -442,9 +486,11 @@ Defines how messages between clients and the server are secured. Accepts one or 
 
 ---
 ### ServerNetworkInterfaces
-Specifies which network interfaces can be used to access the OPC UA server.
+Selects the network interfaces whose IPv4 addresses and host names are advertised in the endpoint URLs of the OPC UA server.
 
-Lists the names of network interfaces, e.g. en0,  that will be bound to the OPC UA server. If not specified, the server will bind to all available network interfaces by default.
+Lists interface names as Java's `NetworkInterface` reports them, e.g. `en0` on macOS; the name is compared case-insensitively, display names are not matched. Every name must exist and have an IPv4 address, otherwise the configuration is rejected with a message that lists the valid names. If not specified, the addresses of all IPv4 interfaces are advertised; localhost names are always included.
+
+The setting does not restrict where the server listens: it always listens on `0.0.0.0:<ServerTcpPort>`, so restrict access with a firewall.
 
 **Type:** Array of Strings
 
@@ -452,7 +498,9 @@ Lists the names of network interfaces, e.g. en0,  that will be bound to the OPC 
 ### ServerPath
 ServerPath defines the URI path segment in the OPC UA server endpoint URL.
 
-The ServerPath is used to create unique endpoint URLs for the OPC UA server. For example, if your server is running on "opc.tcp://hostname:4840" and the ServerPath is set to "sfc", the complete endpoint URL would be "opc.tcp://hostname:4840/sfc". This path helps organize and distinguish between different OPC UA servers running on the same host, allowing for better endpoint organization and identification.
+The ServerPath is used to create unique endpoint URLs for the OPC UA server. With the defaults the endpoint URL is `opc.tcp://<host>:53530/sfc`; leading and trailing "/" in ServerPath are removed. This path helps organize and distinguish between different OPC UA servers running on the same host, allowing for better endpoint organization and identification.
+
+At startup the target logs `OPCUA server endpoints:` followed by one `URL: …, Security mode: …, Security policy: …` line per endpoint.
 
 **Type**: String
 
@@ -469,11 +517,11 @@ Specifies which encryption and security algorithms are available for client conn
 
 - "None": No security
 - "Basic128Rsa15": Basic RSA 15 with 128-bit encryption (deprecated)
-- "Basic256": Basic encryption with 256-bit security (deprecated) [[2\]](https://docs.aws.amazon.com/iot-sitewise/latest/userguide/configure-opcua-source.html)
+- "Basic256": Basic encryption with 256-bit security (deprecated)
 - "Basic256Sha256": SHA-256 with 256-bit encryption
 - "Aes128Sha256RsaOaep": AES-128 with SHA-256 and RSA-OAEP
 
-Default includes all policies except Aes128Sha256RsaOaep.Note that Basic128Rsa15 and Basic256 are considered legacy options.
+Default includes all policies except Aes128Sha256RsaOaep. Note that Basic128Rsa15 and Basic256 are considered legacy options.
 
 ---
 ### ServerCertificate
@@ -482,7 +530,33 @@ Defines the certificate settings used for secure communication. If no certificat
 
 Type: [CertificateConfiguration](../core/certificate-configuration.md)
 
-No certificate is configured then a default self-signed certificate will be created.
+The certificate is used only when [ServerSecurityPolicies](#serversecuritypolicies) contains a policy other than "None", which the default does. Without ServerCertificate, SFC creates `SFC-OPCUA-TARGET-<hostname>.cert` and `SFC-OPCUA-TARGET-<hostname>.key` in the directory SFC (in IPC mode: the target service) is started from: self-signed, valid for 1000 days, with the host names and IPv4 addresses as subject alternative names and the application URI `urn:amazonaws:sfc:opcua-target`. If ServerCertificate names files that do not exist, a self-signed certificate is created at those paths, also when it has no SelfSignedCertificate section.
+
+To keep the certificate and the [certificate validation directories](#directory) out of the start directory, set both explicitly. The directory for the certificate files must exist:
+
+**Linux / macOS**
+
+```shell
+mkdir -p /etc/certificates/opcua-target
+```
+
+**Windows (PowerShell)**
+
+```powershell
+New-Item -ItemType Directory -Force -Path C:\sfc\certificates\opcua-target | Out-Null
+```
+
+```json
+"ServerCertificate": {
+  "CertificateFile": "/etc/certificates/opcua-target/server-cert.pem",
+  "PrivateKeyFile": "/etc/certificates/opcua-target/server-key.pem"
+},
+"CertificateValidation": {
+  "Directory": "/etc/certificates/opcua-target"
+}
+```
+
+On Windows write these paths with forward slashes, e.g. `"CertificateFile": "C:/sfc/certificates/opcua-target/server-cert.pem"`; a single backslash is a JSON escape.
 
 ---
 
@@ -510,33 +584,33 @@ Default is 53530
       "$ref": "#/definitions/TargetConfiguration"
     },
     {
-      "$ref": "#/definitions/AwsServiceConfig"
-    },
-    {
       "type": "object",
       "properties": {
         "AutoCreate": {
           "type": "boolean",
           "description": "Automatically create nodes if they don't exist",
-          "default": false
+          "default": true
         },
         "CertificateValidation": {
           "$ref": "#/definitions/OpcuaCertificateValidationConfiguration",
           "description": "Certificate validation configuration"
         },
         "DataModels": {
-          "$ref": "#/definitions/DataModelConfiguration",
-          "description": "Data models configuration"
+          "type": "object",
+          "description": "Data models configuration",
+          "additionalProperties": {
+            "$ref": "#/definitions/DataModelConfiguration"
+          }
         },
         "InitValuesWithNull": {
           "type": "boolean",
           "description": "Initialize values with null",
-          "default": false
+          "default": true
         },
         "ServerAnonymousDiscoveryEndPoint": {
           "type": "boolean",
           "description": "Enable anonymous discovery endpoint",
-          "default": false
+          "default": true
         },
         "ServerMessageSecurityModes": {
           "type": "array",
@@ -551,11 +625,12 @@ Default is 53530
           "items": {
             "type": "string"
           },
-          "description": "Network interfaces to bind server to"
+          "description": "Network interfaces whose addresses are advertised in the endpoint URLs"
         },
         "ServerPath": {
           "type": "string",
-          "description": "Server path"
+          "description": "Server path",
+          "default": "sfc"
         },
         "ServerSecurityPolicies": {
           "type": "array",
@@ -566,8 +641,7 @@ Default is 53530
               "Basic128Rsa15",
               "Basic256",
               "Basic256Sha256",
-              "Aes128_Sha256_RsaOaep",
-              "Aes256_Sha256_RsaPss"
+              "Aes128Sha256RsaOaep"
             ]
           },
           "description": "Supported security policies"
@@ -579,10 +653,9 @@ Default is 53530
         "ServerTcpPort": {
           "type": "integer",
           "description": "Server TCP port",
-          "default": 4840
+          "default": 53530
         }
-      },
-      "required": ["ServerPath"]
+      }
     }
   ]
 }
@@ -598,10 +671,6 @@ Basic Configuration, model is created automatically from received data.
   "TargetType": "OPCUA-TARGET",
   "ServerPath": "/opcua/server",
   "ServerTcpPort": 4840,
-  "ServerNetworkInterfaces": [
-    "lo",
-    "en1"
-  ],
   "ServerSecurityPolicies": [
     "None",
     "Basic128Rsa15",
@@ -619,10 +688,6 @@ Configuration with data model
   "TargetType": "OPCUA-TARGET",
   "ServerPath": "/opcua/server",
   "ServerTcpPort": 4840,
-  "ServerNetworkInterfaces": [
-    "lo",
-    "en1"
-  ],
   "ServerSecurityPolicies": [
     "None",
     "Basic128Rsa15",
@@ -668,7 +733,7 @@ Configuration with data model
 
 
 
-[^top](#opc-ua-target-adapter-data-models-and-mapping)
+[^top](#opc-ua-target-adapter)
 
 
 
@@ -700,9 +765,9 @@ Defaults to using the Id value if not specified
 
 ---
 ### Description
-Specifies the human-readable name shown in the user interface.
+Specifies the description attribute of the node.
 
-Defaults to using the Id value if not specified.
+No default.
 
 **Type**: String
 
@@ -732,11 +797,11 @@ Optional,defaults to using the model's key from the OPC UA target configuration 
 
 The value of the id is used as the identifier in the node id for the folder. 
 
-- Id is a number: "ns=[namespace index];i= [numeric id]"
+- Id is a number: "ns=[namespace index];i=[numeric id]"
 
-- Id is a guid: "ns=[namespace index];g= [guid id]"
+- Id is a guid: "ns=[namespace index];g=[guid id]"
 
-- Id is a string : "ns=[namespace index];s= [guid id]"
+- Id is a string : "ns=[namespace index];s=[string id]"
 
   
 
@@ -751,7 +816,7 @@ Specifies the namespace URI for the data model.
 
 **Type**: String
 
-Default is "urn:amazonaws.sfc"
+Known limitation: in this release the Namespace of a configured data model is not read, and the model is registered with an empty namespace URI. The namespace "urn:amazonaws.sfc" is used by the default model that the target creates when no DataModels are configured.
 
 ---
 ### Variables
@@ -865,7 +930,7 @@ Used to specify data points or variables that will be available in the top-level
 }
 ```
 
-[^top](#opc-ua-target-adapter-data-models-and-mapping)
+[^top](#opc-ua-target-adapter)
 
 
 
@@ -873,18 +938,18 @@ Used to specify data points or variables that will be available in the top-level
 
 [OpcuaTargetConfiguration](#opcuatargetconfiguration) > [DataModels](#datamodels) > [Model](#datamodelconfiguration) > [Folders](#folders)
 
-\* > [Folder](#foldernodeconfiguration) > [Folders](#folders)
+\* > [Folder](#foldernodeconfiguration) > [Folders](#folders-1)
 
 Defines the configuration for a folder node in a hierarchical data structure, specifying properties like display name, browse name, and nested folders or variables. Allows organization of data points and sub-folders within the system's folder structure.
 
 **Properties:**
 
-- [BrowseName](#browsename)
-- [Description](#description)
-- [DisplayName](#displayname)
-- [Folders](#folders)
-- [Id](#id)
-- [Variables](#variables)
+- [BrowseName](#browsename-1)
+- [Description](#description-1)
+- [DisplayName](#displayname-1)
+- [Folders](#folders-1)
+- [Id](#id-1)
+- [Variables](#variables-1)
 
 ---
 ### BrowseName
@@ -920,15 +985,15 @@ Specifies the unique identifier for the folder node in the OPC UA address space.
 
 **Type**: String
 
-Optional,defaults to using the model's key from the OPC UA target configuration DataModels table. The ID format determines the node identifier type (numeric, GUID, or string) and is combined with a namespace index to create the complete node identifier. Must be unique across all tables in the DataModel configuration.
+Optional, defaults to the folder's key in Folders. The ID format determines the node identifier type (numeric, GUID, or string) and is combined with a namespace index to create the complete node identifier. Must be unique across all tables in the DataModel configuration.
 
 The value of the id is used as the identifier in the node id for the folder. 
 
-- Id is a number: "ns=[namespace index];i= [numeric id]"
+- Id is a number: "ns=[namespace index];i=[numeric id]"
 
-- Id is a guid: "ns=[namespace index];g= [guid id]"
+- Id is a guid: "ns=[namespace index];g=[guid id]"
 
-- Id is a string : "ns=[namespace index];s= [guid id]"
+- Id is a string : "ns=[namespace index];s=[string id]"
 
   
 
@@ -1029,7 +1094,7 @@ Used to specify data points or variables that will be available in the  folder
 }
 ```
 
-[^top](#opc-ua-target-adapter-data-models-and-mapping)
+[^top](#opc-ua-target-adapter)
 
 
 
@@ -1052,12 +1117,14 @@ The OpcuaCertificateValidationConfiguration class defines the configuration sett
 
 ### Active
 
-The Active property is a flag that enables or disables the validation of server certificates.
+The Active property is a flag that enables or disables the optional [ValidationOptions](#validationoptions) checks of client certificates.
 
 **Type** : Boolean
 
-When set to true, server certificate validation is enabled.
-When set to false, server certificate validation is disabled
+When set to true, the ValidationOptions checks are applied to client certificates.
+When set to false, none of the ValidationOptions checks are applied; the certificate validator using the trusted and issuer lists in [Directory](#directory) stays active.
+
+Default is true
 
 ------
 
@@ -1069,8 +1136,8 @@ The Directory property specifies the pathname to the base directory where certif
 
 Important notes:
 
-- This directory must exist prior to use
-- The adapter will automatically create any required subdirectories if they don't exist
+- Default: the directory SFC (in IPC mode: the target service) is started from
+- On start the target creates the directory and the subdirectories below if they don't exist, also when only the "None" security policy is used, so start SFC from a writable directory or set Directory
 
 Directory structure
 
@@ -1102,6 +1169,10 @@ This structure shows:
     - crl/ - For trusted certificate revocation lists
 
   - rejected/ - For rejected certificates
+
+A client that connects over Sign or SignAndEncrypt is rejected until its certificate is trusted. The certificate of a rejected client is written to the rejected directory; move it to trusted/certs to accept the client. For a client certificate issued by a CA, the CA certificate in trusted/certs also makes it trusted; a CA certificate in issuers/certs alone does not. The directories are watched, so no restart is needed.
+
+The server presents one RSA-SHA256 certificate in the default application certificate group. Replacing it through OPC UA certificate management (UpdateCertificate, CreateSigningRequest) is not supported; change [ServerCertificate](#servercertificate) instead.
 
 ------
 
@@ -1160,10 +1231,10 @@ With validation options:
   "ValidationOptions": {
     "ApplicationUri": false,
     "ExtKeyUsageEndEntity": false,
-    "HostOrIp": false,
+    "HostOrIP": false,
     "KeyUsageEndEntity": false,
-    "KeyUsageIssuer": true,
     "Revocation": true,
+    "RevocationLists": true,
     "Validity": true
   }
 }
@@ -1186,10 +1257,10 @@ This class allows you to specify which validation checks should be performed whe
 
 - [ApplicationUri](#applicationuri)
 - [ExtKeyUsageEndEntity](#extkeyusageendentity)
-- [HostOrIp](#hostorip)
+- [HostOrIP](#hostorip)
 - [KeyUsageEndEntity](#keyusageendentity)
-- [KeyUsageIssuer](#keyusageissuer)
 - [Revocation](#revocation)
+- [RevocationLists](#revocationlists)
 - [Validity](#validity)
 
 ---
@@ -1200,7 +1271,7 @@ The ApplicationUri property determines whether to validate the Application URI a
 
 When enabled (true):
 
-- The Application URI from the server's application description will be checked against the ApplicationUri specified in the Subject Alternative Names field of the certificate 
+- The Application URI from the client's application description will be checked against the ApplicationUri specified in the Subject Alternative Names field of the certificate 
 - This validation helps ensure the certificate belongs to the expected application
 
 When disabled (false):
@@ -1233,9 +1304,9 @@ When disabled (false):
 
 ---
 
-### HostOrIp
+### HostOrIP
 
-The HostOrIp property controls whether the host name or IP address must be present and validated in the Subject Alternative Names (SAN) field of the certificate.
+The HostOrIP property controls whether the host name or IP address must be present and validated in the Subject Alternative Names (SAN) field of the certificate.
 
 When enabled (true):
 
@@ -1273,27 +1344,6 @@ When disabled (false):
 
 ---
 
-### KeyUsageIssuer
-
-The KeyUsageIssuer property controls the validation of the Key Usage extension for Certificate Authority (CA) certificates. 
-
-When enabled (true):
-
-- Requires the Key Usage extension to be present in CA certificates
-- Validates that the CA certificate has appropriate key usage flags set
-- Ensures the CA certificate has proper permissions for signing other certificates
-- Verifies the CA certificate is being used within its intended constraints
-
-When disabled (false):
-
-- Skips the validation check for Key Usage extension in CA certificates
-
-**Type** : Boolean
-
-**Default** : true
-
----
-
 ### Revocation
 
 The Revocation property controls whether certificate revocation checking is performed during the validation process.
@@ -1309,6 +1359,24 @@ When disabled (false):
 
 - Skips all certificate revocation checks
 - Will not verify if certificates have been revoked by the issuing authority
+
+**Type** : Boolean
+
+**Default** : true
+
+---
+
+### RevocationLists
+
+The RevocationLists property controls whether certificate revocation lists must be available during the validation process.
+
+When enabled (true):
+
+- A certificate revocation list (CRL) must be available for every CA in the client certificate chain
+
+When disabled (false):
+
+- A missing CRL does not cause the client certificate to be rejected
 
 **Type** : Boolean
 
@@ -1358,7 +1426,7 @@ Note: It's generally recommended to keep this enabled as using expired certifica
       "description": "Enable validation of extended key usage for end entity certificates",
       "default": true
     },
-    "HostOrIp": {
+    "HostOrIP": {
       "type": "boolean",
       "description": "Enable validation of host name or IP address",
       "default": true
@@ -1368,14 +1436,14 @@ Note: It's generally recommended to keep this enabled as using expired certifica
       "description": "Enable validation of key usage for end entity certificates",
       "default": true
     },
-    "KeyUsageIssuer": {
-      "type": "boolean",
-      "description": "Enable validation of key usage for issuer certificates",
-      "default": true
-    },
     "Revocation": {
       "type": "boolean",
       "description": "Enable certificate revocation checking",
+      "default": true
+    },
+    "RevocationLists": {
+      "type": "boolean",
+      "description": "Require a certificate revocation list for every CA in the certificate chain",
       "default": true
     },
     "Validity": {
@@ -1394,10 +1462,10 @@ Note: It's generally recommended to keep this enabled as using expired certifica
 {
   "ApplicationUri": false,
   "ExtKeyUsageEndEntity": false,
-  "HostOrIp": false,
+  "HostOrIP": false,
   "KeyUsageEndEntity": false,
-  "KeyUsageIssuer": true,
   "Revocation": true,
+  "RevocationLists": true,
   "Validity": true
 }
 
@@ -1409,24 +1477,22 @@ Note: It's generally recommended to keep this enabled as using expired certifica
 
 ## VariableNodeConfiguration
 
-[OpcuaTargetConfiguration](#opcuatargetconfiguration) > [DataModels](#datamodels) > [Model](#datamodelconfiguration) > [Folders](#folders) > [Folder](#foldernodeconfiguration) > [Variables](#variables)
+[OpcuaTargetConfiguration](#opcuatargetconfiguration) > [DataModels](#datamodels) > [Model](#datamodelconfiguration) > [Folders](#folders) > [Folder](#foldernodeconfiguration) > [Variables](#variables-1)
 
- \* > [Folder](#foldernodeconfiguration) > [Variables](#variables)
+ \* > [Folder](#foldernodeconfiguration) > [Variables](#variables-1)
 
 Defines configuration settings for a variable node in the data model and how to map the values for the variables from the target data received by the adapter.
-
-[Folder](#foldernodeconfiguration) > [Folders](#folders)
 
 - [Schema](#variablenodeconfiguration-schema)
 - [Examples](#variablenodeconfiguration-examples)
 
 **Properties:**
 - [ArrayDimensions](#arraydimensions)
-- [BrowseName](#browsename)
+- [BrowseName](#browsename-2)
 - [DataType](#datatype)
-- [Description](#description)
-- [DisplayName](#displayname)
-- [Id](#id)
+- [Description](#description-2)
+- [DisplayName](#displayname-2)
+- [Id](#id-2)
 - [InitValue](#initvalue)
 - [TimestampQuery](#timestampquery)
 - [Transformation](#transformation)
@@ -1480,9 +1546,8 @@ The following data types are supported:
 - STRING
 - UINT, UINT32, UINTEGER (UInt32)
 - UUID
-- XML_ELEMENT
-- UBYTE,  (unsigned byte)
-- ULONG, UINT64 ()
+- UBYTE (Byte, unsigned)
+- ULONG, UINT64 (UInt64)
 - USHORT, UINT16 (UInt16)
 - STRUCT
 - VARIANT (note that this type does not support array type)
@@ -1492,6 +1557,8 @@ Please note that for certain types, alternative names may be utilized.
 The underscores (_) employed in the type names serve to enhance clarity and may be omitted.
 
 Type names are case-insensitive.
+
+If DataType is omitted or not recognised, no error is raised and the node gets the same generic data type as VARIANT.
 
 
 
@@ -1504,7 +1571,7 @@ Description for the variable node.
 ---
 ### DisplayName
 
-Specifies the human-readable name shown in the user interface for the folder node.
+Specifies the human-readable name shown in the user interface for the variable node.
 
 Defaults to using the Id property value  if not specified
 
@@ -1512,15 +1579,15 @@ Defaults to using the Id property value  if not specified
 ### Id
 Specifies the unique identifier for the variable node in the OPC UA address space
 
-Optional, defaults to using the model's key from the OPC UA target configuration DataModels table. The Id format determines the node identifier type (numeric, GUID, or string) and is combined with a namespace index to create the complete node identifier. Must be unique across all tables in the DataModel configuration.
+Optional, defaults to the variable's key in Variables. The Id format determines the node identifier type (numeric, GUID, or string) and is combined with a namespace index to create the complete node identifier. Must be unique across all tables in the DataModel configuration.
 
-- Id is a number: "ns=[namespace index];**i**= [numeric id]"
-- Id is a guid: "ns=[namespace index];g= [guid id]"
-- Id is a string : "ns=[namespace index];s= [guid id]"
+- Id is a number: "ns=[namespace index];**i**=[numeric id]"
+- Id is a guid: "ns=[namespace index];g=[guid id]"
+- Id is a string : "ns=[namespace index];s=[string id]"
 
 The value of the namespace index is set by the server when the model is built from the model specification.
 
-Note that all keys in all tabled in a DataModel configuration must be unique.
+Note that all keys in all tables in a DataModel configuration must be unique.
 
 **Type**: String
 
@@ -1543,13 +1610,13 @@ JMESPath expression used to extract timestamp data from the target data structur
 
 The value must be a valid JMESPath query https://jmespath.org.
 
-e.g. @.sources..values..timestamp
+e.g. @.sources.FluidConveyor.values.Speed.timestamp
 
 Note that if the source or channel name contains  characters, not in  the ranges A-Z, a-z, 0-9, then these must be quoted.
-These quoted must be escaped with a '' character in the JSON configuration.
+These quotes must be escaped with a \ character in the JSON configuration.
 
 If no query is specified in addition to the ValueQuery described above, then the adapter will try to build a query from that ValueQuery by replacing the 
-"value" section of the query with  "timestamp". If that query does not return a timestamp, then either the source or schedule timestamp will be used.
+"value" section of the query with  "timestamp". If that query does not return a timestamp, the timestamp of the target data is used.
 
 **Type**: String
 
@@ -1619,7 +1686,6 @@ The quoted characters must be escaped with a \ character in the JSON configurati
         "UINT32",
         "UINTEGER",
         "UUID",
-        "XML_ELEMENT",
         "UBYTE",
         "ULONG",
         "UINT64",
@@ -1656,21 +1722,20 @@ The quoted characters must be escaped with a \ character in the JSON configurati
       "type": "string",
       "description": "Query to extract the variable value"
     }
-  },
-  "required": [ "DataType"]
+  }
 }
 
 ```
 
 ### VariableNodeConfiguration Examples
 
-Node with explicit string id, browsename  and displayname. Node id will be `ns:<ns>;s=speed`
+Node with explicit string id, browsename  and displayname. Node id will be `ns=<ns>;s=speed`
 
 ```json
 {
   "Id" : "speed",
   "DisplayName": "Motor RPM",
-  "BrowseName" : "motors-speed"
+  "BrowseName" : "motors-speed",
   "DataType": "INT32",
   "ValueQuery": "@.sources.FluidConveyor.values.Speed.value"
 }
@@ -1678,7 +1743,7 @@ Node with explicit string id, browsename  and displayname. Node id will be `ns:<
 
 
 
-Node with explicit numeric id, Node id will be `ns:<ns>;i=1001`
+Node with explicit numeric id, Node id will be `ns=<ns>;i=1001`
 
 ```json
 {
@@ -1690,5 +1755,5 @@ Node with explicit numeric id, Node id will be `ns:<ns>;i=1001`
 
 
 
-[^top](#opc-ua-target-adapter-data-models-and-mapping)
+[^top](#opc-ua-target-adapter)
 

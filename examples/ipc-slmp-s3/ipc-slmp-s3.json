@@ -32,7 +32,7 @@
       "AdapterServer": "SlmpAdapterServer",
       "Controllers": {
         "SLMP-CONTROLLER": {
-          "Address": "192.168.1.200",
+          "Address": "< PLC IP ADDRESS >",
           "MonitoringTimer": 10
         }
       },
@@ -43,7 +43,7 @@
   "TargetServers": "@file:servers.json@Targets",
 
   "Targets": {
-    "S3Target": "$(S3TargetIPC, bucket=< YOUR BUCKET >>,region=< YOUR REGION >>,prefix=< YOUR PREFIX >,targetServer=S3TargetServer)",
+    "S3Target": "$(S3TargetIPC, bucket=< YOUR BUCKET >,region=< YOUR REGION >,prefix=< YOUR PREFIX >,targetServer=S3TargetServer)",
     "DebugTarget": {
       "TargetType": "DEBUG-TARGET",
       "TargetServer": "DebugTargetServer"

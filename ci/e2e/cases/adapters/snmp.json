@@ -1,0 +1,274 @@
+{
+  "cases": [
+    {
+      "id": "ADP-SNMP-PILOT",
+      "title": "pilot: net-snmp agent -> snmp adapter (SNMPv2c GET) -> file",
+      "intent": "The first case on the SNMP adapter: one batched v2c GET per read against a real net-snmp agent whose system group is fixed by its configuration. OCTET STRING, OBJECT IDENTIFIER, INTEGER, TimeTicks and Counter32 must decode to strings, ints and longs in every mode; sysUpTime must move. The Counter32 is the loopback's ifInOctets, because the snmp group counters such as snmpInPkts are not served by every net-snmp build. It fails when the adapter stops reading, maps a varbind to the wrong channel, or a type conversion breaks. Every ObjectId has the leading dot the validation requires (SnmpChannelConfiguration.kt:42-47), the protocol is the lowercase 'udp' (SnmpNetworkProtocol.kt:15-19), and SnmpVersion is left unset because the code ignores it and always sends v2c (SnmpDeviceConfiguration.kt:66-75).",
+      "pins": [
+        "adapters/snmp/src/main/kotlin/com/amazonaws/sfc/snmp/SnmpAdapter.kt:170-188",
+        "adapters/snmp/src/main/kotlin/com/amazonaws/sfc/snmp/SnmpDevice.kt:55-67",
+        "adapters/snmp/src/main/kotlin/com/amazonaws/sfc/snmp/config/SnmpChannelConfiguration.kt:42-47"
+      ],
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "agent",
+          "kind": "snmpd",
+          "args": {
+            "conf": "snmpd.conf"
+          }
+        }
+      ],
+      "records": 8,
+      "files": {
+        "snmpd.conf": "rocommunity public 127.0.0.1\nsysdescr omni e2e agent\nsyscontact sfc-e2e@example.com\nsysname sfc-e2e\nsyslocation e2e-lab\nsysservices 72\n"
+      },
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.agent.values",
+          "keys": [
+            "contact",
+            "descr",
+            "lo_in_octets",
+            "location",
+            "name",
+            "object_id",
+            "services",
+            "uptime"
+          ],
+          "comment": "every OID in every record"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "agent",
+          "channel": "descr",
+          "values": [
+            "omni e2e agent"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "agent",
+          "channel": "contact",
+          "values": [
+            "sfc-e2e@example.com"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "agent",
+          "channel": "name",
+          "values": [
+            "sfc-e2e"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "agent",
+          "channel": "location",
+          "values": [
+            "e2e-lab"
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "agent",
+          "channel": "services",
+          "values": [
+            72
+          ],
+          "comment": "INTEGER becomes an Int (SnmpAdapter.kt:172)"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.agent.values.object_id.value",
+          "regex": "1\\.3\\.6\\.1\\.4\\.1\\.8072\\.3\\.2\\.\\d+",
+          "comment": "net-snmp's agent OID, printed without the leading dot (OID.toString)"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.agent.values.uptime.value",
+          "type": "int",
+          "comment": "TimeTicks becomes a Long (SnmpAdapter.kt:176)"
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.agent.values.uptime.value",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.agent.values.lo_in_octets.value",
+          "type": "int",
+          "comment": "Counter32 becomes a Long (SnmpAdapter.kt:177). Only the type is asserted: net-snmp caches interface counters for seconds, so the value need not move within a case; sysUpTime proves the reads are live"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error reading from SNMP device",
+            "No value for source",
+            "SNMP get error"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-SNMP-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "agent": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "agent": {
+            "Name": "agent",
+            "ProtocolAdapter": "Snmp",
+            "AdapterDevice": "d",
+            "Channels": {
+              "descr": {
+                "Name": "descr",
+                "ObjectId": ".1.3.6.1.2.1.1.1.0"
+              },
+              "object_id": {
+                "Name": "object_id",
+                "ObjectId": ".1.3.6.1.2.1.1.2.0"
+              },
+              "uptime": {
+                "Name": "uptime",
+                "ObjectId": ".1.3.6.1.2.1.1.3.0"
+              },
+              "contact": {
+                "Name": "contact",
+                "ObjectId": ".1.3.6.1.2.1.1.4.0"
+              },
+              "name": {
+                "Name": "name",
+                "ObjectId": ".1.3.6.1.2.1.1.5.0"
+              },
+              "location": {
+                "Name": "location",
+                "ObjectId": ".1.3.6.1.2.1.1.6.0"
+              },
+              "services": {
+                "Name": "services",
+                "ObjectId": ".1.3.6.1.2.1.1.7.0"
+              },
+              "lo_in_octets": {
+                "Name": "lo_in_octets",
+                "ObjectId": ".1.3.6.1.2.1.2.2.1.10.1"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Snmp": {
+            "AdapterType": "SNMP",
+            "Devices": {
+              "d": {
+                "Address": "127.0.0.1",
+                "Port": "${SFC_E2E_AGENT_PORT}",
+                "Community": "public",
+                "NetworkProtocol": "udp",
+                "Timeout": 1000,
+                "Retries": 1
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SNMP": {
+            "FactoryClassName": "com.amazonaws.sfc.snmp.SnmpAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SNMP": {
+            "FactoryClassName": "com.amazonaws.sfc.snmp.SnmpAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/snmp/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SnmpServer": {
+          "module": "snmp"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Snmp": {
+            "AdapterServer": "SnmpServer"
+          }
+        },
+        "AdapterServers": {
+          "SnmpServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

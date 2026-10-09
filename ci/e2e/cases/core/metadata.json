@@ -1,0 +1,314 @@
+{
+  "cases": [
+    {
+      "id": "CORE-META-LEVELS-01",
+      "title": "Metadata at top, schedule, source and channel level: placement, schedule-over-top precedence, string coercion",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "Metadata is how consumers tell plants, lines and units apart. ScheduleWriter merges top-level and schedule metadata with the schedule winning (config.metadata + schedule.metadata) into the root node, while source and channel metadata stay on their own nodes and are never merged into or from the root. Channel metadata values are Map<String,String>, so a JSON boolean becomes the string 'true'. Known defect: ConfigReader round-trips the whole configuration through Map<String,Any> before typed deserialization, so every JSON integer becomes a Double and the metadata value 2 is delivered as the string '2.0'.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:70-82",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:148",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:216-229",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ConfigReader.kt:72",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ConfigReader.kt:87"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "everyRecord",
+          "path": "metadata",
+          "strictTypes": true,
+          "equals": {
+            "site": "plant-1",
+            "owner": "top",
+            "env": "sched",
+            "line": "L7"
+          },
+          "comment": "env: the schedule overrides the top level; owner: source and channel values do not leak upwards."
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.Src.metadata",
+          "strictTypes": true,
+          "equals": {
+            "machine": "M42",
+            "owner": "source"
+          }
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.Src.values.c1.metadata.unit",
+          "equals": "degC",
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.Src.values.c1.metadata.owner",
+          "equals": "channel",
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.Src.values.c1.metadata.Enabled",
+          "equals": "true",
+          "strictTypes": true
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.Src.values.c1.metadata",
+          "keys": [
+            "unit",
+            "owner",
+            "Digits",
+            "Enabled"
+          ]
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.Src.values.c2.metadata"
+          ]
+        },
+        {
+          "kind": "keyOrder",
+          "keys": [
+            "schedule",
+            "serial",
+            "timestamp",
+            "sources",
+            "metadata"
+          ]
+        },
+        {
+          "kind": "keyOrder",
+          "path": "sources.Src",
+          "keys": [
+            "values",
+            "metadata",
+            "timestamp"
+          ]
+        },
+        {
+          "kind": "keyOrder",
+          "path": "sources.Src.values.c1",
+          "keys": [
+            "value",
+            "metadata",
+            "timestamp"
+          ]
+        },
+        {
+          "kind": "keyOrder",
+          "path": "sources.Src.values.c2",
+          "keys": [
+            "value",
+            "timestamp"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ConfigReader.kt:72",
+        "summary": "ConfigReader round-trips the configuration through Map<String,Any> (ConfigReader.kt:72, re-serialised at :87), so JSON integers become Doubles and a numeric metadata value 2 is delivered as the string \"2.0\"",
+        "assertCurrent": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.Src.values.c1.metadata.Digits",
+            "equals": "2.0",
+            "strictTypes": true
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.Src.values.c1.metadata.Digits",
+            "equals": "2",
+            "strictTypes": true
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-META-LEVELS-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Metadata": {
+          "site": "plant-1",
+          "owner": "top",
+          "env": "cfg"
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Metadata": {
+              "line": "L7",
+              "env": "sched"
+            },
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "Src",
+            "ProtocolAdapter": "SimAdapter",
+            "Metadata": {
+              "machine": "M42",
+              "owner": "source"
+            },
+            "Channels": {
+              "c1": {
+                "Name": "c1",
+                "Metadata": {
+                  "unit": "degC",
+                  "owner": "channel",
+                  "Digits": 2,
+                  "Enabled": true
+                },
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 1.5
+                }
+              },
+              "c2": {
+                "Name": "c2",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 3
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

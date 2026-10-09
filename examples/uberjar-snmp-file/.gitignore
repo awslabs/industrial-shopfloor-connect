@@ -1,0 +1,4 @@
+# Written by create.sh / create.ps1 and by the run
+snmp-to-file.json
+snmpd.conf
+out/

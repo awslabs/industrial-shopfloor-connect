@@ -4,29 +4,70 @@
 
 The AWS [S3](https://aws.amazon.com/s3/) (Simple Storage Service) target adapter facilitates direct writing of industrial device data to Amazon S3 buckets via Shop Floor Connectivity. This adapter supports template-based transformations, configurable file prefixes, compression, and batching capabilities.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `AWS-S3` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWS-S3": {
-      "JarFiles" : ["<location of deployment>/aws-s3-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
-   }
+"TargetTypes": {
+  "AWS-S3": { "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter" }
 }
 ```
 
+**In-process** - module bundle `aws-s3-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
 
+```json
+"TargetTypes": {
+  "AWS-S3": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-s3-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awss3.AwsS3TargetWriter"
+  }
+}
+```
 
+**IPC** - no `TargetTypes`; the target runs as its own service:
 
-## Aws3TargetConfiguration
+```json
+"Targets": {
+  "S3Target": {
+    "TargetType": "AWS-S3",
+    "TargetServer": "S3TargetServer"
+  }
+},
+"TargetServers": {
+  "S3TargetServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-s3-target/bin/aws-s3-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-s3-target\lib\*" com.amazonaws.sfc.awss3.AwsS3TargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awss3.AwsS3TargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awss3.AwsS3TargetService -port 50001`).
+
+**Examples:** uberjar: [uberjar-sim-s3](../../examples/uberjar-sim-s3/README.md) · in-process: [in-process-ads-s3](../../examples/in-process-ads-s3/README.md), [in-process-pccc-s3](../../examples/in-process-pccc-s3/README.md), [in-process-slmp-s3](../../examples/in-process-slmp-s3/README.md) · IPC: [ipc-ads-s3](../../examples/ipc-ads-s3/README.md), [ipc-slmp-s3](../../examples/ipc-slmp-s3/README.md) · all: [examples catalog](../examples/README.md)
+
+## AwsS3TargetConfiguration
 
 AwsS3TargetConfiguration extends the type  [TargetConfiguration](../core/target-configuration.md) with specific configuration data for sending data to an S3 bucket. The Targets configuration element can contain entries of this type, the TargetType of these entries must be set to **"AWS-S3"**
 
 
-Requires IAM permission `s3:putObject` to write to the configured bucket
+Requires IAM permission `s3:PutObject` to write to the configured bucket
 
-- [Schema](#aws3targetconfiguration-schema)
-- [Examples](#aws3targetconfiguration-examples)
+- [Schema](#awss3targetconfiguration-schema)
+- [Examples](#awss3targetconfiguration-examples)
 
 **Properties:**
 - [BucketName](#bucketname)
@@ -34,6 +75,7 @@ Requires IAM permission `s3:putObject` to write to the configured bucket
 - [Compression](#compression)
 - [ContentType](#contenttype)
 - [CredentialProviderClient](#credentialproviderclient)
+- [Endpoint](#endpoint)
 - [Extension](#extension)
 - [Formatter](#formatter)
 - [Interval](#interval)
@@ -69,7 +111,7 @@ Specifies the size threshold in megabytes (MB) that triggers a write operation t
 
 **Type**: Integer
 
-Default is 1, maximum is 128
+Default is 1 (MB). `0` writes one object per record. The value is not range-checked; keep it well below the JVM heap size.
 
 ---
 ### Compression
@@ -78,7 +120,7 @@ Specifies the compression algorithm used to compress data before writing to S3 o
 Supported values:
 
 - "None" (default): Data is stored uncompressed
-- "GZip": Data is compressed using GZip compression [[2\]](https://docs.aws.amazon.com/iot-fleetwise/latest/APIReference/API_S3Config.html)
+- "GZip": Data is compressed using GZip compression
 - "Zip": Data is compressed using Zip compression
 
 Compression can significantly reduce storage costs and improve transfer speeds by reducing the size of stored data. The choice of compression format depends on your specific requirements for compression ratio, processing overhead, and compatibility with downstream applications.
@@ -89,21 +131,12 @@ Default is "None"
 
 ---
 ### ContentType
-Specifies the MIME type (media type) of the data stored in S3 objects. This property helps applications correctly interpret the stored data.
+Intended to set the MIME type (media type) of the S3 objects. Currently the configured value itself is not used:
 
-When compression is enabled, the content type is automatically set to the appropriate MIME type for the selected compression method:
+- If ContentType is set, the object gets the MIME type of the selected [compression](#compression): "application/json" for None, "application/gzip" for GZip, "application/zip" for Zip.
+- If ContentType is not set, a content type is only set when compression is enabled ("application/gzip" or "application/zip"); otherwise SFC does not set one.
 
-- GZip: "application/gzip"
-- Zip: "application/zip"
-
-This setting is particularly useful when storing data in specific formats to ensure proper handling by downstream applications. Common examples include:
-
-- XML: "application/xml"
-- YAML: "application/yaml"
-- JSON: "application/json"
-- CSV: "text/csv"
-
-Optional. If not specified, S3 will attempt to determine the content type automatically.
+Optional.
 
 **Type**: String
 
@@ -142,7 +175,7 @@ Please note that the extension can also be included within the [ObjectKey](#obje
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
@@ -155,7 +188,7 @@ The adapter writes data to S3 when either the [BufferSize](#buffersize) threshol
 
 **Type**: Integer
 
-Default is 60, maximum is 900
+Default is 60, minimum is 60, maximum is 900 (seconds); values outside 60..900 are rejected at startup.
 
 ---
 
@@ -169,7 +202,7 @@ Object key for the S3 object. This key can be a template in which the following 
 - `%hour%`, 2 digit numeric hour value from UTC time
 - `%minute%`, 2 digit numeric minute value from UTC time
 - `%second%`, 2 digit numeric second value from UTC time
-- `%millisecond%`, 2 digit numeric millisecond value from UTC time
+- `%millisecond%`, 3 digit numeric millisecond value from UTC time
 - `%uuid%`, A UUID (Universally Unique Identifier) follows a standardized format consisting of 32 hexadecimal digits arranged in 5 groups, separated by hyphens. 
 
 **The rendered object key must be unique to prevent existing objects from being overwritten.**
@@ -182,17 +215,17 @@ Example template
 
 Please note that the template above also specifies a file extension. Alternatively, the [Extension](#extension) property can be used to specify an extension for an object.
 
-When the ObjectKey is not specified, the key of the object will have the value year/month/day/hour/minute/uuiud.
+When the ObjectKey is not specified, the key of the object is `<year>/<month>/<day>/<hour>/<minute>/<uuid>` from UTC time, without zero padding (for example `2026/10/8/7/5/<uuid>`), preceded by the [Prefix](#prefix) if one is set.
 
 **Type :** String
 
 ---
 ### Prefix
-Specifies a prefix that will be added to the beginning of all object keys created by the adapter in the S3 bucket. This helps organize objects in a hierarchical structure, similar to folders in a file system.
+Specifies a prefix that will be added to the beginning of all object keys created by the adapter in the S3 bucket. This helps organize objects in a hierarchical structure, similar to folders in a file system. A `/` is inserted between the prefix and the key, so do not end the prefix with `/` (`"data"` gives keys like `data/2026/...`, `"data/"` gives `data//2026/...`).
 
 Optional. If not specified, objects will be created at the root level of the bucket.
 
-**Type**:
+**Type**: String
 
 ---
 ### Region
@@ -200,7 +233,7 @@ Specifies the AWS Region where the S3 bucket is located. The Region should be pr
 
 Examples:
 
-- "us-east-1" (US East - N. Virginia) [[2\]](https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateBucketConfiguration.html)
+- "us-east-1" (US East - N. Virginia)
 - "eu-west-1" (Europe - Ireland)
 - "ap-southeast-2" (Asia Pacific - Sydney)
 
@@ -226,7 +259,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -236,16 +269,16 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
 
-### Aws3TargetConfiguration Schema
+### AwsS3TargetConfiguration Schema
 
 ```json
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Aws3TargetConfiguration",
+  "title": "AwsS3TargetConfiguration",
   "type": "object",
   "allOf": [
     {
@@ -263,7 +296,7 @@ When a custom [formatter](#formatter) is configured for a target then this prope
         },
         "BufferSize": {
           "type": "integer",
-          "description": "Size of the buffer for S3 uploads"
+          "description": "Size of the buffer for S3 uploads in MB"
         },
         "Compression": {
           "type": "string",
@@ -307,7 +340,7 @@ When a custom [formatter](#formatter) is configured for a target then this prope
 
 ```
 
-### Aws3TargetConfiguration Examples
+### AwsS3TargetConfiguration Examples
 
 Configuration using CredentialProviderClient.
 
@@ -319,7 +352,7 @@ Configuration using CredentialProviderClient.
   "BufferSize": 10,
   "Interval": 60,
   "Compression": "GZip",
-  "Prefix": "data/",
+  "Prefix": "data",
   "CredentialProviderClient": "aws-credentials-provider"
 }
 
@@ -335,7 +368,7 @@ Configuration using  default AWS SDK credential provider chain.
   "BufferSize": 16,
   "Interval": 300,
   "Compression": "Zip",
-  "Prefix": "data/"
+  "Prefix": "data"
 }
 
 ```

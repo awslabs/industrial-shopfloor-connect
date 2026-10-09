@@ -6,8 +6,7 @@
 
   "ConfigProvider": {
     "JarFiles": [
-      "<SET TO DEPLOYMENT DIR >/opcua-auto-discovery",
-      "<SET TO DEPLOYMENT DIR >/opcua/libs"
+      "${SFC_DEPLOYMENT_DIR}/opcua-auto-discovery/lib"
     ],
     "FactoryClassName": "com.amazonaws.sfc.config.OpcuaAutoDiscoveryConfigProvider"
   },
@@ -21,7 +20,7 @@
       "OPCUA-SOURCE": [
         {
           "NodeId": "ns=3;s=85/0:Simulation",
-          "DiscoveryDepth": "10",
+          "DiscoveryDepth": 10,
           "DiscoveredNodeTypes": "VariablesAndEvents",
           "Exclusions": [
             ".*Max\\sValue.*",
@@ -73,7 +72,6 @@
   },
   "Targets": {
     "DebugTarget": {
-      "TargetServer": "DebugTargetServer",
       "Active": true,
       "TargetType": "DEBUG-TARGET"
     }
@@ -81,7 +79,7 @@
   "TargetTypes": {
     "DEBUG-TARGET": {
       "JarFiles": [
-        "<SET TO DEPLOYMENT DIR>/debug-target/lib"
+        "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
       ],
       "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
     }
@@ -101,7 +99,7 @@
   "AdapterTypes": {
     "OPCUA": {
       "JarFiles": [
-        "< SET TO DEPLOYMENT DIR >/opcua/lib"
+        "${SFC_DEPLOYMENT_DIR}/opcua/lib"
       ],
       "FactoryClassName": "com.amazonaws.sfc.opcua.OpcuaAdapter"
     }

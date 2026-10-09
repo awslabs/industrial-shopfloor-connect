@@ -1,0 +1,290 @@
+{
+  "cases": [
+    {
+      "id": "TGT-OPCUA-READ-TYPES-01",
+      "title": "proto",
+      "tier": "local-infra",
+      "priority": "P0",
+      "services": [
+        {
+          "name": "uat",
+          "kind": "command",
+          "start": "deferred",
+          "args": {
+            "argv": [
+              "true"
+            ]
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "opcua",
+          "port": "SFC_E2E_UAT_PORT",
+          "path": "/sfc",
+          "nodes": {
+            "iv": "ns=2;s=S/Sim/Iv",
+            "lv": "ns=2;s=S/Sim/Lv",
+            "dv": "ns=2;s=S/Sim/Dv",
+            "sv": "ns=2;s=S/Sim/Sv",
+            "bv": "ns=2;s=S/Sim/Bv"
+          }
+        },
+        "gate": {
+          "kind": "file"
+        },
+        "probe": {
+          "kind": "jsonl",
+          "service": "probe",
+          "file": "probe.jsonl"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "sink": "gate",
+            "records": 3
+          }
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 1
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/opcua_server.py",
+            "--probe",
+            "${SFC_E2E_CASE_DIR}/probe.json",
+            "--url",
+            "opc.tcp://127.0.0.1:${SFC_E2E_UAT_PORT}/sfc",
+            "--out",
+            "services/probe/probe.jsonl"
+          ],
+          "timeoutSeconds": 40
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 1
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "TGT-OPCUA-READ-TYPES-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "OpcuaTarget",
+              "Gate"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "iv": {
+                "Name": "iv",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 42
+                }
+              },
+              "lv": {
+                "Name": "lv",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Long",
+                  "Value": 9000000000
+                }
+              },
+              "dv": {
+                "Name": "dv",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Double",
+                  "Value": 2.5
+                }
+              },
+              "sv": {
+                "Name": "sv",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "abc"
+                }
+              },
+              "bv": {
+                "Name": "bv",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "OpcuaTarget": {
+            "TargetType": "OPCUA-TARGET",
+            "ServerTcpPort": "${SFC_E2E_UAT_PORT}",
+            "ServerPath": "sfc",
+            "ServerSecurityPolicies": [
+              "None"
+            ]
+          },
+          "Gate": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_GATE}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "OPCUA-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.opcuatarget.OpcuaTargetWriter"
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "OPCUA-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.opcuatarget.OpcuaTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/opcua-target/lib"
+            ]
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "OpcuaTargetServer": {
+          "module": "opcua-target"
+        },
+        "GateServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "OpcuaTarget": {
+            "TargetServer": "OpcuaTargetServer"
+          },
+          "Gate": {
+            "TargetServer": "GateServer"
+          }
+        },
+        "TargetServers": {
+          "OpcuaTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "GateServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "probe.json": "{\"timeoutSeconds\": 20,\n \"waitFor\": [\"nsu=urn:amazonaws.sfc;s=S/Sim/Iv\", \"nsu=urn:amazonaws.sfc;s=S/Sim/Bv\"],\n \"ops\": [\n  {\"op\": \"read\", \"name\": \"iv\", \"node\": \"nsu=urn:amazonaws.sfc;s=S/Sim/Iv\"},\n  {\"op\": \"read\", \"name\": \"lv\", \"node\": \"nsu=urn:amazonaws.sfc;s=S/Sim/Lv\"},\n  {\"op\": \"read\", \"name\": \"dv\", \"node\": \"nsu=urn:amazonaws.sfc;s=S/Sim/Dv\"},\n  {\"op\": \"read\", \"name\": \"sv\", \"node\": \"nsu=urn:amazonaws.sfc;s=S/Sim/Sv\"},\n  {\"op\": \"read\", \"name\": \"bv\", \"node\": \"nsu=urn:amazonaws.sfc;s=S/Sim/Bv\"},\n  {\"op\": \"browse\", \"name\": \"path\", \"path\": [\"0:Objects\", \"2:SFC\", \"2:S\", \"2:sim\", \"2:Iv\"]},\n  {\"op\": \"children\", \"name\": \"source\", \"node\": \"nsu=urn:amazonaws.sfc;s=S/Sim\"}\n ]}\n"
+      }
+    }
+  ]
+}

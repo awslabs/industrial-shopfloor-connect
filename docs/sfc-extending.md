@@ -1,5 +1,6 @@
 # Extending the SFC Framework
 
+- [Loading extensions](#loading-extensions)
 - [Implementing a protocol adapter](#implementing-a-protocol-adapter)
   - [Creating an in-process protocol adapter instance](#creating-an-in-process-protocol-adapter-instance)
   - [IPC adapter services](#ipc-adapter-services)
@@ -24,6 +25,53 @@ Protocol adapters and targets can be implemented in languages such as Java, Kotl
 For protocols or targets that require libraries or languages that cannot be executed in a JVM environment, an IPC server implementation can be used. The only requirement is that the chosen language and runtime must support the gRPC protocol.
 
 
+# Loading extensions
+
+All extensions on this page that run in the SFC process (protocol adapters, targets, configuration providers, log
+writers, metrics writers and formatters) are created the same way:
+
+- The configuration names a factory class in `FactoryClassName`. The SFC core loads that class and calls its static
+  `newInstance(vararg createParameters: Any?)` method; it does not create an instance of the factory class. In Kotlin,
+  declare the method with `@JvmStatic` in the companion object, as every example does:
+
+  ```kotlin
+  companion object {
+      @JvmStatic
+      fun newInstance(vararg createParameters: Any?): MyLogWriter = MyLogWriter(createParameters[0] as String)
+  }
+  ```
+
+- `JarFiles` lists the jar files, or directories with jar files, that contain the class. It can be left out only when
+  the class is already on the classpath of the SFC process, which is why the components bundled in the uberjar need
+  just `FactoryClassName` (a `ConfigProvider` or `LogWriter` section needs the key even then: write `"JarFiles": []`).
+  Your own extension is not in the uberjar: list its jars in `JarFiles`. This works with the uberjar (`sfcx`) and with
+  `sfc-main` alike.
+- Give your copy of a template its own package and class name. When SFC runs from the uberjar, a class that is already
+  in it (every adapter and target, and the bundled examples) always takes precedence over a class with the same name in
+  `JarFiles`, so your changes would never run.
+
+To build an extension in a source checkout of this repository, copy an example module, for example
+`examples/custom-log-writer` to `examples/my-log-writer`, rename its package and class, and build it. Every folder under
+`examples/` with a `build.gradle.kts` is part of the build:
+
+**Linux / macOS**
+
+```shell
+./gradlew :examples:my-log-writer:build
+```
+
+**Windows (PowerShell)**
+
+```powershell
+.\gradlew.bat :examples:my-log-writer:build
+```
+
+The jar is written to `examples/my-log-writer/build/libs`. Reference that directory with
+`"JarFiles": ["examples/my-log-writer/build/libs"]`, with forward slashes on every OS; relative paths are resolved
+against the directory SFC is started from. If your extension uses libraries that SFC does not contain, add their jars
+to `JarFiles` as well.
+
+
 # Implementing a protocol adapter
 
 The main function of a protocol adapter is to read data from industrial devices using a specific protocol. The SFC core instructs the protocol adapter on which data to read. The core itself is not aware of the actual protocol used by the adapter, and its instructions are generic, allowing them to be used for any type of adapter.
@@ -34,11 +82,17 @@ For JVM implementations the SFC core defines the following interface:
 
 ```kotlin
 interface ProtocolAdapter {
+  // Optional initialization, the default does nothing
+  suspend fun init() {}
+
   // Read channel values from a source
   suspend fun read(sourceID: String, channels: List<String>?): SourceReadResult
 
   // Stop the adapter
   suspend fun stop(timeout: Duration)
+
+  // Metrics collected by the adapter, null if it collects none
+  val metricsCollector: MetricsCollectorReader?
 }
 ```
 
@@ -70,10 +124,12 @@ When the SFC core is stopped, it will call the adapter's stop method to let the 
 
 The SFC core is responsible for creating and closing down instances of adapters that run in the same process. As the SFC core is not aware of the actual protocol, it relies solely on the InProcess configuration for the protocol source. This configuration contains:
 
-- The jar files that implement the adapter, which need to be explicitly loaded by the SFC core process
+- The jar files that implement the adapter, which need to be explicitly loaded by the SFC core process (not needed for
+  the adapters bundled in the uberjar)
 - The name of a factory class
 
-After loading the jar files, the core creates an instance of the factory class and calls its static "newInstance" method.
+After loading the jar files, the core calls the static "newInstance" method of the factory class, see
+[Loading extensions](#loading-extensions).
 
 Each adapter implementation must implement a factory class that implements this method with the following signature:
 
@@ -106,6 +162,11 @@ The newInstance method uses the configuration to create an instance of adapter c
 SourceValuesReader. If creating the instance fails due to configuration or other issues the reason can be logged using
 the provided logger and the method returns null.
 
+To return a SourceValuesReader, wrap your ProtocolAdapter with
+`InProcessSourcesReader.createInProcessSourcesReader(schedule, adapter, sources, config.tuningConfiguration, config.metrics, logger)`.
+See [SimulatorAdapter.kt](../adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorAdapter.kt) for a
+complete small adapter.
+
 ## IPC adapter services
 
 To run the adapter in a different process, or on a different device, as the SFC core, for reasons of scaling,
@@ -115,13 +176,18 @@ a system service, as a GreenGrass component or a Docker container.
 The gRPC service, which can be implemented in any language or runtime supporting gRPC, needs to implement the
 ProtocolAdapterService:
 
-```kotlin
+```protobuf
 service ProtocolAdapterService {
   // Reads values, server-side streaming
   rpc ReadValues (ReadValuesRequest) returns (stream ReadValuesReply) {}
+  rpc ReadMetrics(ReadMetricsRequest) returns (stream MetricsDataMessage){}
   rpc InitializeAdapter (InitializeAdapterRequest) returns (InitializeAdapterResponse){}
 }
 ```
+
+The service definitions are in [core/sfc-ipc/src/main/proto](../core/sfc-ipc/src/main/proto/):
+`ProtocolAdapterService.proto`, `TargetAdapterService.proto` and `MetricsWriterService.proto`, with shared message types
+in `Types.proto` and `Metrics.proto`.
 
 Initialization Process: The InitializeAdapter message is sent by the core to the service, providing it with the subset of configuration information relevant for the adapter instance. This allows the service to bootstrap with minimal configuration, just enough to listen for the InitializeAdapter request. When the SFC core starts, it sends a specific InitializeAdapterRequest to the adapter service. The service uses this configuration information to (re-)configure the protocol adapter. The service returns a response indicating whether the configuration was successful, including additional error information if it wasn't. If the request fails, times out, or the service is unreachable, the SFC core will periodically retry by re-sending the request. The configuration, in JSON format in the adapterConfiguration field, contains all relevant configuration data selected by the SFC core for that adapter. The adapter can use an instance of the SFC ConfigReader class to read the configuration data as an instance of the configuration type class for the adapter.
 
@@ -134,7 +200,7 @@ Data Structure: The data returned by the service as a stream to the core contain
 - A timestamp
 - An error description in case of failure
 
-The structure of the returned data is the same as that returned by the ProtocolAdapters read method. A key difference is that, to provide type-fidelity between the data read by the adapter and received by the SFC core, the message for returning the ChannelValues has a specific one-of field for every datatype supported by the SFC core. The SFC framework provides helpers that abstract storing the value in the distinctive field for the data type by the adapter. The SFC core has internal helpers to extract the data in the original format. Additional wrappers for non-JVM implementations will be part of future adapter implementations.
+The structure of the returned data is the same as that returned by the ProtocolAdapters read method. A key difference is that, to provide type-fidelity between the data read by the adapter and received by the SFC core, the message for returning the ChannelValues has a specific one-of field for every datatype supported by the SFC core. The SFC framework provides helpers that abstract storing the value in the distinctive field for the data type by the adapter. The SFC core has internal helpers to extract the data in the original format. Additional wrappers for non-JVM implementations will be part of future adapter implementations. (Known issue: single unsigned values (UByte, UShort, UInt, ULong) currently arrive as signed Int or Long values over IPC.)
 
 ## Using JVM protocol adapter classes as IPC services
 
@@ -142,18 +208,15 @@ An adapter class that implements the ProtocolAdapter interface can simply be wra
 it as a gRPC IPC service.
 
 The code below shows the implementation of the OPCUA service that uses the ServiceMain class to wrap an instance of the
-MqttAdapter class as a standalone service application.
+OpcuaAdapter class as a standalone service application
+([OpcuaProtocolService.kt](../adapters/opcua/src/main/kotlin/com/amazonaws/sfc/opcua/OpcuaProtocolService.kt)).
 
 ```kotlin
-class OpcuaServiceMain(logger: Logger) : ServiceMain(logger) {
+class OpcuaProtocolService : ServiceMain() {
 
-  override fun createServiceInstance(args: Array<String>, logger: Logger): Service {
-    return ProtocolAdapterService.createProtocolAdapterService(
-      args,
-      logger
-    ) { _configReader: ConfigReader, _logger: Logger ->
-      OpcuaAdapter.createMqttAdapter(_configReader, _logger)
-
+  override fun createServiceInstance(args: Array<String>, configuration: String, logger: Logger): Service? {
+    return IpcAdapterService.createProtocolAdapterService(args, configuration, logger) { a: String, c: ConfigReader, l: Logger ->
+      OpcuaAdapter.createOpcuaAdapter(adapterID = a, configReader = c, logger = l)
     }
   }
 
@@ -161,28 +224,27 @@ class OpcuaServiceMain(logger: Logger) : ServiceMain(logger) {
     @JvmStatic
     @JvmName("main")
     fun main(args: Array<String>) = runBlocking {
-      OpcuaServiceMain(logger = Logger.defaultLogger()).run(args)
+      OpcuaProtocolService().run(args)
     }
   }
 }
 ```
 
-The OpcuaServiceMain class simply inherits from the Service main class. It overrides the createServiceInstance method so
-that it creates an instance of the OpcuaAdapter class returned by the ProtocolAdapterService.createProtocolAdapterService
-helper method. The OpcuaAdapter.createOpcuaAdapter is a static method of the MqttAdapter that hides the actual creation of
-the instance.
+The OpcuaProtocolService class simply inherits from the ServiceMain class. It overrides the createServiceInstance method
+so that it creates the service with the IpcAdapterService.createProtocolAdapterService helper method, passing a
+function that creates the OpcuaAdapter instance. OpcuaAdapter.createOpcuaAdapter is a function in the companion object
+of the OpcuaAdapter class that hides the actual creation of the instance.
 
 ```kotlin
-fun createMqttAdapter(configReader: ConfigReader, logger: Logger): ProtocolAdapter {
+fun createOpcuaAdapter(adapterID: String, configReader: ConfigReader, logger: Logger): ProtocolAdapter {
 
-  // obtain mqtt configuration
-  val config: MqttConfiguration = try {
+  // obtain opcua configuration
+  val config: OpcuaConfiguration = try {
     configReader.getConfig()
   } catch (e: Exception) {
-    throw Exception("Error loading configuration: ${e.message}")
+    throw ProtocolAdapterException("Error loading configuration: ${e.message}")
   }
-  // create instance of adapter    
-  return MqttAdapter(config, logger)
+  return OpcuaAdapter(adapterID, config, logger)
 }
 ```
 
@@ -219,7 +281,7 @@ Target implementations **need to implement** this interface.
 
 The writeTargetData method is responsible for writing the data, received from the SFC core process, to the target specific destination.
 
-When the SFC core is stopped it will create the adapter stop method to let the adapter cleanup resources or close any
+When the SFC core is stopped it calls the target's close method to let the target cleanup resources or close any
 sessions.
 
 [^top](#extending-the-sfc-framework)
@@ -228,11 +290,11 @@ sessions.
 
 The SFC core is responsible for creating and closing down instances of targets that run in the same process. As the SFC
 core is not aware of the actual target it depends solely on the InProcess configuration for the target. This
-configuration contains which jar files that implement the target will need to be explicitly loaded by the SCF core
-process and the name of a factory class. After loading the jar files the core will create an instance of the factory
-class and call it the static "newInstance" method.
+configuration contains which jar files that implement the target will need to be explicitly loaded by the SFC core
+process (not needed for the targets bundled in the uberjar) and the name of a factory class. After loading the jar files
+the core calls the static "newInstance" method of the factory class, see [Loading extensions](#loading-extensions).
 
-Each adapter implementation must implement a factory class that implements this method with the following signature:
+Each target implementation must implement a factory class that implements this method with the following signature:
 
 ```kotlin
 fun newInstance(vararg createParameters: Any?): TargetWriter?
@@ -286,7 +348,7 @@ a system service, as a GreenGrass component or a Docker container.
 The gRPC service, which can be implemented in any language or runtime supporting gRPC, needs to implement the
 TargetAdapterService:
 
-```kotlin
+```protobuf
 service TargetAdapterService{
   // Client side streaming of values to target service
   rpc WriteValues(stream WriteValuesRequest) returns (stream TargetResultResponse) {}
@@ -295,18 +357,18 @@ service TargetAdapterService{
 }
 ```
 
-The InitializeTargetMessage is sent by the core to the service, providing it with the subset of the configuration
+The InitializeTarget request is sent by the core to the service, providing it with the subset of the configuration
 information that is relevant for the target instance. This allows the service to bootstrap with a minimum of
-configuration, just enough to bootstrap and listen for the InitializeAdapter request. When the SFC core starts, it will
-send a specific InitializeTarget to the adapter service. The service uses the configuration information in the
+configuration, just enough to bootstrap and listen for the InitializeTarget request. When the SFC core starts, it will
+send a specific InitializeTarget request to the target service. The service uses the configuration information in the
 request to (re-)configure the target. The service returns a response containing an indication of whether the
 configuration of the target was successful, and if this is not the case additional error information. When the request
 fails, a timeout occurs or the service is not reachable, then the SFC core will periodically retry by re-sending the
-request. The configuration, as JSON format in the InitializeTargetRequest field, contains all relevant configuration data
-selected by the SFC core for that target. The adapter can use an instance of the SFC ConfigReader class, to read the
-configuration data as an instance of the configuration type class for the target.
+request. The configuration, as JSON format in the targetConfiguration field of the InitializeTargetRequest, contains all
+relevant configuration data selected by the SFC core for that target. The target can use an instance of the SFC
+ConfigReader class, to read the configuration data as an instance of the configuration type class for the target.
 
-The WriteValues method is a streaming client request, meaning that after making the WriteValues request from the SCF
+The WriteValues method is a streaming client request, meaning that after making the WriteValues request from the SFC
 core it will stream values to the target until the SFC core closes the connection.
 
 The WriteValuesRequest contains data similar to the parameters of the TargetWriter interface writeTargetData method parameters,
@@ -353,7 +415,7 @@ Custom configuration handlers can be configured for custom handling, modifying o
 files that implement the handler and the factory class to create instances of the handler can be configured in the
 configuration file.
 
-A custom handler is a class that implements the ConfigProviderInterface
+A custom handler is a class that implements the `com.amazonaws.sfc.service.ConfigProvider` interface
 
 ```kotlin
 interface ConfigProvider {
@@ -363,7 +425,7 @@ interface ConfigProvider {
 
 This interface has a single property, which is a channel to which versions of the configuration file are written. Each
 time a new version of the configuration data, which must be a valid SFC configuration file, it is read by the SFC core
-which will apply the changed configuration. The handler can use the date from the configuration file, which may contain
+which will apply the changed configuration. The handler can use the data from the configuration file, which may contain
 specific sections for this the type of handler, which is passed as a configuration string when the instance is created.
 
 Each handler implementation must implement a factory class that implements a method with the following signature:
@@ -372,13 +434,31 @@ Each handler implementation must implement a factory class that implements a met
 fun newInstance(vararg createParameters: Any?): ConfigProvider?
 ```
 
-2 values are passed through createParameters by the core when creating an in-process instance of the adapter.
+3 values are passed through createParameters by the core when creating the provider.
 
 These values are:
 
 - configString : String containing the input data from the configuration file
 - configVerificationKey: PublicKey? Used to verify the content of the configuration
 - logger: Logger, Logger log results of handler
+
+The handler is configured in the [ConfigProvider](./core/sfc-configuration.md#configprovider) section of the
+configuration file, for example the YAML provider from the module bundle `yaml-custom-config-provider`:
+
+```json
+"ConfigProvider": {
+  "JarFiles": ["${SFC_DEPLOYMENT_DIR}/yaml-custom-config-provider/lib"],
+  "FactoryClassName": "com.amazonaws.sfc.config.YamlConfigProvider"
+}
+```
+
+The example providers are bundled in the uberjar; there write `"JarFiles": []`, because a `ConfigProvider` section
+without the `JarFiles` key is ignored.
+
+Examples: [custom-config-provider](../examples/custom-config-provider/README.md) (template),
+[yaml-custom-config-provider](../examples/yaml-custom-config-provider/README.md),
+[mqtt-config-provider](../examples/mqtt-config-provider/README.md),
+[opcua-auto-discovery](../examples/opcua-auto-discovery/README.md).
 
 
 
@@ -388,7 +468,7 @@ Custom logging writers can be configured for writing log data, which is by defau
 that implement the writer and the factory class to create instances of the writer can be configured in the configuration
 file.
 
-A custom writer is a class that implements the ConfigWriter interface
+A custom writer is a class that implements the `com.amazonaws.sfc.log.LogWriter` interface
 
 ```kotlin
 interface LogWriter {
@@ -400,11 +480,24 @@ interface LogWriter {
 Each writer implementation must implement a factory class that implements a method with the following signature:
 
 ```kotlin
-fun newInstance(vararg createParameters: Any?): ConfigWriter?
+fun newInstance(vararg createParameters: Any?): LogWriter?
 ```
 
-A single value is through createParameters by the core when creating an in-process instance of the writer which is the
-configuration that may contain specific section for the type of the writer.
+A single value is passed through createParameters by the core when creating an in-process instance of the writer, which
+is the configuration that may contain specific section for the type of the writer.
+
+The writer is configured in the [LogWriter](./core/sfc-configuration.md#logwriter) section. The
+[custom-log-writer](../examples/custom-log-writer/README.md) example is bundled in the uberjar, so there it needs an
+empty `JarFiles` list; the key must be present, otherwise the section is ignored:
+
+```json
+"LogWriter": {
+  "JarFiles": [],
+  "FactoryClassName": "com.amazonaws.sfc.log.CustomLogWriter"
+}
+```
+
+For your own writer, list its jars in `JarFiles`.
 
 [^top](#extending-the-sfc-framework)
 
@@ -413,7 +506,7 @@ configuration that may contain specific section for the type of the writer.
 Metrics Writers are used to write metrics data points collected by SFC to a metrics storage or processing destination (
 e.g., AWS CloudWatchMetrics)
 
-A metrics Writer is a class that implements the MetricWriter Interface
+A metrics Writer is a class that implements the MetricsWriter Interface
 
 ```kotlin
 interface MetricsWriter {
@@ -422,22 +515,41 @@ interface MetricsWriter {
 }
 ```
 
-Each metrics writer implementation must implement a factory class that implements a static method with the following
-signature:
+Each metrics writer implementation must implement a factory class that implements a static method (see
+[Loading extensions](#loading-extensions)) with the following signature:
 
 ```kotlin
-fun newInstance(configReader: ConfigReader): MetricsWriter?
+fun newInstance(vararg createParameters: Any?): MetricsWriter?
 ```
 
-The core passes a configuration reader to the method that the implementation can use to load a (writer specific)
-configuration from the SFC configuration.
+The core passes a configuration reader (createParameters[0], a ConfigReader) that the implementation can use to load a
+(writer specific) configuration from the SFC configuration, and a logger (createParameters[1], a Logger).
+[AwsCloudWatchMetricsWriter.kt](../metrics/aws-cloudwatch-metrics/src/main/kotlin/com/amazonaws/sfc/cloudwatch/AwsCloudWatchMetricsWriter.kt)
+is a complete implementation.
 
-An implementation of a metrics writer can be exposed as an IPC service. This IPC service is defined in metrics.proto as
-MetricsWriterService
+The writer is configured in the [MetricsWriter](./core/metrics-writer-configuration.md#metricswriter) entry of the
+`Writer` section of `Metrics`, for example the [AWS CloudWatch metrics writer](./metrics/aws-cloudwatch.md) from the module
+bundle `aws-cloudwatch-metrics`:
 
-```kotlin
-Service MetricsWriterService {
-  rpc WriteMetrics (stream MetricsDataMessage) returns (google.protobuf.Empty)
+```json
+"Metrics": {
+  "Writer": {
+    "MetricsWriter": {
+      "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-cloudwatch-metrics/lib"],
+      "FactoryClassName": "com.amazonaws.sfc.cloudwatch.AwsCloudWatchMetricsWriter"
+    }
+  }
+}
+```
+
+The uberjar contains the CloudWatch writer; there give only `FactoryClassName`.
+
+An implementation of a metrics writer can be exposed as an IPC service. This IPC service is defined in
+MetricsWriterService.proto as MetricsWriterService
+
+```protobuf
+service MetricsWriterService {
+  rpc WriteMetrics (stream MetricsDataMessage) returns (google.protobuf.Empty);
   rpc InitializeMetricsWriter (InitializeMetricsWriterRequest) returns (InitializeMetricsWriterResponse){}
 }
 ```
@@ -469,7 +581,7 @@ This method is receiving a config reader and a logger instance.
 
 ## Metrics Collection
 
-Protocol adapters and targets that support metric collection must return a non-null instance of a MetricsProvider interface implementation, as defined in the ProtocolAdapter or TargetWriter interface. The component using the adapter or target will use this interface to write the collected metrics.
+Protocol adapters and targets that support metric collection must return a non-null value for the metrics property of their interface: `metricsCollector` (a MetricsCollectorReader) in the ProtocolAdapter interface, `metricsProvider` (a MetricsProvider) in the TargetWriter interface. The component using the adapter or target will use this interface to write the collected metrics.
 
 For adapters or targets hosted in an IPC service process:
 
@@ -490,7 +602,9 @@ This structure ensures consistent metric collection and access across different 
 
 # Custom Formatters
 
-A custom formatter is a Java Virtual Machine (JVM) class that enables the transformation of data generated by target adapters into a predefined output, represented as an array of bytes. These formatters employ logic to convert a sequence of target data messages into the desired output format. By setting the [Formatter](./core/target-configuration.md#formatter) property in the configuration of a target,  the [template-based](./core/target-configuration.md#template) transformation of the target is ignored. This allows for more flexible and tailored data formatting.
+A custom formatter is a Java Virtual Machine (JVM) class that enables the transformation of data generated by target adapters into a predefined output, represented as an array of bytes. These formatters employ logic to convert a sequence of target data messages into the desired output format. A target uses a formatter when the [Formatter](./core/target-configuration.md#formatter) property is set in its configuration, which allows for more flexible and tailored data formatting than the [template-based](./core/target-configuration.md#template) transformation. `Formatter` and `Template` are mutually exclusive: configuring both on a target is a configuration error.
+
+`Formatter` is applied by the [AWS IoT Core](./targets/aws-iot-core.md), [AWS Kinesis Firehose](./targets/aws-kinesis-firehose.md), [AWS Kinesis](./targets/aws-kinesis.md), [AWS MSK](./targets/aws-msk.md), [AWS S3](./targets/aws-s3.md), [AWS SNS](./targets/aws-sns.md), [AWS SQS](./targets/aws-sqs.md), [Debug](./targets/debug.md), [File](./targets/file.md), [MQTT](./targets/mqtt.md) and [NATS](./targets/nats.md) targets; the other targets ignore it.
 
 Formatters are implemented as classes that inherit from the abstract base class `com.amazonaws.sfc.targets.TargetFormatter`.
 
@@ -512,12 +626,39 @@ abstract class TargetFormatter(val configuration: String, val logger : Logger) {
 }
 ```
 
-> You find a full **example Target formatter Kotlin project** [`here`](../examples/custom-target-formatter).
+> You find a full **example Target formatter Kotlin project** [`here`](../examples/custom-target-formatter). Build it as described in [Loading extensions](#loading-extensions) (`:examples:custom-target-formatter:build`); the jar is written to `examples/custom-target-formatter/build/libs`.
 
 The constructor accepts two parameters that can be utilized by the custom formatter.
 
 - The `configuration` parameter is a string containing the JSON configuration of the target. This configuration can be utilized to retrieve formatter-specific properties that are set within the configuration of the target.
 - The `logger` parameter is a logger that can be employed by the implementation of the formatter to write output to the SFC logging system.
+
+The class also needs the static factory method that the core calls to create the formatter (see
+[Loading extensions](#loading-extensions)). The core passes the two constructor parameters:
+
+```kotlin
+companion object {
+    @JvmStatic
+    fun newInstance(vararg createParameters: Any): MyFormatter =
+        MyFormatter(createParameters[0] as String, createParameters[1] as Logger)
+}
+```
+
+Configure the formatter on a target, for example the Debug target:
+
+```json
+"Targets": {
+  "DebugTarget": {
+    "TargetType": "DEBUG-TARGET",
+    "Formatter": {
+      "FactoryClassName": "com.amazonaws.sfc.formatter.CustomTargetFormatter"
+    }
+  }
+}
+```
+
+The uberjar contains this example formatter, so `FactoryClassName` is enough there. For your own formatter, or with the
+module bundles, add `"JarFiles"` with the formatter's jar.
 
 
 

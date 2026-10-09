@@ -26,11 +26,13 @@ If no CredentialProviderClient is configured the [AWS Java SDK credential provid
 
 ### Endpoint
 
-The EndPoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
+The Endpoint property specifies the VPC endpoint URL used to access AWS services privately through AWS PrivateLink without requiring an internet gateway or NAT device. When not specified, the service's default public endpoint for the configured region will be used.
 
 https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-support.html
 
 **Type:** String
+
+The [SecretsManager](./secrets-manager-configuration.md) section and the `CloudWatch` section of the [AWS CloudWatch metrics writer](../metrics/aws-cloudwatch.md) have no Endpoint property.
 
 ---
 
@@ -53,6 +55,10 @@ The Region property specifies the name of a valid AWS service region where the s
     "CredentialProviderClient": {
       "type": "string",
       "description": "The credential provider client name"
+    },
+    "Endpoint": {
+      "type": "string",
+      "description": "VPC endpoint URL"
     },
     "Region": {
       "type": "string",

@@ -2,6 +2,12 @@
 
 The CertificateConfiguration class manages SSL/TLS certificate settings and validation. It handles certificate paths, private keys, and certificate formats (PEM or PKCS12). The class supports both standard certificates and self-signed certificates, with configuration options for certificate aliases, passwords, and expiration warning periods. It includes validation logic to ensure proper certificate format and required key files are specified. 
 
+Used by: [OPC UA adapter](../adapters/opcua.md) [Certificate](../adapters/opcua.md#certificate) and [UserCertificate](../adapters/opcua.md#usercertificate), [OPC UA target](../targets/opcua.md) [ServerCertificate](../targets/opcua.md#servercertificate), [OPC UA writer target](../targets/opcua-writer.md) [Certificate](../targets/opcua-writer.md#certificate).
+
+**Examples:** test certificates: [test-certificates](../../examples/test-certificates/README.md) · all: [examples catalog](../examples/README.md)
+
+> **File paths on Windows.** In JSON a backslash starts an escape sequence. Write Windows paths with forward slashes, `"C:/sfc/certs/server.pem"`, or doubled backslashes, `"C:\\sfc\\certs\\server.pem"`. A single backslash either fails to parse or silently changes the path (`"C:\temp"` contains a TAB). Relative paths are resolved against the directory SFC was started from, not the directory of the configuration file.
+
 - [Schema](#certificateconfiguration-schema)
 
 - [Examples](#certificateconfiguration-examples)
@@ -50,7 +56,7 @@ The Format property specifies the encoding format of the certificate file, accep
 
 **Type**: String
 
-If not specified the adapter will attempt to determine the type from the filename of the key file.
+If not set, the format is derived from the CertificateFile name: `*.pem` (or `*.pem.crt`, `*.pem.cer`, `*.pem.cert`) is Pem, `*.pfx` is Pkcs12. For any other name, such as `server.crt`, set Format explicitly.
 
 ---
 ### Password
@@ -60,13 +66,15 @@ The Password property specifies the password required to access and decrypt a PK
 
 ---
 ### PrivateKeyFile
-The PrivateKeyFile property specifies the file system path to the private key file. For PEM format certificates, this property is required as the private key is stored in a separate file. For PKCS12 format certificates, this property is optional since the private key is typically stored within the PKCS12 file itself along with the certificate.
+The PrivateKeyFile property specifies the file system path to the private key file. For PEM it is required: the key is read from this file, or written to it when a self-signed certificate is generated. For PKCS12 the key is read from the .pfx, but the OPC UA target and OPC UA writer target still require this property to be set.
 
 **Type**: String
 
 ---
 ### SelfSignedCertificate
 The SelfSignedCertificate property contains configuration settings for generating a self-signed certificate. If this property is configured and the specified certificate file doesn't exist, the adapter will automatically create a new self-signed certificate using these settings. This property accepts a SelfSignedCertificateConfiguration object that defines parameters like the certificate's subject, validity period, and other attributes needed for certificate generation.
+
+SFC does not create missing directories, so the directory of CertificateFile and PrivateKeyFile must exist before the files are generated.
 
 **Type**: [SelfSignedCertificateConfiguration](./self-signed-certificate-configuration.md)
 
@@ -96,7 +104,7 @@ The SelfSignedCertificate property contains configuration settings for generatin
     "Format": {
       "type": "string",
       "description": "Format of the certificate",
-      "enum": ["pem", "pfx"]
+      "enum": ["Pem", "Pkcs12"]
     },
     "Password": {
       "type": "string",
@@ -111,14 +119,7 @@ The SelfSignedCertificate property contains configuration settings for generatin
       "description": "Configuration for self-signed certificate generation"
     }
   },
-  "oneOf": [
-    {
-      "required": ["CertificateFile"]
-    },
-    {
-      "required": ["SelfSignedCertificate"]
-    }
-  ]
+  "required": ["CertificateFile"]
 }
 
 ```
@@ -131,18 +132,19 @@ Basic configuration with existing certificate:
 {
   "CertificateFile": "/certs/server.crt",
   "PrivateKeyFile": "/certs/server.key",
-  "Format": "pem,",
+  "Format": "Pem",
   "ExpirationWarningPeriod": 30
 }
 ```
 
-Configuration with password-protected private key:
+Configuration with password-protected private key (Windows paths):
 
 ```json
 {
-  "CertificateFile": "C:\\Certificates\\client.pfx",
+  "CertificateFile": "C:/Certificates/client.pfx",
+  "PrivateKeyFile": "C:/Certificates/client.key",
   "Password": "${CERT_PASSWORD}",
-  "Format": "pfx",
+  "Format": "Pkcs12",
   "Alias": "client-cert",
   "ExpirationWarningPeriod": 14
 }
@@ -156,14 +158,17 @@ Example 3 - Self-signed certificate configuration:
 {
   "CertificateFile": "/certs/server.crt",
   "PrivateKeyFile": "/certs/server.key",
+  "Format": "Pem",
   "SelfSignedCertificate": {
     "CommonName": "example.com",
     "Organization": "Example Corp",
-    "ValidityPeriod": 365
+    "ValidPeriodDays": 365
   },
   "ExpirationWarningPeriod": 60
 }
 ```
+
+On Windows write the `/certs/...` paths of the first and third example as e.g. `"C:/certs/server.crt"` (forward slashes).
 
 
 [^top](#certificateconfiguration)

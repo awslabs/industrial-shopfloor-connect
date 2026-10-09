@@ -252,7 +252,7 @@ class IpcMetricsWriter(
             }
         }
 
-        if (ex != null) throw ex as Throwable
+        if (ex != null) throw ex
     }
 
     fun isInitialized(): Boolean {

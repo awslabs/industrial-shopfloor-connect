@@ -1,0 +1,1163 @@
+{
+  "cases": [
+    {
+      "id": "CORE-CFG-RELOAD-01",
+      "title": "Changing the configuration file replaces the running pipeline",
+      "tier": "core",
+      "priority": "P0",
+      "intent": "ConfigFileProvider watches the configuration file and sends every changed version to ServiceMain (ConfigFileProvider.kt:252-258), which stops the running instance and creates a new one (ServiceMain.kt:100-117, :195). The first version writes schedule S to sink main; the update renames the schedule to S2 and points it at a second file target (sink v2). Records in v2 can only come from the new configuration, so the gate on v2 is the proof, without timing. The update is a merge patch of the configuration as rendered for the mode, so IPC server entries survive. Adapter-level changes behave differently per mode and are pinned separately in CORE-CFG-RELOAD-02/-03/-04.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigFileProvider.kt:252",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigFileProvider.kt:256",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:109",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:195",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/FileWatcher.kt:42"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "v2": {
+          "kind": "file"
+        }
+      },
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 3
+          }
+        },
+        {
+          "do": "update-config",
+          "patch": {
+            "Schedules": [
+              {
+                "Name": "S2",
+                "Interval": 100,
+                "Active": true,
+                "TimestampLevel": "Both",
+                "Sources": {
+                  "sim": [
+                    "*"
+                  ]
+                },
+                "Targets": [
+                  "FileTargetV2"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "wait": {
+            "sink": "v2",
+            "records": 3
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S",
+          "sink": "main"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S2",
+          "sink": "v2"
+        },
+        {
+          "kind": "logContains",
+          "text": "Updating configuration from file \"config.json\"",
+          "process": "sfc-main"
+        },
+        {
+          "kind": "logContains",
+          "text": "Stopping service instance",
+          "process": "sfc-main"
+        },
+        {
+          "kind": "logCount",
+          "text": "Received configuration data from config provider",
+          "process": "sfc-main",
+          "equals": 2
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-RELOAD-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileTargetV2": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_V2}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "FileTargetV2Server": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "FileTargetV2": {
+            "TargetServer": "FileTargetV2Server"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileTargetV2Server": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CFG-RELOAD-02",
+      "title": "In-process, a configuration change reaches the adapter: the reloaded counter starts at its new Min",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "The update renames the schedule to S2, moves it to a second file target (sink v2) and changes an adapter-level setting: the counter's Min becomes 1000. S2 records prove the new configuration is running; their counter values show whether the adapter got it too. In-process the new MainControllerService builds a new InstanceFactory, whose URLClassLoader loads SimulatorAdapter afresh (InstanceFactory.kt:39-41), so the adapter cached in its companion object (SimulatorAdapter.kt:213-214, :239) is a new one and the first S2 value is exactly 1000. In-process only: the uberjar and IPC modes keep the old adapter (CORE-CFG-RELOAD-03, -04).",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:39",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorAdapter.kt:213",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:109"
+      ],
+      "modes": [
+        "inprocess"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "v2": {
+          "kind": "file"
+        }
+      },
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 3
+          }
+        },
+        {
+          "do": "update-config",
+          "patch": {
+            "Schedules": [
+              {
+                "Name": "S2",
+                "Interval": 100,
+                "Active": true,
+                "TimestampLevel": "Both",
+                "Sources": {
+                  "sim": [
+                    "*"
+                  ]
+                },
+                "Targets": [
+                  "FileTargetV2"
+                ]
+              }
+            ],
+            "Sources": {
+              "sim": {
+                "Channels": {
+                  "ctr": {
+                    "Simulation": {
+                      "Min": 1000
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "wait": {
+            "sink": "v2",
+            "records": 3
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S2",
+          "sink": "v2"
+        },
+        {
+          "kind": "deepEquals",
+          "sink": "v2",
+          "index": 0,
+          "path": "sources.sim.values.ctr.value",
+          "value": 1000,
+          "comment": "a fresh Counter starts at the new Min"
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1,
+          "sink": "v2"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-RELOAD-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileTargetV2": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_V2}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CFG-RELOAD-03",
+      "title": "In the uberjar, a reloaded configuration does not reach the adapter: the old adapter keeps running (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "The update renames the schedule to S2, moves it to a second file target (sink v2) and changes an adapter-level setting: the counter's Min becomes 1000. S2 records prove the new configuration is running; their counter values show whether the adapter got it too. SimulatorAdapter.newInstance creates its adapter only if the companion-object field is still null (SimulatorAdapter.kt:213-214; the field is declared at :239) and stop() does not clear it (:194-195). In the uberjar the class comes from the system class loader, so the field survives the reload: the schedule and target change, but the counter keeps counting from the first configuration and Min 1000 is silently ignored until a restart. The same companion-object pattern is in the ads, j1939, modbus-tcp, mqtt, nats, pccc, rest, s7 and slmp adapters. Uberjar only; in-process is correct (CORE-CFG-RELOAD-02).",
+      "pins": [
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorAdapter.kt:213",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorAdapter.kt:214",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorAdapter.kt:239",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorAdapter.kt:194",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:37"
+      ],
+      "modes": [
+        "uberjar"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "v2": {
+          "kind": "file"
+        }
+      },
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 3
+          }
+        },
+        {
+          "do": "update-config",
+          "patch": {
+            "Schedules": [
+              {
+                "Name": "S2",
+                "Interval": 100,
+                "Active": true,
+                "TimestampLevel": "Both",
+                "Sources": {
+                  "sim": [
+                    "*"
+                  ]
+                },
+                "Targets": [
+                  "FileTargetV2"
+                ]
+              }
+            ],
+            "Sources": {
+              "sim": {
+                "Channels": {
+                  "ctr": {
+                    "Simulation": {
+                      "Min": 1000
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "wait": {
+            "sink": "v2",
+            "records": 3
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S2",
+          "sink": "v2"
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/SimulatorAdapter.kt:213",
+        "summary": "SimulatorAdapter (and nine other adapters) cache the adapter in a companion object that newInstance only fills when null; in the uberjar the class is shared across reloads, so a live configuration change to the adapter's sources/channels is ignored until restart. Correct: the reloaded counter starts at the new Min 1000.",
+        "assertCurrent": [
+          {
+            "kind": "channelNumericRange",
+            "sink": "v2",
+            "source": "sim",
+            "channel": "ctr",
+            "min": 0,
+            "max": 999,
+            "comment": "the old Counter continues where schedule S left it"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "channelNumericRange",
+            "sink": "v2",
+            "source": "sim",
+            "channel": "ctr",
+            "min": 1000,
+            "max": 100000
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-RELOAD-03",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileTargetV2": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_V2}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-CFG-RELOAD-04",
+      "title": "In IPC mode, a reloaded configuration does not reach the adapter service: the old adapter keeps serving (known defect)",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "The update renames the schedule to S2, moves it to a second file target (sink v2) and changes an adapter-level setting: the counter's Min becomes 1000. S2 records prove the new configuration is running; their counter values show whether the adapter got it too. IpcAdapterService.initializeAdapter inverts its check: a configuration that differs from the last one is only recorded (IpcAdapterService.kt:217-218), and the adapter is (re)created only when the same configuration arrives a second time (:219-253). After the reload sfc-main initialises the service with the new configuration, the service just records it, and the reads keep coming from the adapter built from the first one, so Min 1000 never applies. The same inversion makes every IPC run's first read fail with UNKNOWN and succeed only on sfc-main's retry 10 s later, which re-sends the identical configuration. IPC only.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:217",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:218",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:252",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:253"
+      ],
+      "modes": [
+        "ipc"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "v2": {
+          "kind": "file"
+        }
+      },
+      "timeoutSeconds": 120,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 3
+          }
+        },
+        {
+          "do": "update-config",
+          "patch": {
+            "Schedules": [
+              {
+                "Name": "S2",
+                "Interval": 100,
+                "Active": true,
+                "TimestampLevel": "Both",
+                "Sources": {
+                  "sim": [
+                    "*"
+                  ]
+                },
+                "Targets": [
+                  "FileTargetV2"
+                ]
+              }
+            ],
+            "Sources": {
+              "sim": {
+                "Channels": {
+                  "ctr": {
+                    "Simulation": {
+                      "Min": 1000
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "wait": {
+            "sink": "v2",
+            "records": 3
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S2",
+          "sink": "v2"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-RELOAD-04",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileTargetV2": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_V2}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "FileTargetV2Server": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "FileTargetV2": {
+            "TargetServer": "FileTargetV2Server"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileTargetV2Server": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcAdapterService.kt:217",
+        "summary": "IpcAdapterService.initializeAdapter only records a new configuration and initialises the adapter when the same configuration is sent twice (inverted condition at :217). A live reload therefore keeps the old adapter (stale counter), and the first initialisation of every IPC run is a no-op whose read fails until sfc-main's 10 s retry. Correct: the reloaded counter starts at the new Min 1000.",
+        "assertCurrent": [
+          {
+            "kind": "channelNumericRange",
+            "sink": "v2",
+            "source": "sim",
+            "channel": "ctr",
+            "min": 0,
+            "max": 999
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "channelNumericRange",
+            "sink": "v2",
+            "source": "sim",
+            "channel": "ctr",
+            "min": 1000,
+            "max": 100000
+          }
+        ]
+      }
+    },
+    {
+      "id": "CORE-CFG-RELOAD-INCLUDE-01",
+      "title": "Changing an @include'd file reloads the configuration although the main file is unchanged",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "For every included file ConfigFileProvider starts a file watcher (ConfigFileProvider.kt:165, :198-215; MonitorIncludedConfigFiles defaults to true, BaseConfiguration.kt:306). On a change it logs 'Included configuration file ... changed' and re-sends the last configuration (:173-181), which re-reads the include. The schedule's Targets and Metadata come from case/sched.txt; rewriting it moves the schedule to the second target (sink v2) with tag v2. The main file never changes, so 'Updating configuration from file' must not appear.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigFileProvider.kt:165",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigFileProvider.kt:178",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ConfigFileProvider.kt:180",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/BaseConfiguration.kt:306"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "v2": {
+          "kind": "file"
+        }
+      },
+      "timeoutSeconds": 90,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 3
+          }
+        },
+        {
+          "do": "write-file",
+          "path": "${SFC_E2E_CASE_DIR}/sched.txt",
+          "content": "\"Metadata\": {\"tag\": \"v2\"},\n\"Targets\": [\"FileTargetV2\"]\n"
+        },
+        {
+          "wait": {
+            "sink": "v2",
+            "records": 3
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "everyRecord",
+          "path": "metadata.tag",
+          "equals": "v1",
+          "sink": "main"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "metadata.tag",
+          "equals": "v2",
+          "sink": "v2"
+        },
+        {
+          "kind": "logContains",
+          "text": "Included configuration file",
+          "process": "sfc-main"
+        },
+        {
+          "kind": "logContains",
+          "text": "case/sched.txt\" changed",
+          "process": "sfc-main"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Updating configuration from file"
+          ],
+          "process": "sfc-main"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-CFG-RELOAD-INCLUDE-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "Both",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "@include": "case/sched.txt"
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Direction": "UP",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          },
+          "FileTargetV2": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_V2}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        },
+        "FileTargetV2Server": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          },
+          "FileTargetV2": {
+            "TargetServer": "FileTargetV2Server"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FileTargetV2Server": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "sched.txt": "\"Metadata\": {\"tag\": \"v1\"},\n\"Targets\": [\"FileTarget\"]\n"
+      }
+    }
+  ]
+}

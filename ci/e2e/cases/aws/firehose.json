@@ -1,0 +1,1152 @@
+{
+  "cases": [
+    {
+      "id": "AWS-FH-01",
+      "title": "Firehose BatchSize 1: every record is its own PutRecordBatch call and comes back unchanged out of the objects the delivery stream writes to S3",
+      "tier": "aws",
+      "priority": "P0",
+      "intent": "The basic Firehose contract against the real service. With BatchSize 1 every record is flushed on arrival (AwsKinesisFirehoseTargetWriter.kt:167) as a one-record PutRecordBatch (:197-204) - the only call the client declares (AwsFirehoseClient.kt:17) and the one grantPutRecords allows - whose data is the record's JSON plus a newline (:284-288). The stack's DirectPut stream delivers to S3 with 0 s buffering; the sink parses the delivered objects as concatenated JSON (SFC pretty-prints, so a record spans lines), keeps this run's records by marker and, because delivery keeps no order, reads on after SFC stops until nothing new arrives for 8 s. The case fails if a record is lost or duplicated (the counter set must be contiguous), if the record is altered on the way (SFC's key order, Int type), if SFC batches despite BatchSize 1 (Messages/Writes must be exactly 1), or if a request or per-record failure is logged or a WriteError counted.",
+      "pins": [
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:167",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:197-204",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:261-262",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:284-288",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsFirehoseClient.kt:17",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetDataSerializer.kt:29-45",
+        "ci/cdk/lib/sfc-it-stack.ts:200-210",
+        "ci/cdk/lib/sfc-it-stack.ts:426"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "firehose"
+        }
+      },
+      "gate": {
+        "sink": "main",
+        "records": 6,
+        "timeoutSeconds": 180
+      },
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Fh",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "Firehose keeps no order: a contiguous set once the sink has drained, no duplicates"
+        },
+        {
+          "kind": "keyOrder",
+          "keys": [
+            "schedule",
+            "serial",
+            "timestamp",
+            "sources",
+            "metadata"
+          ],
+          "comment": "SFC's own serialisation (TargetDataSerializer), not wrapped or reordered on the way"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ctr.value",
+          "type": "int"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "Fh",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "Fh",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1,
+          "comment": "BatchSize 1: one record per PutRecordBatch"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to kinesis firehose delivery stream",
+            "Error sending target data",
+            "No records to send to kinesis firehose delivery stream",
+            "Error in AWS Kinesis Firehose writer",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ],
+          "comment": "'Error sending target data' is a per-record failure inside a 200 response: it is not counted as a WriteError (:227-236)"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-FH-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Fh"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Fh": {
+            "TargetType": "AWS-FIREHOSE",
+            "StreamName": "${SFC_E2E_FIREHOSE_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-firehose-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "FhServer": {
+          "module": "aws-kinesis-firehose-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Fh": {
+            "TargetServer": "FhServer"
+          }
+        },
+        "TargetServers": {
+          "FhServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-FH-02",
+      "title": "Firehose batching: each PutRecordBatch carries exactly BatchSize records - the default 10 and a configured 25 - and every record of a multi-record request is read back",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Batching is the Firehose target's only lever on request rate and cost. Records are flushed when BatchSize are buffered (AwsKinesisFirehoseTargetWriter.kt:167); the only other trigger is the 4 MiB request limit (:155-158, :377). There is no Interval and no timer, so a partial batch waits for the BatchSize-th record (and is lost when sfc-main stops) - which is what makes Messages/Writes exact here. FhDefault leaves BatchSize out and must get the documented default of 10 (AwsKinesisFirehoseTargetConfiguration.kt:108, docs/targets/aws-kinesis-firehose.md:40-45); FhBatch sets 25, which must be honoured (BatchSize is only clamped at 500, :56, :107). Each target has its own schedule and source, so the records read back are told apart by schedule name, and every record of a 10- and a 25-record request must come out of the delivered objects. The case fails if batching is off (ratio 1), if the default or the configured BatchSize is not applied (10 vs 25), if a batch is split or padded, or if records of a multi-record request are lost or duplicated.",
+      "pins": [
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:155-169",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:261-262",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:284-288",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/config/AwsKinesisFirehoseTargetConfiguration.kt:49-56",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/config/AwsKinesisFirehoseTargetConfiguration.kt:107-108",
+        "docs/targets/aws-kinesis-firehose.md:40-45"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "firehose"
+        }
+      },
+      "gate": {
+        "sink": "main",
+        "records": 105,
+        "timeoutSeconds": 180
+      },
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "FhDefault",
+              "name": "Writes",
+              "op": "ge",
+              "value": 3
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "FhBatch",
+              "name": "Writes",
+              "op": "ge",
+              "value": 3
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "D"
+          },
+          "min": 30
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "B"
+          },
+          "min": 75
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "D"
+          },
+          "source": "simD",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "B"
+          },
+          "source": "simB",
+          "channel": "ctr"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "FhDefault",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "FhDefault",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 10,
+          "comment": "no BatchSize configured: the default of 10"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "FhBatch",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "FhBatch",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 25,
+          "comment": "BatchSize 25, not the default and not capped at 10"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to kinesis firehose delivery stream",
+            "Error sending target data"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-FH-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "D",
+            "Interval": 100,
+            "Sources": {
+              "simD": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FhDefault"
+            ]
+          },
+          {
+            "Name": "B",
+            "Interval": 50,
+            "Sources": {
+              "simB": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FhBatch"
+            ]
+          }
+        ],
+        "Sources": {
+          "simD": {
+            "Name": "simD",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "simB": {
+            "Name": "simB",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FhDefault": {
+            "TargetType": "AWS-FIREHOSE",
+            "StreamName": "${SFC_E2E_FIREHOSE_STREAM}",
+            "Region": "${SFC_E2E_REGION}"
+          },
+          "FhBatch": {
+            "TargetType": "AWS-FIREHOSE",
+            "StreamName": "${SFC_E2E_FIREHOSE_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 25
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-firehose-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "FhDefaultServer": {
+          "module": "aws-kinesis-firehose-target"
+        },
+        "FhBatchServer": {
+          "module": "aws-kinesis-firehose-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FhDefault": {
+            "TargetServer": "FhDefaultServer"
+          },
+          "FhBatch": {
+            "TargetServer": "FhBatchServer"
+          }
+        },
+        "TargetServers": {
+          "FhDefaultServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FhBatchServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-FH-03",
+      "title": "Firehose Template: each record is the rendered template plus a newline; a template that does not parse loses every record without counting a WriteError (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "With a Template each Firehose record is the rendered text plus the newline the target appends (AwsKinesisFirehoseTargetWriter.kt:131-135, :286); the template file's own final newline is dropped (OutputTransformation.kt:45), so a one-line template gives one line per record - the NDJSON that line-oriented S3 consumers read, which SFC's pretty-printed default (TargetData.kt:78, :100) is not. FhTpl's records must be exactly the template's document: its key order (no SFC timestamp, no wrapper), the constant tpl field, a serial per record and a contiguous counter. FhBroken, in the same schedule, has a template that does not parse: the error is logged once and transform() returns null from then on (OutputTransformation.kt:49-52, :65-67), buildPayload makes that an empty payload, which TargetDataBuffer does not keep while still counting the record (TargetDataBuffer.kt:27). Every flush therefore finds an empty request: it logs 'No records to send', reports the records as errors and returns (AwsKinesisFirehoseTargetWriter.kt:191-195) before WriteError is counted, as the exception path does (:240). Every FhBroken record is lost while Writes and WriteError both stay 0, so a dashboard shows an idle target, not a failing one. The case fails if the template output is wrapped or altered, if FhBroken ever sends, or (assert-correct) while that loss goes uncounted.",
+      "pins": [
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:131-135",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:191-195",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:238-240",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:286",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/OutputTransformation.kt:45",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/OutputTransformation.kt:49-52",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/OutputTransformation.kt:65-67",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetDataBuffer.kt:27",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetData.kt:78"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "firehose"
+        }
+      },
+      "gate": {
+        "sink": "main",
+        "records": 6,
+        "timeoutSeconds": 180
+      },
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "allowWriteErrors": [
+        "FhBroken"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "log": "No records to send to kinesis firehose delivery stream",
+            "count": 4
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "FhTpl",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "keyOrder",
+          "keys": [
+            "metadata",
+            "schedule",
+            "serial",
+            "sources",
+            "tpl"
+          ],
+          "comment": "exactly the template's document: no SFC envelope, no timestamp"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "tpl",
+          "equals": "fh-e2e-tpl"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "serial",
+          "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        },
+        {
+          "kind": "noDuplicates",
+          "path": "serial"
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "template numbers render as Double (pinned by TGT-FILE-TPL-01); the run compares them as integers"
+        },
+        {
+          "kind": "logContains",
+          "text": "Error creating velocity template from file template file"
+        },
+        {
+          "kind": "logContains",
+          "text": "No records to send to kinesis firehose delivery stream",
+          "min": 4
+        },
+        {
+          "kind": "metric",
+          "source": "FhBroken",
+          "name": "Writes",
+          "op": "eq",
+          "value": 0,
+          "comment": "nothing was ever sent for FhBroken"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to kinesis firehose delivery stream",
+            "Error sending target data"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:191-195",
+        "summary": "A flush whose payloads all rendered empty (here: an unparsable template) logs 'No records to send' and drops the records, but returns before WriteError is counted (the exception path does, :240): the loss is invisible in metrics",
+        "assertCurrent": [
+          {
+            "kind": "metric",
+            "source": "FhBroken",
+            "name": "WriteError",
+            "op": "eq",
+            "value": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "metric",
+            "source": "FhBroken",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-FH-03",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FhTpl",
+              "FhBroken"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FhTpl": {
+            "TargetType": "AWS-FIREHOSE",
+            "StreamName": "${SFC_E2E_FIREHOSE_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Template": "${SFC_E2E_CASE_DIR}/tpl.vm"
+          },
+          "FhBroken": {
+            "TargetType": "AWS-FIREHOSE",
+            "StreamName": "${SFC_E2E_FIREHOSE_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Template": "${SFC_E2E_CASE_DIR}/broken.vm"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-firehose-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "FhTplServer": {
+          "module": "aws-kinesis-firehose-target"
+        },
+        "FhBrokenServer": {
+          "module": "aws-kinesis-firehose-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FhTpl": {
+            "TargetServer": "FhTplServer"
+          },
+          "FhBroken": {
+            "TargetServer": "FhBrokenServer"
+          }
+        },
+        "TargetServers": {
+          "FhTplServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "FhBrokenServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "tpl.vm": "{\"metadata\":{\"marker\":\"$metadata.marker\"},\"schedule\":\"$schedule\",\"serial\":\"$serial\",\"sources\":{\"sim\":{\"values\":{\"ctr\":{\"value\":$sources[\"sim\"][\"values\"][\"ctr\"][\"value\"]}}}},\"tpl\":\"fh-e2e-tpl\"}\n",
+        "broken.vm": "#if(\n"
+      }
+    },
+    {
+      "id": "AWS-FH-NEG-01",
+      "title": "Firehose: a record over 1000 KiB fails its whole PutRecordBatch - counted as a WriteError while later batches keep flowing - and takes the valid record batched with it down too (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Firehose limits a record to 1,000 KiB (Record.Data, 1,024,000 bytes) and rejects a PutRecordBatch holding a larger one as a whole, with a 400. SFC checks only the batch total against 4 MiB (AwsKinesisFirehoseTargetWriter.kt:155-158, :377), never the single record, so an oversize record is batched like any other. FhMixed sends pairs (BatchSize 2) of one-line template records; the template pads ctr 12 to 1.1 MB and flags its neighbours ctr 11 and 13 with nb: true. The request carrying ctr 12 is rejected and not retried (a 400 is not retryable, AwsServiceClientHelper.kt:75-86); the whole buffer is reported as errors and one WriteError counted (:205-219, :238-245); later pairs keep flowing. Which neighbour shares the rejected request depends on batch alignment, but exactly one does, so today exactly one nb record arrives where both should: the SQS target drops only the oversize message, before batching (AwsSqsTargetWriter.kt:201-205). With the default BatchSize 10 one oversize record costs up to nine valid ones. The case fails if the oversize record ever arrives, if the failure is not counted, if the stream stops after it (16 records need pairs beyond ctr 13), or (assert-correct) while the valid batch-mate is lost.",
+      "pins": [
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:155-158",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:205-219",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:238-245",
+        "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:377",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/client/AwsServiceClientHelper.kt:75-86",
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:201-205"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "firehose"
+        }
+      },
+      "gate": {
+        "sink": "main",
+        "records": 16,
+        "timeoutSeconds": 180
+      },
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "allowWriteErrors": [
+        "FhMixed"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "FhMixed",
+              "name": "WriteError",
+              "op": "ge",
+              "value": 1
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "FhMixed",
+              "name": "Writes",
+              "op": "ge",
+              "value": 10
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 16,
+          "comment": "at most 12 records precede ctr 11, so the stream went on after the rejected request"
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "big"
+          ],
+          "comment": "the oversize record never reached S3"
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "nb": true
+          },
+          "min": 1
+        },
+        {
+          "kind": "noDuplicates",
+          "path": "serial"
+        },
+        {
+          "kind": "metric",
+          "source": "FhMixed",
+          "name": "WriteError",
+          "op": "ge",
+          "value": 1,
+          "comment": "the rejected request is counted"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "FhMixed",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "FhMixed",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 2,
+          "comment": "every successful PutRecordBatch carried a full pair"
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-kinesis-firehose-target/src/main/kotlin/com/amazonaws/sfc/awsfirehose/AwsKinesisFirehoseTargetWriter.kt:155-158",
+        "summary": "No per-record size check before batching (only the 4 MiB batch total): Firehose rejects the whole PutRecordBatch for one record over 1,024,000 bytes, so the valid records batched with it are lost too; the SQS target drops only the oversize message (AwsSqsTargetWriter.kt:201-205)",
+        "assertCurrent": [
+          {
+            "kind": "recordCount",
+            "where": {
+              "nb": true
+            },
+            "equals": 1,
+            "comment": "ctr 11 or ctr 13 shared the rejected request with ctr 12"
+          },
+          {
+            "kind": "logRegex",
+            "regex": "Error sending to kinesis firehose delivery stream \"[^\"]*\" for target \"FhMixed\""
+          },
+          {
+            "kind": "logContains",
+            "text": "Status Code: 400",
+            "comment": "the service rejected the request; a client-side check would never have sent it"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "where": {
+              "nb": true
+            },
+            "equals": 2,
+            "comment": "only ctr 12 is lost; both neighbours arrive"
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-FH-NEG-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FhMixed"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FhMixed": {
+            "TargetType": "AWS-FIREHOSE",
+            "StreamName": "${SFC_E2E_FIREHOSE_STREAM}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 2,
+            "Template": "${SFC_E2E_CASE_DIR}/mixed.vm"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-FIREHOSE": {
+            "FactoryClassName": "com.amazonaws.sfc.awsfirehose.AwsKinesisFirehoseTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-kinesis-firehose-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "FhMixedServer": {
+          "module": "aws-kinesis-firehose-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FhMixed": {
+            "TargetServer": "FhMixedServer"
+          }
+        },
+        "TargetServers": {
+          "FhMixedServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "mixed.vm": "#set($v = $sources[\"sim\"][\"values\"][\"ctr\"][\"value\"]){\"metadata\":{\"marker\":\"$metadata.marker\"},\"schedule\":\"$schedule\",\"serial\":\"$serial\",\"sources\":{\"sim\":{\"values\":{\"ctr\":{\"value\":$v}}}}#if($v == 11.0 || $v == 13.0),\"nb\":true#end#if($v == 12.0),\"big\":\"#foreach($i in [1..22000])01234567890123456789012345678901234567890123456789#end\"#end}\n"
+      }
+    }
+  ]
+}

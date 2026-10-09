@@ -1,7 +1,7 @@
 {
   "AWSVersion":"2022-04-02",
   "Name":"Beckhoff ADS to Amazon S3 IPC",
-  "Description":"Example of in process SFC config file to read data from Beckhoff controller and send it to an S3 bucket",
+  "Description":"Example of an IPC SFC config file to read data from a Beckhoff controller and send it to an S3 bucket",
   "Schedules":[
     {
       "Name":"ADS-DATA",
@@ -14,7 +14,7 @@
         ]
       },
       "Targets":[
-        "DebugTarget",
+        "#DebugTarget",
         "S3Target"
       ]
     }
@@ -25,11 +25,15 @@
       "ProtocolAdapter":"ADS",
       "AdapterDevice":"CX8190",
       "SourceAmsNetId":"<SOURCE NET ID, e.g. 192.168.1.65.1.1>",
-      "SourceAmsPort":"SOURCE AMS PORT, 50099",
+      "SourceAmsPort":32905,
       "TargetAmsNetId":"<TARGET NET ID, e.g. 5.66.128.52.1.1>",
-      "TargetAmsPort":<TARGET PORT, e.g. 851>,
+      "TargetAmsPort":851,
       "Description":"Beckhoff device source",
       "Channels":{
+        "Bool":{
+          "SymbolName":"MAIN.varBOOL",
+          "Description":"Boolean"
+        },
         "Byte":{
           "SymbolName":"MAIN.varBYTE",
           "Description":"Single byte"
@@ -187,6 +191,7 @@
       "TargetType":"DEBUG-TARGET"
     },
     "S3Target": {
+      "TargetServer": "S3TargetServer",
       "Active": true,
       "TargetType": "AWS-S3",
       "Region": "<YOUR-REGION>",
@@ -205,25 +210,25 @@
       "Devices":{
         "CX8190":{
           "Address":"<IP ADDRESS OF BECKHOFF DEVICE>",
-          "Port":<PORT OF DEVCIVE< default is 48898>
+          "Port":48898
         }
       }
     }
   },
   "AdapterServers":{
     "AdsAdapterServer":{
-      "Address": "<IP ADDRESS FOR ADS ADAPTER SERVICE>",
-      "Port": < PORT FOR ADAPTER SERVER >
+      "Address": "localhost",
+      "Port": 50001
     }
   },
   "TargetServers":{
     "S3TargetServer":{
-      "Address": "<IP ADDRESS for S3 TARGET service>",
-      "Port": < PORT FOR S3 TARGET SERVER >
+      "Address": "localhost",
+      "Port": 50002
     },
     "DebugTargetServer":{
-      "Address": "<IP ADDRESS for DEBUF TARGET service>",
-      "Port": < PORT FOR DEBUG TARGET SERVER >
+      "Address": "localhost",
+      "Port": 50003
     }
   },
 

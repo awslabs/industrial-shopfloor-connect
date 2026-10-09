@@ -10,10 +10,11 @@ import com.amazonaws.sfc.opcua.config.OpcuaConfiguration
 import com.amazonaws.sfc.util.LookupCacheHandler
 import kotlinx.coroutines.runBlocking
 import org.eclipse.milo.opcua.sdk.client.OpcUaClient
-import org.eclipse.milo.opcua.sdk.client.model.types.objects.BaseEventType
+import org.eclipse.milo.opcua.sdk.client.model.objects.BaseEventType
 import org.eclipse.milo.opcua.sdk.client.subscriptions.EventFilterBuilder
+import org.eclipse.milo.opcua.stack.core.types.structured.EventFilter
 import org.eclipse.milo.opcua.stack.core.AttributeId
-import org.eclipse.milo.opcua.stack.core.Identifiers
+import org.eclipse.milo.opcua.stack.core.NodeIds
 import org.eclipse.milo.opcua.stack.core.types.builtin.ExtensionObject
 import org.eclipse.milo.opcua.stack.core.types.builtin.QualifiedName
 import org.eclipse.milo.opcua.stack.core.types.builtin.Variant
@@ -31,7 +32,7 @@ class FilterHelper(private val client: OpcUaClient,
 
     private val className = this::class.simpleName.toString()
 
-    private val filters = LookupCacheHandler<String, ExtensionObject?, Nothing>(
+    private val filters = LookupCacheHandler<String, EventFilter?, Nothing>(
 
 
         supplier = { name ->
@@ -59,7 +60,7 @@ class FilterHelper(private val client: OpcUaClient,
 
                 val filter = filterBuilder.build()
                 log.trace("Created filter for event \"name for source \"$sourceID\", $filter")
-                ExtensionObject.encode(client.serializationContext, filter)
+                filter
             }
 
         })
@@ -71,7 +72,7 @@ class FilterHelper(private val client: OpcUaClient,
                     FilterOperator.Equals, arrayOf<ExtensionObject>(
                         eventTypeValueProperty(),
                         ExtensionObject.encode(
-                            client.serializationContext,
+                            client.staticEncodingContext,
                             LiteralOperand(Variant(event.identifier))
                         )
                     )
@@ -81,16 +82,16 @@ class FilterHelper(private val client: OpcUaClient,
 
 
     private fun eventTypeValueProperty(): ExtensionObject = ExtensionObject.encode(
-        client.serializationContext,
+        client.staticEncodingContext,
         SimpleAttributeOperand(
-            Identifiers.BaseEventType, arrayOf(QualifiedName(0, BaseEventType.EVENT_TYPE.browseName)),
+            NodeIds.BaseEventType, arrayOf(QualifiedName(0, BaseEventType.EVENT_TYPE.browseName)),
             AttributeId.Value.uid(),
             null
         )
     )
 
 
-    operator fun get(eventName: String): ExtensionObject? {
+    operator fun get(eventName: String): EventFilter? {
 
         return runBlocking {
             filters.getItemAsync(eventName).await()

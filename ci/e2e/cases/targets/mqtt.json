@@ -1,0 +1,159 @@
+{
+  "cases": [
+    {
+      "id": "TGT-MQTT-PILOT",
+      "title": "pilot: simulator -> mqtt-target -> mosquitto",
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "mqtt",
+          "service": "broker",
+          "topic": "sfc/e2e/#"
+        }
+      },
+      "records": 5,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        },
+        {
+          "kind": "everyRecord",
+          "path": "_topic",
+          "equals": "sfc/e2e/pilot"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "TGT-MQTT-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Mqtt"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                },
+                "Name": "ctr"
+              }
+            },
+            "Name": "sim"
+          }
+        },
+        "Targets": {
+          "Mqtt": {
+            "TargetType": "MQTT-TARGET",
+            "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+            "TopicName": "sfc/e2e/pilot",
+            "QoS": 1,
+            "BatchCount": 1,
+            "Port": "${SFC_E2E_BROKER_PORT}"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MqttServer": {
+          "module": "mqtt-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Mqtt": {
+            "TargetServer": "MqttServer"
+          }
+        },
+        "TargetServers": {
+          "MqttServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

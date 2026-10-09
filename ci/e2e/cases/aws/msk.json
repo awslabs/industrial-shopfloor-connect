@@ -1,0 +1,1602 @@
+{
+  "cases": [
+    {
+      "id": "AWS-MSK-01",
+      "title": "MSK over IAM: a finite stream of SFC's default JSON records arrives complete, exactly once and in partition order",
+      "tier": "aws",
+      "priority": "P0",
+      "intent": "The basic MSK contract against the real cluster: SFC's default JSON payload (AwsMskTargetWriter.kt:406) produced over SASL_SSL with AWS_MSK_IAM (:185-194) to the case run's own one-partition topic, authorised by kafka-cluster:Connect, DescribeTopic and WriteData on the project role. A value filter turns the counter into a finite stream of exactly 10 records (a fully filtered read yields no record, ScheduleReader.kt:613 and :339), so every count is deterministic. SFC pretty-prints the JSON (TargetData.kt:78); the sink reads the topic up to its end offset as a stream of documents (sinks/kafka.py:44-63). A Kafka partition keeps order, so the counter must run 0..9 without a gap, a duplicate or a reordering. The case fails if a record is lost, duplicated or reordered, if the first read is missing, if the values lose their type, or if a write, callback, authorisation or class-loading error is logged or a WriteError counted. Uberjar and IPC: the in-process deployment cannot load the IAM classes today, pinned by AWS-MSK-CL-01.",
+      "pins": [
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:185-194",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:359",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:406",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/TargetData.kt:78",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:613",
+        "ci/e2e/lib/sinks/kafka.py:44-63",
+        "ci/e2e/lib/kafka_admin.py:90-103",
+        "ci/cdk/lib/sfc-it-stack.ts:469-471"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kafka",
+          "format": "json"
+        }
+      },
+      "records": 10,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "failFast": [
+        "Error creating instance of",
+        "Error creating service instance",
+        "NoClassDefFoundError"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Msk",
+              "name": "Writes",
+              "op": "ge",
+              "value": 10
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 10,
+          "comment": "a finite stream of exactly 10 records: none lost, none duplicated"
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "a Kafka partition keeps order"
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.ctr.value",
+          "value": 0,
+          "strictTypes": true,
+          "comment": "the first read: nothing lost while the producer connected"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ctr.value",
+          "type": "int"
+        },
+        {
+          "kind": "noDuplicates",
+          "path": "serial"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "serial",
+          "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "metric",
+          "source": "SfcCore",
+          "name": "Messages",
+          "op": "eq",
+          "value": 10,
+          "comment": "the value filter lets exactly 10 reads through, each one record handed to the targets once"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing message",
+            "Timeout writing",
+            "Error writing to MSK",
+            "Error executing user-provided callback",
+            "Data transformation or serialization returned null",
+            "failed authentication",
+            "AuthorizationException",
+            "AUTHORIZATION_FAILED",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-MSK-01",
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "First10": {
+            "Operator": "lt",
+            "Value": 10
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 500,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Msk"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "ValueFilter": "First10",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Msk": {
+            "TargetType": "AWS-MSK",
+            "BootstrapBrokers": [
+              "${SFC_E2E_KAFKA_BOOTSTRAP}"
+            ],
+            "TopicName": "${SFC_E2E_KAFKA_TOPIC}",
+            "Interval": 1000
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-MSK": {
+            "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MskServer": {
+          "module": "aws-msk-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Msk": {
+            "TargetServer": "MskServer"
+          }
+        },
+        "TargetServers": {
+          "MskServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-MSK-02",
+      "title": "MSK with the documented example settings (Acknowledgements all, gzip, Key) and a Template: the counter arrives complete, once and in partition order",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "The documented example (docs/targets/aws-msk.md:338-347) and both MSK examples (examples/in-process-opcua-msk, examples/ipc-opcua-msk) set Acknowledgements all, Compression gzip and a Key; this case runs those settings against the real cluster (AwsMskTargetWriter.kt:188-189, :397). acks=all makes kafka-clients enable the idempotent producer, whose InitProducerId needs kafka-cluster:WriteDataIdempotently (sfc-it-stack.ts:469): without it every send fails with a ClusterAuthorizationException. The idempotent producer also guarantees that retries neither duplicate nor reorder, so the partition must hold the counter 0..9 exactly once and in order. The value is rendered by a one-line Velocity Template (:136-141, :403-404), so this case also covers the template payload path; AWS-MSK-01 covers the default JSON payload, AWS-MSK-03 protobuf. Fails if a record is lost, duplicated or reordered, if the first read is missing, if a value is not the template's output, or on any write, authorisation, template or class-loading error. The sink shows neither the key nor the codec, so both are only proven not to break delivery. Interval is set because without it every send callback throws (AWS-MSK-DEF-01). Uberjar and IPC: in-process is pinned by AWS-MSK-CL-01.",
+      "pins": [
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:188-189",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:397",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:136-141",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:403-404",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/config/Acknowledgements.kt:19-22",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/config/Compression.kt:22-25",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/OutputTransformation.kt:69-95",
+        "docs/targets/aws-msk.md:338-347",
+        "examples/in-process-opcua-msk/in-process-opcua-msk.json:75-89",
+        "ci/cdk/lib/sfc-it-stack.ts:469"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kafka",
+          "format": "json"
+        }
+      },
+      "records": 10,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "failFast": [
+        "Error creating instance of",
+        "Error creating service instance",
+        "NoClassDefFoundError"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Msk",
+              "name": "Writes",
+              "op": "ge",
+              "value": 10
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 10
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "a Kafka partition keeps order; the idempotent producer may neither duplicate nor reorder on retry"
+        },
+        {
+          "kind": "deepEquals",
+          "index": 0,
+          "path": "sources.sim.values.ctr.value",
+          "value": 0,
+          "comment": "the first read: nothing lost while the producer connected"
+        },
+        {
+          "kind": "noDuplicates",
+          "path": "serial"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "serial",
+          "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "tpl",
+          "equals": "msk-e2e-line",
+          "comment": "every value is the template's output"
+        },
+        {
+          "kind": "metric",
+          "source": "SfcCore",
+          "name": "Messages",
+          "op": "eq",
+          "value": 10,
+          "comment": "the value filter lets exactly 10 reads through, each one record handed to the targets once"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing message",
+            "Timeout writing",
+            "Error writing to MSK",
+            "Error executing user-provided callback",
+            "Data transformation or serialization returned null",
+            "Error transforming data with template",
+            "Error creating velocity template",
+            "failed authentication",
+            "AuthorizationException",
+            "AUTHORIZATION_FAILED",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-MSK-02",
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "First10": {
+            "Operator": "lt",
+            "Value": 10
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 500,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Msk"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "ValueFilter": "First10",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Msk": {
+            "TargetType": "AWS-MSK",
+            "BootstrapBrokers": [
+              "${SFC_E2E_KAFKA_BOOTSTRAP}"
+            ],
+            "TopicName": "${SFC_E2E_KAFKA_TOPIC}",
+            "Acknowledgements": "all",
+            "Compression": "gzip",
+            "Key": "sfc-e2e-key",
+            "Interval": 1000,
+            "Template": "${SFC_E2E_CASE_DIR}/line.vm"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-MSK": {
+            "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MskServer": {
+          "module": "aws-msk-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Msk": {
+            "TargetServer": "MskServer"
+          }
+        },
+        "TargetServers": {
+          "MskServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "line.vm": "{\"metadata\":{\"marker\":\"$metadata.marker\"},\"schedule\":\"$schedule\",\"serial\":\"$serial\",\"sources\":{\"sim\":{\"values\":{\"ctr\":{\"value\":$sources[\"sim\"][\"values\"][\"ctr\"][\"value\"]}}}},\"tpl\":\"msk-e2e-line\"}\n"
+      }
+    },
+    {
+      "id": "AWS-MSK-03",
+      "title": "MSK protobuf serialization: one binary message per record, carrying the serial and marker headers, smaller than its JSON twin",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Serialization protobuf writes the IPC WriteValuesRequest bytes as the Kafka value (AwsMskTargetWriter.kt:407, GrpcTargetValueFromNativeExt.kt:34-58). A binary value cannot be printed as text, so the sink reads headers only (sinks/kafka.py:50-54): SFC's serial header (:393) and the configured marker header (:394-396) identify each record. MskJson gets the same records with the default JSON serialization and no marker header, so the sink does not count it; it is the size reference for MskProto, whose BytesWritten is the serialized value size (:442-448). If the protobuf setting were ignored both totals would be identical (ratio 1); the protobuf message is about half the size of the pretty-printed JSON. Both targets count each record the same way, so the double counting of AWS-MSK-DEF-02 cancels in the ratios. Fails if a record is lost or duplicated (8 messages, 8 distinct serials), if a header is missing or extra, or if MskProto writes JSON. The protobuf content itself is not decoded: the sink has no protobuf format. Uberjar and IPC: in-process is pinned by AWS-MSK-CL-01.",
+      "pins": [
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:407",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcTargetValueFromNativeExt.kt:34-58",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:393-396",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:442-448",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/config/Serialization.kt:9-10",
+        "ci/e2e/lib/sinks/kafka.py:50-54"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kafka",
+          "format": "headers"
+        }
+      },
+      "records": 8,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "failFast": [
+        "Error creating instance of",
+        "Error creating service instance",
+        "NoClassDefFoundError"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "MskProto",
+              "name": "Writes",
+              "op": "ge",
+              "value": 8
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "MskJson",
+              "name": "Writes",
+              "op": "ge",
+              "value": 8
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 8,
+          "comment": "MskProto's messages; MskJson's are in the topic too, without the marker header"
+        },
+        {
+          "kind": "distinct",
+          "path": "headers.serial",
+          "equals": 8,
+          "comment": "one Kafka message per SFC record"
+        },
+        {
+          "kind": "keySet",
+          "path": "headers",
+          "keys": [
+            "serial",
+            "marker"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "headers.serial",
+          "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "MskProto",
+            "name": "BytesWritten"
+          },
+          "denominator": {
+            "source": "MskJson",
+            "name": "BytesWritten"
+          },
+          "op": "lt",
+          "value": 0.9,
+          "comment": "1.0 would mean MskProto wrote the same JSON as MskJson"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "MskProto",
+            "name": "Writes"
+          },
+          "denominator": {
+            "source": "MskJson",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1,
+          "comment": "both targets wrote every record"
+        },
+        {
+          "kind": "metric",
+          "source": "SfcCore",
+          "name": "Messages",
+          "op": "eq",
+          "value": 8,
+          "comment": "the value filter lets exactly 8 reads through, each one record handed to the targets once"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing message",
+            "Timeout writing",
+            "Error writing to MSK",
+            "Error executing user-provided callback",
+            "Data transformation or serialization returned null",
+            "failed authentication",
+            "AuthorizationException",
+            "AUTHORIZATION_FAILED",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-MSK-03",
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "First8": {
+            "Operator": "lt",
+            "Value": 8
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 500,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "MskProto",
+              "MskJson"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "ValueFilter": "First8",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "MskProto": {
+            "TargetType": "AWS-MSK",
+            "BootstrapBrokers": [
+              "${SFC_E2E_KAFKA_BOOTSTRAP}"
+            ],
+            "TopicName": "${SFC_E2E_KAFKA_TOPIC}",
+            "Serialization": "protobuf",
+            "Interval": 1000,
+            "Headers": {
+              "marker": "${SFC_E2E_MARKER}"
+            }
+          },
+          "MskJson": {
+            "TargetType": "AWS-MSK",
+            "BootstrapBrokers": [
+              "${SFC_E2E_KAFKA_BOOTSTRAP}"
+            ],
+            "TopicName": "${SFC_E2E_KAFKA_TOPIC}",
+            "Serialization": "json",
+            "Interval": 1000
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-MSK": {
+            "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MskProtoServer": {
+          "module": "aws-msk-target"
+        },
+        "MskJsonServer": {
+          "module": "aws-msk-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "MskProto": {
+            "TargetServer": "MskProtoServer"
+          },
+          "MskJson": {
+            "TargetServer": "MskJsonServer"
+          }
+        },
+        "TargetServers": {
+          "MskProtoServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "MskJsonServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-MSK-DEF-01",
+      "title": "MSK without Interval, as documented: delivery works, but every send callback throws a NullPointerException that kafka-clients logs at ERROR (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Interval is optional, and the documented example and both MSK examples omit it. The periodic flush copes with a null Interval (AwsMskTargetWriter.kt:221), but the send callback evaluates mskTargetConfig.interval!! after every successful send (:368) - after both createMetrics calls (:363, :366), so the record is already delivered and counted when the NullPointerException escapes. kafka-clients' ProducerBatch catches it and logs 'Error executing user-provided callback on message for topic-partition' at ERROR with the stack trace, once per record; log4j2's root level is WARN in every deployment, so the line is printed. Delivery (6 messages, 6 distinct serials) is asserted as normal behaviour, the per-record error is the pin. The flush-per-record branch at :368-371 is unreachable anyway, because validation rejects Interval 0 (AwsMskTargetConfiguration.kt:121-126). Uberjar and IPC only: in-process MSK cannot load the IAM callback handler today (AWS-MSK-CL-01), so neither assertion set could pass there.",
+      "pins": [
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:368",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:363-366",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:221",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/config/AwsMskTargetConfiguration.kt:61-66",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/config/AwsMskTargetConfiguration.kt:121-126",
+        "docs/targets/aws-msk.md:338-347",
+        "examples/ipc-opcua-msk/ipc-opcua-msk.json:76-91",
+        "targets/aws-msk-target/src/main/resources/log4j2.xml:26",
+        "core/sfc-uberjar/src/main/resources/uberjar-log4j2.xml:42"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kafka",
+          "format": "headers"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "failFast": [
+        "Error creating instance of",
+        "Error creating service instance",
+        "NoClassDefFoundError"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Msk",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 6,
+          "comment": "the exception comes after the broker acknowledged the record"
+        },
+        {
+          "kind": "distinct",
+          "path": "headers.serial",
+          "equals": 6
+        },
+        {
+          "kind": "metric",
+          "source": "SfcCore",
+          "name": "Messages",
+          "op": "eq",
+          "value": 6,
+          "comment": "the value filter lets exactly 6 reads through, each one record handed to the targets once"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error writing message",
+            "Timeout writing",
+            "Error writing to MSK",
+            "failed authentication",
+            "AuthorizationException",
+            "AUTHORIZATION_FAILED",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:368",
+        "summary": "With Interval unset - as in docs/targets/aws-msk.md and both MSK examples - the send callback evaluates mskTargetConfig.interval!! after every successful send; the NullPointerException escapes the callback and kafka-clients logs 'Error executing user-provided callback' at ERROR, with a stack trace, for every record",
+        "assertCurrent": [
+          {
+            "kind": "logCount",
+            "text": "Error executing user-provided callback on message for topic-partition",
+            "min": 6,
+            "comment": "one per delivered record"
+          },
+          {
+            "kind": "logContains",
+            "text": "java.lang.NullPointerException",
+            "min": 1
+          },
+          {
+            "kind": "logContains",
+            "text": "AwsMskTargetWriter.sendRecord",
+            "min": 1,
+            "comment": "the frame of SFC's send callback"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "Error executing user-provided callback"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-MSK-DEF-01",
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "First6": {
+            "Operator": "lt",
+            "Value": 6
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 500,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Msk"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "ValueFilter": "First6",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Msk": {
+            "TargetType": "AWS-MSK",
+            "BootstrapBrokers": [
+              "${SFC_E2E_KAFKA_BOOTSTRAP}"
+            ],
+            "TopicName": "${SFC_E2E_KAFKA_TOPIC}",
+            "Headers": {
+              "marker": "${SFC_E2E_MARKER}"
+            }
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-MSK": {
+            "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MskServer": {
+          "module": "aws-msk-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Msk": {
+            "TargetServer": "MskServer"
+          }
+        },
+        "TargetServers": {
+          "MskServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-MSK-DEF-02",
+      "title": "MSK metrics: a successful send counts Writes, Messages and WriteSuccess twice, a non-timeout error counts WriteError twice (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "SFC's counters are the suite's second oracle, and the MSK send callback double counts. A successful send runs createMetrics at AwsMskTargetWriter.kt:363 and again at :366, so Writes, Messages, WriteSuccess and BytesWritten are doubled; a non-timeout error adds WriteError in its branch (:383) and again after the when (:386). Msk delivers normally. MskTooBig sets max.request.size to 100 through ProviderProperties (:200-202), so kafka-clients rejects every record in send() with a RecordTooLargeException - a non-timeout error handed to the callback - and none of its records reaches the topic. SfcCore Messages counts each record once (ScheduleWriter.kt:156-159) and is the denominator: the ratios are 2 today and must be 1. The normal assertions prove the setup: exactly 6 messages in the topic, all Msk's (none carries MskTooBig's 'target' header), nothing written by MskTooBig and one RecordTooLargeException log line per record. Uberjar and IPC only (in-process cannot load the IAM classes, AWS-MSK-CL-01).",
+      "pins": [
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:363",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:366",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:383",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:386",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:428-453",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:200-202",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:156-159",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/metrics/MetricsCollector.kt:205-209"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kafka",
+          "format": "headers"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "failFast": [
+        "Error creating instance of",
+        "Error creating service instance",
+        "NoClassDefFoundError"
+      ],
+      "allowWriteErrors": [
+        "MskTooBig"
+      ],
+      "steps": [
+        {
+          "wait": {
+            "log": "RecordTooLargeException",
+            "count": 6
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "Msk",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 6,
+          "comment": "Msk's 6 messages; any of MskTooBig's would add to the count"
+        },
+        {
+          "kind": "distinct",
+          "path": "headers.serial",
+          "equals": 6
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "headers.target"
+          ],
+          "comment": "no MskTooBig record reached the topic"
+        },
+        {
+          "kind": "metric",
+          "source": "MskTooBig",
+          "name": "Writes",
+          "op": "eq",
+          "value": 0
+        },
+        {
+          "kind": "logContains",
+          "text": "RecordTooLargeException",
+          "min": 6,
+          "comment": "one error log line per rejected record"
+        },
+        {
+          "kind": "metric",
+          "source": "SfcCore",
+          "name": "Messages",
+          "op": "eq",
+          "value": 6,
+          "comment": "the value filter lets exactly 6 reads through, each one record handed to the targets once"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Timeout writing",
+            "Error writing to MSK",
+            "Error executing user-provided callback",
+            "failed authentication",
+            "AuthorizationException",
+            "AUTHORIZATION_FAILED",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:366",
+        "summary": "The MSK send callback counts every outcome twice: createMetrics runs at :363 and again at :366 for a successful send, doubling Writes, Messages, WriteSuccess and BytesWritten, and a non-timeout error adds WriteError at :383 and again at :386",
+        "assertCurrent": [
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "Msk",
+              "name": "Writes"
+            },
+            "denominator": {
+              "source": "SfcCore",
+              "name": "Messages"
+            },
+            "op": "eq",
+            "value": 2
+          },
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "Msk",
+              "name": "Messages"
+            },
+            "denominator": {
+              "source": "SfcCore",
+              "name": "Messages"
+            },
+            "op": "eq",
+            "value": 2
+          },
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "Msk",
+              "name": "WriteSuccess"
+            },
+            "denominator": {
+              "source": "SfcCore",
+              "name": "Messages"
+            },
+            "op": "eq",
+            "value": 2
+          },
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "MskTooBig",
+              "name": "WriteError"
+            },
+            "denominator": {
+              "source": "SfcCore",
+              "name": "Messages"
+            },
+            "op": "eq",
+            "value": 2
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "Msk",
+              "name": "Writes"
+            },
+            "denominator": {
+              "source": "SfcCore",
+              "name": "Messages"
+            },
+            "op": "eq",
+            "value": 1
+          },
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "Msk",
+              "name": "Messages"
+            },
+            "denominator": {
+              "source": "SfcCore",
+              "name": "Messages"
+            },
+            "op": "eq",
+            "value": 1
+          },
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "Msk",
+              "name": "WriteSuccess"
+            },
+            "denominator": {
+              "source": "SfcCore",
+              "name": "Messages"
+            },
+            "op": "eq",
+            "value": 1
+          },
+          {
+            "kind": "metricRatio",
+            "numerator": {
+              "source": "MskTooBig",
+              "name": "WriteError"
+            },
+            "denominator": {
+              "source": "SfcCore",
+              "name": "Messages"
+            },
+            "op": "eq",
+            "value": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-MSK-DEF-02",
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "First6": {
+            "Operator": "lt",
+            "Value": 6
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 500,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Msk",
+              "MskTooBig"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "ValueFilter": "First6",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Msk": {
+            "TargetType": "AWS-MSK",
+            "BootstrapBrokers": [
+              "${SFC_E2E_KAFKA_BOOTSTRAP}"
+            ],
+            "TopicName": "${SFC_E2E_KAFKA_TOPIC}",
+            "Interval": 1000,
+            "Headers": {
+              "marker": "${SFC_E2E_MARKER}"
+            }
+          },
+          "MskTooBig": {
+            "TargetType": "AWS-MSK",
+            "BootstrapBrokers": [
+              "${SFC_E2E_KAFKA_BOOTSTRAP}"
+            ],
+            "TopicName": "${SFC_E2E_KAFKA_TOPIC}",
+            "Interval": 1000,
+            "Headers": {
+              "marker": "${SFC_E2E_MARKER}",
+              "target": "MskTooBig"
+            },
+            "ProviderProperties": {
+              "max.request.size": "100"
+            }
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-MSK": {
+            "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MskServer": {
+          "module": "aws-msk-target"
+        },
+        "MskTooBigServer": {
+          "module": "aws-msk-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Msk": {
+            "TargetServer": "MskServer"
+          },
+          "MskTooBig": {
+            "TargetServer": "MskTooBigServer"
+          }
+        },
+        "TargetServers": {
+          "MskServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "MskTooBigServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-MSK-CL-01",
+      "title": "MSK in-process: the target loaded from JarFiles cannot link its IAM auth classes, so nothing is ever written (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "In-process, the MSK target is loaded from JarFiles by a parent-first URLClassLoader (InstanceFactory.kt:42) whose parent classpath, sfc-main's, carries aws-msk-iam-auth but not kafka-clients (core/sfc-main/build.gradle.kts:27-28). The first record initialises the lazy producer properties, which name IAMClientCallbackHandler (AwsMskTargetWriter.kt:192): the parent defines that class and cannot resolve its interface, Kafka's AuthenticateCallbackHandler, so a NoClassDefFoundError is thrown before any KafkaProducer exists. It is an Error, which the writer loop does not catch (:300-305 catch only Exception), so the writer coroutine dies, the uncaught-exception handler prints it to sfc-main's stderr, and nothing ever reaches the topic, without a WriteError. The target itself is constructed and its writer starts (:290), so this is not a construction error and the default failFast would not see it; failFast is off so that the timeline runs either way. One timeline serves both outcomes: the 'any' wait ends on that log line or on 6 records; then the core has handed all 6 records to the target (its channel holds 1000, TargetConfiguration.kt:176). The normal assertions hold either way; today the topic stays empty, once fixed it holds the counter 0..5 in order. Under --offline-aws this case fails the runner's class-loading check, which is the defect itself.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:42",
+        "core/sfc-main/build.gradle.kts:27-28",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:192",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:182-204",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:212-214",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:290",
+        "targets/aws-msk-target/src/main/kotlin/com/amazonaws/sfc/awsmsk/AwsMskTargetWriter.kt:300-305",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/TargetConfiguration.kt:176"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "kafka",
+          "format": "json"
+        }
+      },
+      "timeoutSeconds": 120,
+      "offlineSeconds": 25,
+      "failFast": [],
+      "steps": [
+        {
+          "wait": {
+            "any": [
+              {
+                "log": "NoClassDefFoundError",
+                "count": 1
+              },
+              {
+                "sink": "main",
+                "records": 6
+              }
+            ]
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "SfcCore",
+              "name": "Messages",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "metric",
+          "source": "SfcCore",
+          "name": "Messages",
+          "op": "eq",
+          "value": 6,
+          "comment": "the value filter lets exactly 6 reads through, each one record handed to the targets once"
+        },
+        {
+          "kind": "recordCount",
+          "max": 6,
+          "comment": "0 today, 6 once fixed; never more"
+        },
+        {
+          "kind": "noDuplicates",
+          "path": "serial"
+        },
+        {
+          "kind": "logContains",
+          "text": "AWS MKS writer for target",
+          "min": 1,
+          "comment": "the target was constructed from JarFiles and its writer started (SFC's own spelling)"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error creating instance of",
+            "Error writing to MSK",
+            "Error writing message",
+            "Timeout writing",
+            "Error executing user-provided callback"
+          ]
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:42",
+        "summary": "In-process, the parent-first URLClassLoader (InstanceFactory.kt:42) resolves aws-msk-iam-auth from sfc-main's classpath (core/sfc-main/build.gradle.kts:27-28), which has no kafka-clients: IAMClientCallbackHandler, named at AwsMskTargetWriter.kt:192, cannot link against AuthenticateCallbackHandler, the NoClassDefFoundError kills the writer coroutine at the first record and nothing is ever written",
+        "assertCurrent": [
+          {
+            "kind": "logRegex",
+            "regex": "NoClassDefFoundError: org[./]apache[./]kafka[./]common[./]security[./]auth[./]AuthenticateCallbackHandler",
+            "comment": "the missing interface of IAMClientCallbackHandler"
+          },
+          {
+            "kind": "recordCount",
+            "equals": 0,
+            "comment": "no record reached the topic"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "equals": 6
+          },
+          {
+            "kind": "channelSequence",
+            "source": "sim",
+            "channel": "ctr"
+          },
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "path": "sources.sim.values.ctr.value",
+            "value": 0
+          },
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "NoClassDefFoundError",
+              "ClassNotFoundException"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-MSK-CL-01",
+        "LogLevel": "Info",
+        "ValueFilters": {
+          "First6": {
+            "Operator": "lt",
+            "Value": 6
+          }
+        },
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 500,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Msk"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "ValueFilter": "First6",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Msk": {
+            "TargetType": "AWS-MSK",
+            "BootstrapBrokers": [
+              "${SFC_E2E_KAFKA_BOOTSTRAP}"
+            ],
+            "TopicName": "${SFC_E2E_KAFKA_TOPIC}",
+            "Interval": 1000
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-MSK": {
+            "FactoryClassName": "com.amazonaws.sfc.awsmsk.AwsMskTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-msk-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,436 @@
+{
+  "cases": [
+    {
+      "id": "LOC-AWSTGT-SQS-COMPRESSION-WRAPPER-01",
+      "title": "SQS Compression None/GZip/Zip: exact JSON envelope, enum-name compression field, one UUID-named zip entry",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "Consumers of a compressed SQS queue must parse SFC's envelope, so its shape is a contract: AwsSqsTargetWriter.buildMessageBody wraps the compressed payload with Compress.compressedDataPayload into exactly {compression, payload}, where compression is the enum NAME (GZIP/ZIP, not the configured spelling GZip/Zip) and payload is base64; Zip adds one entry named by a random UUID. Three SQS targets on three stub queues receive the same records with None, GZip and Zip. The stub decodes what arrived on the wire, so the case fails if compression is skipped, the envelope gains or loses a key, the field carries the config spelling, or the decoded payload is not the SFC record (entry id = serial, contiguous counter, no loss).",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/Compress.kt:51-57",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/CompressionTypes.kt:10-27",
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:348-377"
+      ],
+      "services": [
+        {
+          "name": "stub",
+          "kind": "aws-wire-stub",
+          "args": {
+            "spec": "stub.json"
+          }
+        }
+      ],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "AKIAE2ESTUBENV000001",
+        "AWS_SECRET_ACCESS_KEY": "e2e-stub",
+        "AWS_SESSION_TOKEN": "",
+        "AWS_REGION": "us-east-1",
+        "AWS_EC2_METADATA_DISABLED": "true",
+        "AWS_MAX_ATTEMPTS": "1",
+        "AWS_ENDPOINT_URL": "http://127.0.0.1:9"
+      },
+      "sinks": {
+        "none": {
+          "kind": "jsonl",
+          "service": "stub",
+          "file": "records-q-none.jsonl"
+        },
+        "gzip": {
+          "kind": "jsonl",
+          "service": "stub",
+          "file": "records-q-gzip.jsonl"
+        },
+        "zip": {
+          "kind": "jsonl",
+          "service": "stub",
+          "file": "records-q-zip.jsonl"
+        },
+        "requests": {
+          "kind": "aws-stub-requests",
+          "service": "stub"
+        }
+      },
+      "gates": [
+        {
+          "sink": "none",
+          "records": 4
+        },
+        {
+          "sink": "gzip",
+          "records": 4
+        },
+        {
+          "sink": "zip",
+          "records": 4
+        }
+      ],
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "SqsGzip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 4
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "SqsZip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 4
+            }
+          }
+        }
+      ],
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "keysAbsent",
+          "sink": "none",
+          "paths": [
+            "_wrapper"
+          ],
+          "comment": "Compression None sends the plain record"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "none",
+          "path": "_shape",
+          "equals": "object"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "gzip",
+          "path": "_wrapper",
+          "equals": "GZIP",
+          "comment": "enum name, not the configured 'GZip'"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "gzip",
+          "path": "_wrapperKeys",
+          "equals": [
+            "compression",
+            "payload"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "gzip",
+          "path": "_wrapperEncoding",
+          "equals": "gzip"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "zip",
+          "path": "_wrapper",
+          "equals": "ZIP"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "zip",
+          "path": "_wrapperKeys",
+          "equals": [
+            "compression",
+            "payload"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "zip",
+          "path": "_zipEntries[0]",
+          "regex": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        },
+        {
+          "kind": "keysAbsent",
+          "sink": "zip",
+          "paths": [
+            "_zipEntries[1]"
+          ],
+          "comment": "exactly one zip entry"
+        },
+        {
+          "kind": "pathsEqual",
+          "sink": "none",
+          "a": "serial",
+          "b": "_entryId"
+        },
+        {
+          "kind": "pathsEqual",
+          "sink": "gzip",
+          "a": "serial",
+          "b": "_entryId"
+        },
+        {
+          "kind": "pathsEqual",
+          "sink": "zip",
+          "a": "serial",
+          "b": "_entryId"
+        },
+        {
+          "kind": "channelValueRun",
+          "sink": "none",
+          "source": "sim",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "sink": "gzip",
+          "source": "sim",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "sink": "zip",
+          "source": "sim",
+          "channel": "ctr"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "gzip",
+          "path": "schedule",
+          "equals": "S",
+          "comment": "the decoded payload is the SFC record"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "zip",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "sink": "requests",
+          "path": "headers.x-amz-target",
+          "equals": "AmazonSQS.SendMessageBatch"
+        },
+        {
+          "kind": "keysAbsent",
+          "sink": "requests",
+          "paths": [
+            "entries[1]"
+          ],
+          "comment": "BatchSize 1: one entry per request"
+        },
+        {
+          "kind": "logContains",
+          "text": "Used GZIP compression to compress"
+        },
+        {
+          "kind": "logContains",
+          "text": "Used ZIP compression to compress"
+        },
+        {
+          "kind": "metric",
+          "source": "SqsGzip",
+          "name": "Writes",
+          "op": "ge",
+          "value": 4
+        },
+        {
+          "kind": "metric",
+          "source": "SqsZip",
+          "name": "Writes",
+          "op": "ge",
+          "value": 4
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "LOC-AWSTGT-SQS-COMPRESSION-WRAPPER-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SqsNone",
+              "SqsGzip",
+              "SqsZip"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SqsNone": {
+            "TargetType": "AWS-SQS",
+            "Region": "us-east-1",
+            "Endpoint": "http://127.0.0.1:${SFC_E2E_STUB_PORT}",
+            "QueueUrl": "http://127.0.0.1:${SFC_E2E_STUB_PORT}/000000000000/q-none",
+            "BatchSize": 1,
+            "Compression": "None"
+          },
+          "SqsGzip": {
+            "TargetType": "AWS-SQS",
+            "Region": "us-east-1",
+            "Endpoint": "http://127.0.0.1:${SFC_E2E_STUB_PORT}",
+            "QueueUrl": "http://127.0.0.1:${SFC_E2E_STUB_PORT}/000000000000/q-gzip",
+            "BatchSize": 1,
+            "Compression": "GZip"
+          },
+          "SqsZip": {
+            "TargetType": "AWS-SQS",
+            "Region": "us-east-1",
+            "Endpoint": "http://127.0.0.1:${SFC_E2E_STUB_PORT}",
+            "QueueUrl": "http://127.0.0.1:${SFC_E2E_STUB_PORT}/000000000000/q-zip",
+            "BatchSize": 1,
+            "Compression": "Zip"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sqs-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SqsNoneServer": {
+          "module": "aws-sqs-target"
+        },
+        "SqsGzipServer": {
+          "module": "aws-sqs-target"
+        },
+        "SqsZipServer": {
+          "module": "aws-sqs-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SqsNone": {
+            "TargetServer": "SqsNoneServer"
+          },
+          "SqsGzip": {
+            "TargetServer": "SqsGzipServer"
+          },
+          "SqsZip": {
+            "TargetServer": "SqsZipServer"
+          }
+        },
+        "TargetServers": {
+          "SqsNoneServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SqsGzipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "SqsZipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "stub.json": "{\"faults\": {\"*\": [{}]}}\n"
+      }
+    }
+  ]
+}

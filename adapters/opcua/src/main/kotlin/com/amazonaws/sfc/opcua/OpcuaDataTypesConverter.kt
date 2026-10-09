@@ -5,7 +5,7 @@
 
 package com.amazonaws.sfc.opcua
 
-import org.eclipse.milo.opcua.stack.core.serialization.SerializationContext
+import org.eclipse.milo.opcua.stack.core.encoding.EncodingContext
 import org.eclipse.milo.opcua.stack.core.types.builtin.*
 import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.UInteger
 import java.time.Instant
@@ -18,7 +18,7 @@ typealias OpcuaUByte = org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.
 typealias OpcuaUShort = org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.UShort
 typealias OpcuaULong = org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.ULong
 
-class OpcuaDataTypesConverter(private val context: SerializationContext? = null) {
+class OpcuaDataTypesConverter(private val context: EncodingContext? = null) {
 
     fun asNativeValue(value: Variant): Any? {
         return internalAsNativeValue(value.value, context)
@@ -26,7 +26,7 @@ class OpcuaDataTypesConverter(private val context: SerializationContext? = null)
 
     private val reflection = ReflectionDataCache()
 
-    private fun internalAsNativeValue(value: Any?, context: SerializationContext?): Any? =
+    private fun internalAsNativeValue(value: Any?, context: EncodingContext?): Any? =
 
         if (value == null) {
             null
@@ -94,9 +94,10 @@ class OpcuaDataTypesConverter(private val context: SerializationContext? = null)
                 else -> null
             }
 
-    private fun extensionObjectValue(ext: ExtensionObject, serializationContext: SerializationContext?): Any? {
+    private fun extensionObjectValue(ext: ExtensionObject, serializationContext: EncodingContext?): Any? {
 
-        val decoded = if (serializationContext != null) ext.decodeOrNull(serializationContext) else null
+        // milo 1.1.7 removed decodeOrNull; decode() throws on failure.
+        val decoded = if (serializationContext != null) runCatching { ext.decode(serializationContext) }.getOrNull() else null
 
         return if (decoded != null) {
             decodedAsMap(decoded, serializationContext)
@@ -109,7 +110,7 @@ class OpcuaDataTypesConverter(private val context: SerializationContext? = null)
         }
     }
 
-    private fun decodedAsMap(value: Any?, context: SerializationContext?): Map<String, Any?> {
+    private fun decodedAsMap(value: Any?, context: EncodingContext?): Map<String, Any?> {
 
         if (value == null) {
             return emptyMap()

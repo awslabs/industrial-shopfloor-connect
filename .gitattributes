@@ -1,0 +1,5 @@
+# Line endings for scripts, independent of each user's git settings.
+# cmd.exe can misread LF-only batch files (call :label, goto); bash fails on CRLF scripts.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.sh  text eol=lf

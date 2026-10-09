@@ -4,25 +4,69 @@
 
 The SFC target adapter for [Amazon Simple Notification Service](https://aws.amazon.com/sns/) (SNS) enables publishing collected data as messages to SNS topics.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `AWS-SNS` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWS-SNS": {
-      "JarFiles" : ["<location of deployment>/aws-sns-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.sns.AwsSnsTargetWriter"
-   }
+"TargetTypes": {
+  "AWS-SNS": { "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter" }
 }
 ```
+
+**In-process** - module bundle `aws-sns-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"TargetTypes": {
+  "AWS-SNS": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-sns-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awssns.AwsSnsTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "SnsTarget": {
+    "TargetType": "AWS-SNS",
+    "TargetServer": "SnsTargetServer"
+  }
+},
+"TargetServers": {
+  "SnsTargetServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-sns-target/bin/aws-sns-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-sns-target\lib\*" com.amazonaws.sfc.awssns.AwsSnsTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awssns.AwsSnsTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awssns.AwsSnsTargetService -port 50001`).
+
+**Examples:** uberjar: [uberjar-sim-sns](../../examples/uberjar-sim-sns/README.md) · all: [examples catalog](../examples/README.md)
 
 ## AwsSnsTargetConfiguration
 
 A configuration class that defines how industrial data should be published to Amazon SNS topics. It specifies the target SNS topic ARN, message format, and data transformation settings. 
 
-AwsSnsTargetConfiguration extends the type  [TargetConfiguration](../core/target-configuration.md) with specific configuration data for sending data to an SNS topic queue. The Targets configuration element can contain entries of this type, the TargetType of these entries must be set to **"AWS-SNS"**
+AwsSnsTargetConfiguration extends the type  [TargetConfiguration](../core/target-configuration.md) with specific configuration data for sending data to an SNS topic. The Targets configuration element can contain entries of this type, the TargetType of these entries must be set to **"AWS-SNS"**
 
 
-Requires IAM permission sqs:putMessage for the receiving topic.
+Requires IAM permission `sns:Publish` on the topic.
 
 - [Schema](#awssnstargetconfiguration-schema)
 - [Examples](#awssnstargetconfiguration-examples)
@@ -54,9 +98,11 @@ Default is 10, maximum is 10
 ### Compression
 Specifies the compression algorithm used for message payloads.  Consider the overhead of base64 encoding when choosing compression, as it may offset compression benefits for smaller payloads.
 
+A compressed message is the JSON object `{"compression": "GZIP", "payload": "<base64>"}` (`"ZIP"` for Zip compression); consumers decode the base64 `payload` and decompress it.
+
 **Type**: String
 
-Possible valuesL
+Possible values:
 
 - "None" (Default)
 - "GZip"
@@ -89,14 +135,14 @@ https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-supp
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
 ---
 
 ### Interval
-Time interval in milliseconds that triggers sending buffered data to SNS, even if the [batch size](#batchsize) hasn't been reached. When specified, messages will be sent after either this interval elapses or the batch size is reached, whichever occurs first.
+Time in milliseconds without new data after which a partial batch is published to SNS, even if the [batch size](#batchsize) hasn't been reached. The timer restarts with every record, so while records keep arriving more often than this interval, it does not trigger a publish.
 
 **Type**: Integer
 
@@ -118,9 +164,11 @@ The AWS Region code where the SNS topic is located (for example, us-east-1, eu-w
 
 ---
 ### SerialAsMessageDeduplicationId
-Controls how message deduplication is handled for FIFO topics. When true, uses the unique serial number from SFC as the MessageDeduplicationId. When false, enables ContentBasedDeduplication where SNS generates the deduplication ID based on message content.
+Controls how message deduplication is handled for FIFO topics. When true, the record serial is sent as the MessageDeduplicationId. When false, no deduplication ID is sent, so a FIFO topic must have ContentBasedDeduplication enabled. FIFO topics also require [MessageGroupId](#messagegroupid).
 
 **Type**: Boolean
+
+Default is false
 
 ---
 ### Subject
@@ -146,7 +194,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -156,7 +204,7 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
 
@@ -192,6 +240,10 @@ The Amazon Resource Name (ARN) that uniquely identifies the SNS topic where mess
           "description": "Compression type for messages",
           "enum": ["None", "Zip", "GZip"],
           "default": "None"
+        },
+        "CredentialProviderClient": {
+          "type": "string",
+          "description": "The credential provider client name"
         },
         "Interval": {
           "type": "integer",

@@ -20,7 +20,7 @@ import org.eclipse.milo.opcua.sdk.server.nodes.UaFolderNode
 import org.eclipse.milo.opcua.sdk.server.nodes.UaNode
 import org.eclipse.milo.opcua.sdk.server.nodes.UaVariableNode
 import org.eclipse.milo.opcua.sdk.server.nodes.filters.AttributeFilter
-import org.eclipse.milo.opcua.stack.core.Identifiers
+import org.eclipse.milo.opcua.stack.core.NodeIds
 import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId
 import org.eclipse.milo.opcua.stack.core.types.builtin.QualifiedName
 import java.time.Instant
@@ -302,7 +302,7 @@ class ServerDataModelHelper(private val server: OpcUaServer,
         val log = logger.getCtxLoggers(className, "createModels")
         targetConfiguration.dataModels.values.forEach {
 
-            val ns = OpcuaNamespaceBuilder(server, it, Identifiers.ObjectsFolder.expanded(), attributeFilter, targetConfiguration.valuesInitWithNull, logger)
+            val ns = OpcuaNamespaceBuilder(server, it, NodeIds.ObjectsFolder.expanded(), attributeFilter, targetConfiguration.valuesInitWithNull, logger)
             log.info("Creating namespace ${ns.namespaceIndex}:${it.id} for model ${it.id}")
 
             ns.onNamespaceFolderNodeCreated = { modelConfig, uaFolderNode ->

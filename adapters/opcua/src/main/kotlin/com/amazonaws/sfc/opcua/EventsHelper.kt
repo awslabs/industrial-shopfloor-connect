@@ -5,7 +5,7 @@
 
 package com.amazonaws.sfc.opcua
 
-import org.eclipse.milo.opcua.stack.core.serialization.SerializationContext
+import org.eclipse.milo.opcua.stack.core.encoding.EncodingContext
 import org.eclipse.milo.opcua.stack.core.types.builtin.NodeId
 import org.eclipse.milo.opcua.stack.core.types.builtin.QualifiedName
 import org.eclipse.milo.opcua.stack.core.types.builtin.Variant
@@ -20,7 +20,7 @@ interface EventsHelper {
     fun isKnownEvent(name: String): Boolean
     fun variantPropertiesToMap(eventVariantValues: Array<Variant>,
                                eventProperties: List<Pair<NodeId, QualifiedName>>,
-                               context: SerializationContext): Map<String, Any>
+                               context: EncodingContext): Map<String, Any>
 
 
 }

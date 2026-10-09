@@ -1,21 +1,72 @@
 # NATS Adapter Configuration
 
-The SFC Nats protocol adapter enables seamless integration between SFC and NATS messaging systems. It provides bidirectional message translation and routing between SFC's internal message format and NATS publish/subscribe patterns.
-
-The adapter supports both core NATS and NATS JetStream, allowing for both real-time messaging and persistent message streaming scenarios. It handles automatic reconnection, message quality of service, and maintains message delivery guarantees according to the configured settings.
+The SFC NATS protocol adapter enables integration between SFC and NATS messaging systems. It subscribes to core NATS subjects (no JetStream) and reads the received messages into SFC channel values. To publish to NATS, use the [NATS target](../targets/nats.md).
 
 This protocol adapter is particularly useful in microservices architectures where NATS serves as the messaging backbone, enabling SFC to participate in existing NATS-based ecosystems while maintaining its core functionality and message processing capabilities.
 
-In order to use this adapter as in [in-process](../sfc-running-adapters.md#running-protocol-adapters-in-process) type adapter the type must be added to the [AdapterTypes](../core/sfc-configuration.md#adaptertypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this adapter
+
+`AdapterType` is `NATS` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"AdapterTypes" :{
-  "NATS" : {
-    "JarFiles" : ["<location of deployment>/nats/lib"]
-  },
-  "FactoryClassName" : "com.amazonaws.sfc.nats.NatsAdapter"
+"AdapterTypes": {
+  "NATS": { "FactoryClassName": "com.amazonaws.sfc.nats.NatsAdapter" }
 }
 ```
+
+**In-process** - module bundle `nats` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"AdapterTypes": {
+  "NATS": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/nats/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.nats.NatsAdapter"
+  }
+}
+```
+
+**IPC** - no `AdapterTypes`; the adapter runs as its own service:
+
+```json
+"ProtocolAdapters": {
+  "NatsAdapter": {
+    "AdapterType": "NATS",
+    "AdapterServer": "NatsServer"
+  }
+},
+"AdapterServers": {
+  "NatsServer": { "Address": "localhost", "Port": 50000 }
+}
+```
+
+Start the service before SFC, on the port of its `AdapterServers` entry:
+
+**Linux / macOS**
+
+```shell
+nats/bin/nats -port 50000
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\nats\lib\*" com.amazonaws.sfc.nats.NatsProtocolService -port 50000
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.nats.NatsProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.nats.NatsProtocolService -port 50000`).
+
+**Examples:** uberjar: [uberjar-nats-file](../../examples/uberjar-nats-file/README.md) · all: [examples catalog](../examples/README.md)
+
+## Known limitations
+
+- With `ReadMode` `KeepLast` (the default), the uberjar and in-process modes currently deliver an internal object (`_value`, `timestamp`, `valueCount`) instead of the value. Set `"ReadMode": "KeepAll"`.
+- Keep [Json](#json) set to `true`: with `false` the adapter currently delivers the NATS message object instead of the payload text.
+- In the `Sources` of a schedule, list NATS sources with `["*"]`. A schedule that names NATS channels receives no values from them.
+- `ChangeFilter` and `ValueFilter` of NATS channels are not applied.
+- In the uberjar, one adapter instance serves all NATS sources with the settings of the NATS adapter it was first created for, so the `ReadMode`, `MaxRetainSize`, `MaxRetainPeriod` and `ReceivedDataChannel*` settings of other NATS adapters are ignored.
+- In IPC mode the channel `Name` is ignored; values are named after the subject.
 
 **Configuration:**
 
@@ -48,7 +99,9 @@ Server Identifier for the NATS server to read from. This referenced server must 
 
 **Type**: String
 
-Must be an identifier of a server in the [Servers](#servers) section of the NATS server used by the source.
+Must be an identifier of a server in the [Servers](#servers) section of the NATS adapter used by the source.
+
+Not to be confused with the `AdapterServer` of a protocol adapter, which selects the IPC service in IPC mode. The `AdapterServer` of a source always names an entry of the adapter's `Servers`.
 
 ---
 ### Channels
@@ -98,6 +151,7 @@ At least 1 channel must be configured.
 
 ```json
 {
+  "Name": "NatsSource1",
   "ProtocolAdapter" : "NatsAdapter",
   "AdapterServer": "main-nats",
   "Channels": {
@@ -111,15 +165,17 @@ At least 1 channel must be configured.
 }
 ```
 
-[^top](#natsadapterconfiguration)
+[^top](#nats-adapter-configuration)
 
 ## NatsChannelConfiguration
 
 [SFC Configuration](../core/sfc-configuration.md) > [Sources](../core/sfc-configuration.md#sources) > [Source](../core/source-configuration.md)  > [Channels](../core/source-configuration.md#channels) > [Channel](../core/channel-configuration.md)
 
-Configuration class for the NATS protocol adapter that defines settings for connecting to a NATS messaging server and configuring message channels. It includes server connection parameters (URL, timeouts, reconnection policies) and channel configurations that specify subject subscriptions and optional subject name mappings for receiving data updates
+Defines which subjects a channel subscribes to and how payloads are decoded and named.
 
 The NatsChannelConfiguration type extends the [ChannelConfiguration](../core/channel-configuration.md) class with channel properties for the NATS protocol adapter.
+
+**How values are named:** a value gets the channel's `Name` if it is set, otherwise the name made by its [SubjectNameMappingConfiguration](#subjectnamemappingconfiguration) (a subject that no mapping matches is dropped unless [IncludeUnmappedSubjects](#includeunmappedsubjects) is true), otherwise the subject it was received on, not the channel identifier. In IPC mode the `Name` is currently ignored.
 
 - [Schema](#natschannelconfiguration-schema)
 - [Examples](#natschannelconfiguration-examples)
@@ -139,13 +195,13 @@ Configuration for processing JSON formatted messages received from NATS subjects
 
 **Type**: Boolean
 
-Default is true
+Default is true. Keep it set to true: with false the adapter currently delivers the NATS message object instead of the payload text.
 
 ---
 ### Selector
 Optional JMESPath expression that selects or transforms specific values from structured message data, allowing filtering and reshaping of the data before processing
 
-**Type**: Datatype: String
+**Type**: String
 
 Parameter: JMESPath expression, see https://jmespath.org/
 
@@ -161,9 +217,9 @@ List of NATS subjects to subscribe to. Subject names support wildcards: * for ma
 
 **Type**: String[]
 
-The must be **at least one subject** in the list of subjects.
+There must be **at least one subject** in the list of subjects.
 
-[^top](#natsadapterconfiguration)
+[^top](#nats-adapter-configuration)
 
 ### NatsChannelConfiguration Schema
 
@@ -228,7 +284,7 @@ The must be **at least one subject** in the list of subjects.
   ],
   "SubjectNameMappingConfiguration": {
     "Mappings": {
-      "devices\\.(\\w+)\\.(\\w+)": "devices-{2}-{1}"
+      "^devices\\.(\\w+)\\.(\\w+)$": "devices-$2-$1"
     }
   }
 }
@@ -259,8 +315,8 @@ Controls whether to include messages from subjects that don't match any mapping 
 ```json
 {
     "IncludeUnmappedSubjects": true,
-    "Mapping": {
-        "sensors.*.temperature": "temp"
+    "Mappings": {
+        "^sensors\\.[^.]+\\.temperature$": "temp"
     }
 }
 ```
@@ -278,23 +334,24 @@ Default is false
 ### Mappings
 Mapping table that transforms received subject names into data value names using regular expressions. This is particularly useful when a channel subscribes to multiple subjects or uses wildcards, allowing standardized naming for data from different subject hierarchies.
 
-- Uses regular expressions as keys to match incoming subject names
+- Uses regular expressions as keys to match incoming subject names; in an expression `.` matches any character, so write `\\.` for a literal dot
 - Replacement strings can include captured groups from the regex using substitution parameters ($1, $2, etc.)
-- At least one subject must be defined in the channel's subject list
+- Only the part of the subject that the expression matches is replaced, so anchor patterns with `^` and `$` to map the whole subject name
+- At least one mapping must be configured
 - Provides consistent naming convention for data received from different subject hierarchies
 
 Example:
 Channel subscription is:
 
 ```json
-	"Subjects" :[ "test"/>"]
+	"Subjects": ["test.>"]
 ```
 
 The mapping is:
 
 ```json
 	"Mappings": {
-		"test\.(\\w+)": "test-$1"
+		"test\\.(\\w+)": "test-$1"
 	}
 ```
 
@@ -303,7 +360,7 @@ If an update is received for data in subject "test.a" then the name of the data 
 
 **Type**: Map[String,String]
 
-The must be at least one subject in the list of subjects.
+At least one mapping must be configured.
 
 ### SubjectNameMappingConfiguration Schema
 
@@ -350,27 +407,27 @@ Basic mapping with matching pattern for wildcards
 ```json
 {
   "Mappings": {
-    "device\\.(\\w+)\\.temperature": "sensors-temperature-{1}"
+    "^device\\.(\\w+)\\.temperature$": "sensors-temperature-$1"
   }
 }
 ```
 
 
 
-Multiple mappings with unmapped topics included:
+Multiple mappings with unmapped subjects included:
 
 ```json
 {
   "IncludeUnmappedSubjects": true,
   "Mappings": {
-    "device\\.(\\w+)\\.temperature": "sensors/temp/{1}",
-    "device\\.(\\w+)\\.humidity": "sensors/humid/{1}",
-    "factory\\.line-(\\w+)": "production/line-{1}"
+    "^device\\.(\\w+)\\.temperature$": "sensors/temp/$1",
+    "^device\\.(\\w+)\\.humidity$": "sensors/humid/$1",
+    "^factory\\.line-(\\w+)$": "production/line-$1"
   }
 }
 ```
 
-^top](#natsadapterconfiguration)
+[^top](#nats-adapter-configuration)
 
 
 
@@ -378,9 +435,9 @@ Multiple mappings with unmapped topics included:
 
 [SFC Configuration](../core/sfc-configuration.md) > [ProtocolAdapters](../core/sfc-configuration.md#protocoladapters) > [Adapter](../core/protocol-adapter-configuration.md) 
 
-Configuration class for the NATS adapter that defines connection settings, authentication, and channel configurations for interacting with a NATS message brokers.
+Configuration class for the NATS adapter that defines the NATS servers it connects to, with their authentication settings, and how received messages are buffered.
 
-NatsAdapterConfiguration extension the [AdapterConfiguration](../core/protocol-adapter-configuration.md) with properties for the NATS Protocol adapter.
+NatsAdapterConfiguration extends the [AdapterConfiguration](../core/protocol-adapter-configuration.md) with properties for the NATS Protocol adapter.
 
 - [Schema](#natsadapterconfiguration-schema)
 - [Examples](#natsadapterconfiguration-examples)
@@ -411,11 +468,11 @@ For example:
 - This prevents unbounded growth of stored messages while still maintaining a useful history
 - The time period is measured in milliseconds from when the message was received
 
-This setting is particularly useful when dealing with high-frequency NATS messages or when system memory constraints need to be considered
+This setting is particularly useful when dealing with high-frequency NATS messages or when system memory constraints need to be considered. The limit applies separately to each value name of each channel (see [How values are named](#natschannelconfiguration)).
 
 **Type**: Integer
 
-The default value is 3.600.00 (1 hour). If set to 0 there is no maximum period.
+The default value is 3600000 (1 hour). If set to 0 there is no maximum period.
 
 ---
 
@@ -429,7 +486,7 @@ For example:
 - When the limit is reached, the oldest messages are discarded to make room for new ones
 - This creates a rolling buffer of the most recent messages
 
-This setting is particularly useful for preventing memory issues in systems that handle high volumes of NATS messages while still maintaining access to recent message history
+This setting is particularly useful for preventing memory issues in systems that handle high volumes of NATS messages while still maintaining access to recent message history. The limit applies separately to each value name of each channel (see [How values are named](#natschannelconfiguration)).
 
 **Type**: Integer
 
@@ -448,7 +505,9 @@ If set to 0 there is no maximum number of values.
 
 - KeepLast  to collect last values received in read interval each topic, discarding earlier messages (Default)
 
-- KeepAll to collect values received in read interval up to the maximum specified by MaxRetainSize values of not older than specified by MaxRetainPeriod
+- KeepAll to collect values received in read interval up to the maximum specified by MaxRetainSize values or not older than specified by MaxRetainPeriod
+
+In the uberjar and in-process modes `KeepLast` currently delivers an internal object instead of the value; use `KeepAll` (see [Known limitations](#known-limitations)).
 
 
 
@@ -494,7 +553,7 @@ List of NATS server configurations that can be referenced by NATS sources using 
 
 **Type**: Map[String,[NatsServerConfiguration](#natsserverconfiguration)]
 
-[^top](#natsadapterconfiguration)
+[^top](#nats-adapter-configuration)
 
 ### NatsAdapterConfiguration Schema
 
@@ -521,12 +580,12 @@ List of NATS server configurations that can be referenced by NATS sources using 
         "MaxRetainPeriod" :{
           "type" : "integer",
           "description": "Max value retain period",
-          "default" : 0
+          "default" : 3600000
         },
         "MaxRetainSize" :{
           "type" : "integer",
           "description": "Max value retain size",
-          "default" : 0
+          "default" : 10000
         },
         "ReadMode": {
           "type": "string",
@@ -537,6 +596,16 @@ List of NATS server configurations that can be referenced by NATS sources using 
           ],
           "default": "KeepLast"
         },
+        "ReceivedDataChannelSize": {
+          "type": "integer",
+          "description": "Size of the channel for received data",
+          "default": 1000
+        },
+        "ReceivedDataChannelTimeout": {
+          "type": "integer",
+          "description": "Timeout for the received data channel in milliseconds",
+          "default": 1000
+        }
       },
       "required": [
         "Servers"
@@ -589,7 +658,7 @@ Configuration class that defines connection settings for a NATS server, includin
 
 ---
 ### ConnectRetries
-Number of connection retry attempts to make when establishing a connection to the NATS server
+Number of connection attempts to make when establishing a connection to the NATS server, [WaitAfterConnectError](#waitafterconnecterror) apart.
 
 **Type**: Integer
 
@@ -637,8 +706,6 @@ Security considerations:
 
 - Use placeholders in configuration files
 
-**Type**: String
-
 
 https://docs.nats.io/using-nats/developer/connecting/userpass
 
@@ -648,10 +715,16 @@ If a Password is configured then the Username must be configured as well.
 ---
 ### Tls
 
-From the [NATS-docs](
-): *While authentication limits which clients can connect, TLS can be used to encrypt traffic between client/server and check the server's identity. Additionally - in the most secure version of TLS with NATS - the server can be configured to verify the client's identity, thus authenticating it. When started in TLS mode, a nats-server will require all clients to connect with TLS. Moreover, if configured to connect with TLS, client libraries will fail to connect to a server without TLS.*
+From the [NATS docs](https://docs.nats.io/using-nats/developer/connecting/tls): *While authentication limits which clients can connect, TLS can be used to encrypt traffic between client/server and check the server's identity. Additionally - in the most secure version of TLS with NATS - the server can be configured to verify the client's identity, thus authenticating it. When started in TLS mode, a nats-server will require all clients to connect with TLS. Moreover, if configured to connect with TLS, client libraries will fail to connect to a server without TLS.*
 
-**Type**: [TlsConfiguration](../core/certificate-configuration.md)
+**Type**: TlsConfiguration with these properties (see the TLS examples below):
+
+- `Certificate`: path to the client certificate file (PEM), required when Tls is set
+- `PrivateKey`: path to the client private key file, required when Tls is set
+- `RootCA`: path to the CA certificate that signed the server's certificate
+- `SslServerCertificate`: optional path to the server's own certificate
+
+The adapter trusts only `RootCA` and `SslServerCertificate`, not the Java default CAs, so set at least one of them. On Windows write these paths with forward slashes, for example `"C:/sfc/certs/client-cert.pem"`; a single backslash is a JSON escape.
 
 
 https://docs.nats.io/using-nats/developer/connecting/tls
@@ -674,16 +747,16 @@ Server URL(s) for connecting to the NATS server.
 
 **Type**: String
 
-The schema for the url can be `nats://` or `tls://`. If the scheme is "tls:" then
+The scheme for the url can be `nats://`, `tls://` or `ws://`; other schemes are rejected. If the scheme is "tls:" then
 the "Tls" property for the server **could** also be set to specify the required key and certificates - for establishing `mTLS` secured auth.
 
-Multiple urls can be configured for known all known servers as a comma separated list.
+Multiple urls can be configured for all known servers as a comma separated list.
 
 ---
 ### Username
 Username to authenticate with the server.
 
-It is strongly recommended to configure the username as clear text in the configuration, instead use a 
+It is strongly recommended not to configure the username as clear text in the configuration, instead use a 
 placeholder for a secret stored in and retrieved from the 
 AWS Secrets Manager service.
 
@@ -697,7 +770,7 @@ If a Username is configured then the Password must be configured as well.
 
 ---
 ### WaitAfterConnectError
-Number of seconds to wait after connecting to the sever failed.
+Number of seconds to wait after connecting to the server failed.
 
 **Type**: Integer
 
@@ -714,7 +787,7 @@ Default is 10
   "properties": {
     "ConnectRetries": {
       "type": "integer",
-      "description": "Number of connection retry attempts",
+      "description": "Number of connection attempts",
       "default": 3
     },
     "CredentialsFile": {
@@ -730,8 +803,30 @@ Default is 10
       "description": "Password for authentication"
     },
     "Tls": {
-      "$ref": "#/definitions/CertificateConfiguration",
-      "description": "TLS configuration for secure connection"
+      "type": "object",
+      "description": "TLS configuration for secure connection",
+      "properties": {
+        "Certificate": {
+          "type": "string",
+          "description": "Client certificate file path"
+        },
+        "PrivateKey": {
+          "type": "string",
+          "description": "Client private key file path"
+        },
+        "RootCA": {
+          "type": "string",
+          "description": "Root CA certificate file path"
+        },
+        "SslServerCertificate": {
+          "type": "string",
+          "description": "Server certificate file path"
+        }
+      },
+      "required": [
+        "Certificate",
+        "PrivateKey"
+      ]
     },
     "Token": {
       "type": "string",
@@ -814,13 +909,13 @@ NKey authentication:
 ```json
 {
   "Url": "nats://nats.example.com:4222",
-  "NKeyFile": "/path/to/user.nkey",
+  "NKeyFile": "/path/to/user.nkey"
 }
 ```
 
 
 
-Token authentication with TLS using configuration placeholder for the token.
+Token authentication using configuration placeholder for the token.
 
 ```json
 {
@@ -833,7 +928,5 @@ Token authentication with TLS using configuration placeholder for the token.
 
 
 
-[^top](#natsadapterconfiguration)
-
-[
+[^top](#nats-adapter-configuration)
 

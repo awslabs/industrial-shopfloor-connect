@@ -4,6 +4,8 @@
 
 Defines core configuration settings for [SFC target adapters](./sfc-configuration.md#targets) that specify how data should be published or written to destinations. Target adapters extend this base configuration with protocol-specific properties to handle different output requirements and destinations.
 
+How a target is configured in the uberjar, in-process and IPC modes: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode).
+
 - [Schema](#schema)
 - [Examples](#examples)
 
@@ -59,7 +61,15 @@ Type: String
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a template configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error. A formatter is applied by the AWS IoT Core, AWS Kinesis Firehose, AWS Kinesis, AWS MSK, AWS S3, AWS SNS, AWS SQS, Debug, File, MQTT and NATS targets.
+
+Example using the formatter from the [custom target formatter example](../../examples/custom-target-formatter/README.md), which is included in the uberjar, so `FactoryClassName` is enough. Outside the uberjar add [JarFiles](./in-process-configuration.md#jarfiles) with the location of the formatter's jar file.
+
+```json
+"Formatter": {
+  "FactoryClassName": "com.amazonaws.sfc.formatter.CustomTargetFormatter"
+}
+```
 
 **Type:** [InProcessConfiguration](./in-process-configuration.md)
 
@@ -67,7 +77,7 @@ When a formatter is used, a template configured for that target is ignored.
 
 ### Metrics
 
-Defines the configuration settings for collecting and reporting metrics from the protocol adapter. This allows monitoring and measurement of the target adapter's performance and behavior using the specified metrics configuration parameters.
+Defines the configuration settings for collecting and reporting metrics from the target. This allows monitoring and measurement of the target adapter's performance and behavior using the specified metrics configuration parameters.
 
 Type: [MetricsSourceConfiguration](./metrics-source-configuration.md)
 
@@ -75,7 +85,7 @@ Type: [MetricsSourceConfiguration](./metrics-source-configuration.md)
 
 ### TargetServer
 
-Specifies the identifier of a remote server running the target as an IPC service. When configured, the target operates as an external service rather than within the SFC core process, communicating via gRPC. The server must be defined in the [TargetServers](./sfc-configuration.md#targetservers) configuration section and implement the ProtocolAdapterService interface. This enables distributed deployment of targets across different processes or machines.
+Specifies the identifier of a remote server running the target as an IPC service. When configured, the target operates as an external service rather than within the SFC core process, communicating via gRPC, and no [TargetTypes](./sfc-configuration.md#targettypes) entry is needed. The server must be defined in the [TargetServers](./sfc-configuration.md#targetservers) configuration section and implement the [TargetAdapterService](../sfc-extending.md#ipc-target-services) gRPC interface. [TargetType](#targettype) is still required. This enables distributed deployment of targets across different processes or machines.
 
 **Type**: String
 
@@ -88,27 +98,27 @@ For more information see [SFC Tuning](../sfc-tuning.md).
 
 **Type**: Int
 
-Default is 1000,
+Default is 1000
 
 ---
 ### TargetChannelTimeout
-Specifies the maximum time (in milliseconds) that the system will wait when attempting to write to the target's internal channel if it is at capacity. After this timeout period expires, the write operation will fail. The default timeout is 1000 milliseconds (1 second). This setting helps prevent indefinite blocking when the target channel becomes full.
+Specifies the maximum time (in milliseconds) that the system will wait when attempting to write to the target's internal channel if it is at capacity. After this timeout period expires, the write operation will fail. The default timeout is 10000 milliseconds (10 seconds). This setting helps prevent indefinite blocking when the target channel becomes full.
 
  For more information see [SFC Tuning](../sfc-tuning.md)
 
 **Type**: Int
 
-Default is 1000
+Default is 10000
 
 ---
 ### TargetType
-Identifies the specific type of target adapter to be used through a unique code (like "AWS-SQS" or "AWS-KINESIS"). For targets running in the SFC core process, this type must be registered in the [TargetTypes](./sfc-configuration.md#targettypes) configuration section. The type code helps the system instantiate the correct target implementation and validate its configuration parameters.
+Identifies the specific type of target adapter to be used through a unique code (like "AWS-SQS" or "AWS-KINESIS"). The value must be the type code of the target; the targets in this repository use AWS-IOT-CORE, AWS-FIREHOSE, AWS-KINESIS, AWS-LAMBDA, AWS-MSK, AWS-S3, AWS-S3-TABLES, AWS-SITEWISE, AWS-SITEWISEEDGE-TARGET, AWS-SNS, AWS-SQS, DEBUG-TARGET, FILE-TARGET, MQTT-TARGET, NATS-TARGET, OPCUA-TARGET, OPCUA-WRITER-TARGET, ROUTER and STORE-FORWARD. A target implementation only accepts targets of its own type. This property is required in every deployment mode. For targets running in the SFC core process (uberjar or in-process), the key of the target's entry in the [TargetTypes](./sfc-configuration.md#targettypes) configuration section is the same value; when [TargetServer](#targetserver) is set (IPC), no TargetTypes entry is needed. The type code helps the system instantiate the correct target implementation and validate its configuration parameters. All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
 
 **Type**: String
 
 ---
 ### Template
-Specifies the file path to an [Apache velocity](https://velocity.apache.org/)  template used for  [transforming the output data](../sfc-target-templates.md) target output data. This optional setting enables custom formatting of data before it is sent to the target. Available context variables include:
+Specifies the file path to an [Apache velocity](https://velocity.apache.org/)  template used for  [transforming the output data](../sfc-target-templates.md) of the target. This optional setting enables custom formatting of data before it is sent to the target. Available context variables include:
 
 - $schedule
 - $sources
@@ -118,11 +128,9 @@ Specifies the file path to an [Apache velocity](https://velocity.apache.org/)  t
 - names specified in ElementNames configuration
 - $tab (for inserting tab characters)
 
-Pathname to file containing an [Apache velocity](https://velocity.apache.org/) template that can be applied to [transform the output data](../sfc-target-templates.md) of the target.
-
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -132,7 +140,9 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
+
+Example templates (CSV, XML, YAML): [transformation-templates](../../examples/transformation-templates/README.md).
 
 **Type**: String
 
@@ -150,7 +160,7 @@ So with the default names for timestamp these fields will be named
 
 Type : Boolean
 
-Defaulf is false
+Default is false
 
 
 ---
@@ -168,7 +178,7 @@ Before (UnquoteNumericJsonValues: false)
 {"temperature": "75.2", "humidity": "45"}
 ```
 
-/After (UnquoteNumericJsonValues: true)
+After (UnquoteNumericJsonValues: true)
 ```json
 {"temperature": 75.2, "humidity": 45}
 ```
@@ -195,25 +205,24 @@ Before (UnquoteNumericJsonValues: false)
     },
     "AsArrayWhenBuffered": {
       "type": "boolean",
-      "default": false,
+      "default": true,
       "description": "Flag indicating if buffered data should be sent as an array"
     },
     "CredentialProviderClient": {
       "type": "string",
       "description": "Reference to a CredentialsClient defined in AwsIotCredentialProviderClients"
     },
-    "Formatter" :{
-      "type": "object",
-      "properties": {
-        "MetricsWriter": {
-          "$ref": "#/definitions/InProcessConfiguration",
-          "description": "Custom output formatter configuration"
-        }
-      }
+    "Description": {
+      "type": "string",
+      "description": "Description of the target"
+    },
+    "Formatter": {
+      "$ref": "#/definitions/InProcessConfiguration",
+      "description": "Custom output formatter configuration"
     },
     "TargetServer": {
       "type": "string",
-      "description": "Reference to a TargetServer defined in TargetServers"
+      "description": "Reference to a TargetServer defined in TargetServers, runs the target as an IPC service"
     },
     "TargetChannelSize": {
       "type": "integer",
@@ -227,11 +236,16 @@ Before (UnquoteNumericJsonValues: false)
     },
     "TargetType": {
       "type": "string",
-      "description": "Reference to a TargetType defined in TargetTypes"
+      "description": "Type code of the target (e.g. AWS-SQS), in uberjar and in-process mode also the key of the TargetTypes entry"
     },
     "Template": {
       "type": "string",
       "description": "Template for target output formatting"
+    },
+    "TemplateEpochTimestamp": {
+      "type": "boolean",
+      "default": false,
+      "description": "Flag indicating if epoch timestamp values are added to the data used by the template"
     },
     "UnquoteNumericJsonValues": {
       "type": "boolean",
@@ -243,21 +257,7 @@ Before (UnquoteNumericJsonValues: false)
       "description": "Configuration for metrics collection"
     }
   },
-  "oneOf": [
-    {
-      "required": ["TargetType"],
-      "not": {
-        "required": ["TargetServer"]
-      }
-    },
-    {
-      "required": ["TargetServer"],
-      "not": {
-        "required": ["TargetType"]
-      }
-    }
-  ],
-  "additionalProperties": false
+  "required": ["TargetType"]
 }
 
 ```
@@ -268,33 +268,33 @@ Before (UnquoteNumericJsonValues: false)
 
 **<u>Note: TargetConfigurations always are instances of extended types with specific additional properties for the implementation of that type of target adapter.</u>**
 
-Basic in-process configuration with local TargetType (not requiring AWS credentials)
+Basic configuration of a target running in the SFC core process (uberjar or in-process) with a local TargetType (not requiring AWS credentials)
 
 ```json
 {
-  "TargetType": "TargetTypeName"
+  "TargetType": "DEBUG-TARGET"
 }
 ```
 
 
 
-Basic in-process configuration with TargetType:
+Basic configuration of a target running in the SFC core process with an AWS TargetType and a credential provider client:
 
 ```json
 {
-  "TargetType": "TargetTypeName",
+  "TargetType": "AWS-SQS",
   "CredentialProviderClient": "IotCredentialsClientName"
-  
 }
 ```
 
 
 
-Configuration with TargetServer, does not need target-type:
+Configuration with TargetServer, target running as an IPC service (TargetType is still required, no TargetTypes entry is needed):
 
 ```json
 {
-  "TargetServer": "TrargetServerName",
+  "TargetType": "AWS-S3",
+  "TargetServer": "S3TargetServer",
   "CredentialProviderClient": "IotCredentialsClientName"
 }
 ```

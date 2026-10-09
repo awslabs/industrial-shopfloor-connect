@@ -8,11 +8,12 @@
     "DataType": "WORD[2]"
   },
   "DoubleWord": {
-    "AccessPoint": "D4"
+    "AccessPoint": "D4",
+    "DataType": "DOUBLEWORD"
   },
   "DoubleWord2": {
     "AccessPoint": "D6",
-    "Size" : 2
+    "DataType": "DOUBLEWORD[2]"
   },
   "String32": {
     "AccessPoint": "D16",

@@ -8,9 +8,8 @@ repositories {
     mavenCentral()
 }
 
-val kotlinVersion = "2.2.0"
+val kotlinVersion = "2.4.20"
 
-val jvmTarget = "1.8"
 val junitVersion = "5.10.1"
 
 dependencies {
@@ -23,30 +22,26 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-kotlin{
-    jvmToolchain(8)
+// The product targets Java 17 and is built by whatever JDK runs Gradle, 17 or newer. --release and
+// -Xjdk-release compile against the Java 17 API, so a newer JDK cannot leak newer API calls into the
+// product. No toolchain is requested, so nothing is downloaded.
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17 // must match Kotlin's jvmTarget
 }
 
-tasks.compileJava {
-    sourceCompatibility = jvmTarget
-    targetCompatibility = jvmTarget
-}
-
-tasks.compileTestJava {
-    sourceCompatibility = jvmTarget
-    targetCompatibility = jvmTarget
-}
-
-tasks.withType<JavaCompile> {
-    options.compilerArgs.addAll(listOf("-source", jvmTarget, "-target",  jvmTarget))
+tasks.withType<JavaCompile>().configureEach {
+    options.release.set(17)
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
     compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_1_8)
-        freeCompilerArgs.set(listOf("-opt-in=kotlin.time.ExperimentalTime", "-opt-in=kotlin.ExperimentalUnsignedTypes"))
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        freeCompilerArgs.set(listOf("-Xjdk-release=17",
+            "-opt-in=kotlin.time.ExperimentalTime", "-opt-in=kotlin.ExperimentalUnsignedTypes"))
     }
 }
+
 tasks.test {
     useJUnitPlatform()
     testLogging {

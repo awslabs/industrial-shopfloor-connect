@@ -4,24 +4,66 @@
 
 The SFC target adapter for Amazon [Simple Queue Service](https://aws.amazon.com/sqs/) (SQS) enables sending collected data to SQS queues.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `AWS-SQS` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "AWS-SQS": {
-      "JarFiles" : ["<location of deployment>/aws-sqs-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.sqs.AwsSqsTargetWriter"
-   }
+"TargetTypes": {
+  "AWS-SQS": { "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter" }
 }
 ```
 
-## 
+**In-process** - module bundle `aws-sqs-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"TargetTypes": {
+  "AWS-SQS": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/aws-sqs-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "SqsTarget": {
+    "TargetType": "AWS-SQS",
+    "TargetServer": "SqsTargetServer"
+  }
+},
+"TargetServers": {
+  "SqsTargetServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+aws-sqs-target/bin/aws-sqs-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\aws-sqs-target\lib\*" com.amazonaws.sfc.awssqs.AwsSqsTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.awssqs.AwsSqsTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.awssqs.AwsSqsTargetService -port 50001`).
+
+**Examples:** uberjar: [uberjar-sim-sqs](../../examples/uberjar-sim-sqs/README.md) · all: [examples catalog](../examples/README.md)
 
 ## AwsSqsTargetConfiguration
 
 AwsSqsTargetConfiguration extends the type [TargetConfiguration](../core/target-configuration.md) with specific configuration data for sending data to an SQS queue. The Targets configuration element can contain entries of this type; the TargetType of these entries must be set to **"AWS-SQS"**.
 
-Requires IAM permission `sqs:SendMessageBatch` for the receiving queue.
+Requires IAM permission `sqs:SendMessage` on the queue (it also authorizes SendMessageBatch).
 
 - [Schema](#awssqstargetconfiguration-schema)
 - [Examples](#awssqstargetconfiguration-examples)
@@ -50,9 +92,11 @@ Default is 10, maximum is 10
 ### Compression
 Specifies the compression algorithm used for message payloads.  Consider the overhead of base64 encoding when choosing compression, as it may offset compression benefits for small payloads.
 
+A compressed message body is the JSON object `{"compression": "GZIP", "payload": "<base64>"}` (`"ZIP"` for Zip compression); consumers decode the base64 `payload` and decompress it.
+
 **Type**:  String
 
-Possible valuesL
+Possible values:
 
 - "None" (Default)
 - "GZip"
@@ -83,14 +127,14 @@ https://docs.aws.amazon.com/vpc/latest/privatelink/aws-services-privatelink-supp
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
 ---
 
 ### Interval
-The time interval in milliseconds that triggers sending buffered messages to the SQS queue, even if the [batch size](#batchsize) hasn't been reached. When not specified, messages are only sent when the batch size limit is reached.
+Time in milliseconds without new data after which a partial batch is sent to the SQS queue, even if the [batch size](#batchsize) hasn't been reached. The timer restarts with every record, so while records keep arriving more often than this interval, it does not trigger a send.
 
 **Type**: Integer
 
@@ -100,6 +144,8 @@ Optional, if not set only [BatchSize](#batchsize) is used
 ---
 ### QueueUrl
 The URL of the Amazon SQS queue where messages will be sent. This is the unique identifier for the queue, provided by AWS when the queue is created, in the format "https://sqs.{region}.amazonaws.com/{account-id}/{queue-name}".
+
+Standard queues only: no MessageGroupId is sent, so a FIFO (`.fifo`) queue rejects every message.
 
 **Type**: String
 
@@ -127,7 +173,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -137,7 +183,7 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
 
@@ -201,7 +247,7 @@ Configuration using CredentialProviderClient.
   "TargetType" : "AWS-SQS", 
   "QueueUrl": "https://sqs.us-west-2.amazonaws.com/123456789012/BatchQueue",
   "Region": "us-west-2",
-  "BatchSize": 100,
+  "BatchSize": 10,
   "Interval": 10000,
   "Compression": "GZip",
   "CredentialProviderClient": "aws-credentials-provider"
@@ -215,7 +261,7 @@ Configuration using  default AWS SDK credential provider chain.
   "TargetType" : "AWS-SQS", 
   "QueueUrl": "https://sqs.us-west-2.amazonaws.com/123456789012/BatchQueue",
   "Region": "us-west-2",
-  "BatchSize": 100,
+  "BatchSize": 10,
   "Interval": 10000,
   "Compression": "GZip"
 }

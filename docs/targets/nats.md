@@ -2,18 +2,62 @@
 
 
 
-The NATS target adapter enables the AWS IoT SiteWise Connector (SFC) to publish data to subjects on a [NATS](https://nats.io/) server.The adapter provides configurable options for connection management, subject naming, and message delivery guarantees
+The NATS target adapter enables Shop Floor Connectivity (SFC) to publish data to subjects on a [NATS](https://nats.io/) server. The adapter provides configurable options for connection management, subject naming, and message delivery guarantees.
 
-In order to use this target as in [in-process](../sfc-running-targets.md#running-targets-in-process) type target the type must be added to the [TargetTypes](../core/sfc-configuration.md#TargetTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this target
+
+`TargetType` is `NATS-TARGET` in every deployment mode. In the uberjar and in-process modes the `TargetTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Target types and classes](../sfc-running-targets.md#target-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"TargetTypes" :{
-   "NATS-TARGET": {
-      "JarFiles" : ["<location of deployment>/nats-target/lib"],
-      "FactoryClassName": "com.amazonaws.sfc.natstarget.NatsTargetWriter"
-   }
+"TargetTypes": {
+  "NATS-TARGET": { "FactoryClassName": "com.amazonaws.sfc.natstarget.NatsTargetWriter" }
 }
 ```
+
+**In-process** - module bundle `nats-target` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"TargetTypes": {
+  "NATS-TARGET": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/nats-target/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.natstarget.NatsTargetWriter"
+  }
+}
+```
+
+**IPC** - no `TargetTypes`; the target runs as its own service:
+
+```json
+"Targets": {
+  "NatsTarget": {
+    "TargetType": "NATS-TARGET",
+    "TargetServer": "NatsTargetServer"
+  }
+},
+"TargetServers": {
+  "NatsTargetServer": { "Address": "localhost", "Port": 50001 }
+}
+```
+
+Start the service before SFC, on the port of its `TargetServers` entry:
+
+**Linux / macOS**
+
+```shell
+nats-target/bin/nats-target -port 50001
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\nats-target\lib\*" com.amazonaws.sfc.natstarget.NatsTargetService -port 50001
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.natstarget.NatsTargetService -port 50001` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.natstarget.NatsTargetService -port 50001`).
+
+**Examples:** none yet - start from [Quickstart step 2](../../README.md#2-helloworld-simulator-example) and swap in this component. All: [examples catalog](../examples/README.md)
 
 
 
@@ -45,6 +89,7 @@ NatsTargetConfiguration extends the type  TargetConfiguration with specific conf
 - [PublishTimeout](#publishtimeout)
 - [SubjectName](#subjectname)
 - [Template](#template)
+- [WarnAlternateSubjectName](#warnalternatesubjectname)
 
 ---
 ### AlternateSubjectName
@@ -63,7 +108,7 @@ Batching is triggered when any configured threshold (BatchCount, [BatchSize](#ba
 ---
 ### BatchInterval
 
-The maximum time in milliseconds to hold messages in the buffer before publishing them as a batch to the NATS subject, regardless of whether [BatchSize](#batchcount) or [BatchCount](#batchcount) limits have been reached.
+The maximum time in milliseconds to hold messages in the buffer before publishing them as a batch to the NATS subject, regardless of whether [BatchSize](#batchsize) or [BatchCount](#batchcount) limits have been reached.
 
 Batching is triggered when any configured threshold ([BatchCount](#batchcount), [BatchSize](#batchsize), or BatchInterval) is reached
 
@@ -99,7 +144,7 @@ Possible values:
 
 Configuration allows for custom formatting of data written by a target. A [custom formatter](../sfc-extending.md#custom-formatters), implemented as a JVM class, converts a sequence of target data messages into a specific format and returns the formatted data as an array of bytes.
 
-When a formatter is used, a [template](#template) configured for that target is ignored.
+Formatter and [Template](#template) are mutually exclusive; setting both is a configuration error.
 
 **Type:** [InProcessConfiguration](../core/in-process-configuration.md)
 
@@ -130,9 +175,9 @@ Defines the connection parameters and settings for the NATS server where data wi
 
 The maximum time in seconds to wait for a message to be published to the NATS server before timing out.
 
-**Type**: Long
+**Type**: Int
 
-Default is 10 seconds
+Default is 10 seconds. A configured value currently has no effect.
 
 ---
 ### SubjectName
@@ -180,7 +225,7 @@ Pathname to file containing an [Apache velocity](https://velocity.apache.org/) t
 
 The following [Velocity tools](https://velocity.apache.org/tools/3.1/tools-summary.html) can be used in the transformation template:
 
-- $datetool
+- $date
 - $collection
 - $context
 - $math
@@ -190,9 +235,17 @@ Additional epoch timestamp values can be added to the data used for the transfor
 
 For targets where the data does not require specific output format, the data is serialized as [JSON data](../sfc-data-format.md#sfc-output-data-schemas).
 
-When a custom [formatter](#formatter) is configured for a target then this property is ignored.
+Template and a custom [formatter](#formatter) are mutually exclusive; setting both for a target is a configuration error.
 
 **Type**: String
+
+---
+### WarnAlternateSubjectName
+Controls whether a warning is logged when placeholders in the [SubjectName](#subjectname) cannot be resolved and there is no usable [AlternateSubjectName](#alternatesubjectname) (none is configured, or it has unresolved placeholders as well).
+
+**Type**: Boolean
+
+Default is true
 
 ---
 
@@ -226,7 +279,7 @@ When a custom [formatter](#formatter) is configured for a target then this prope
         },
         "BatchSize": {
           "type": "integer",
-          "description": "Maximum size of batched messages in bytes"
+          "description": "Maximum size of batched messages in KB"
         },
         "Compression": {
           "type": "string",
@@ -236,7 +289,7 @@ When a custom [formatter](#formatter) is configured for a target then this prope
         },
         "MaxPayloadSize": {
           "type": "integer",
-          "description": "Maximum size of message payload in bytes"
+          "description": "Maximum size of message payload in KB"
         },
         "NatsServer": {
           "$ref": "#/definitions/NatsServerConfiguration",
@@ -244,11 +297,16 @@ When a custom [formatter](#formatter) is configured for a target then this prope
         },
         "PublishTimeout": {
           "type": "integer",
-          "description": "Timeout for publish operations in milliseconds"
+          "description": "Timeout for publish operations in seconds"
         },
         "SubjectName": {
           "type": "string",
           "description": "Primary subject name for publishing"
+        },
+        "WarnAlternateSubjectName": {
+          "type": "boolean",
+          "description": "Whether to warn when a subject name cannot be resolved",
+          "default": true
         }
       },
       "required": ["NatsServer", "SubjectName"]
@@ -260,8 +318,18 @@ When a custom [formatter](#formatter) is configured for a target then this prope
 
 ### NatsTargetConfiguration Examples
 
+To try the target, replace the `DebugTarget` of [Quickstart step 2](../../README.md#2-helloworld-simulator-example) with this entry (also in the schedule's `Targets`) and add the uberjar `TargetTypes` entry from [Deploy this target](#deploy-this-target). It publishes every record to the subject `sfc.demo` of a NATS server on the same host, for example `nats-server` on port 4222:
+
 ```json
-  "TargetType" : "NATS-TARGET"
+"Targets": {
+  "NatsTarget": {
+    "TargetType": "NATS-TARGET",
+    "SubjectName": "sfc.demo",
+    "NatsServer": {
+      "Url": "nats://127.0.0.1:4222"
+    }
+  }
+}
 ```
 
 Example 1 - Basic Configuration:
@@ -273,7 +341,7 @@ Example 1 - Basic Configuration:
   "NatsServer": {
     "Url": "nats://nats.example.com:4222",
     "ConnectRetries": 5,
-    "WaitAfterConnectError": 10000
+    "WaitAfterConnectError": 10
   },
   "Compression": "None"
 }
@@ -283,6 +351,7 @@ Batched Publishing Configuration:
 
 ```json
 {
+  "TargetType" : "NATS-TARGET",
   "SubjectName": "metrics.production",
   "BatchCount": 100,
   "BatchSize": 128,
@@ -295,12 +364,13 @@ Batched Publishing Configuration:
 
 
 
-Dynamic subject names based on target- and metadata values
+Dynamic subject names based on target- and metadata values. NATS separates subject tokens with `.`, so build the levels with dots:
 
 ```json
 {
-  "SubjectName": "data/%location%/%line%/%source%",
-  "AlternateSubjectName": "data/sensors",
+  "TargetType" : "NATS-TARGET",
+  "SubjectName": "data.%location%.%line%.%source%",
+  "AlternateSubjectName": "data.sensors",
   "WarnAlternateSubjectName": true,
   "BatchCount": 100,
   "BatchSize": 128,
@@ -387,10 +457,16 @@ If a Password is configured then the [Username](#username) must be configured as
 ### Tls
 TLS configuration settings for secure communication with the NATS server.
 
-From the [NATS-docs](
-): *While authentication limits which clients can connect, TLS can be used to encrypt traffic between client/server and check the server's identity. Additionally - in the most secure version of TLS with NATS - the server can be configured to verify the client's identity, thus authenticating it. When started in TLS mode, a nats-server will require all clients to connect with TLS. Moreover, if configured to connect with TLS, client libraries will fail to connect to a server without TLS.*
+From the [NATS docs](https://docs.nats.io/using-nats/developer/connecting/tls): *While authentication limits which clients can connect, TLS can be used to encrypt traffic between client/server and check the server's identity. Additionally - in the most secure version of TLS with NATS - the server can be configured to verify the client's identity, thus authenticating it. When started in TLS mode, a nats-server will require all clients to connect with TLS. Moreover, if configured to connect with TLS, client libraries will fail to connect to a server without TLS.*
 
-**Type**: [TlsConfiguration](../core/certificate-configuration.md)
+**Type**: TlsConfiguration, an object with these keys:
+
+- `Certificate`: path to the client certificate file
+- `PrivateKey`: path to the private key file of the client certificate
+- `RootCA`: path to the CA certificate file used to verify the server
+- `SslServerCertificate`: optional, path to a server certificate file that is trusted in addition to `RootCA`
+
+`Certificate` and `PrivateKey` are required when `Tls` is set. The target trusts only `RootCA` and `SslServerCertificate`, not the Java default CAs, so set at least one of them.
 
 
 https://docs.nats.io/using-nats/developer/connecting/tls
@@ -414,7 +490,7 @@ https://docs.nats.io/using-nats/developer/connecting/token
 ### Url
 Server URL(s) for connecting to the NATS server.
 
-The schema for the url can be `nats://` or `tls://`. If the scheme is "tls:" then
+One or more comma-separated URLs with the scheme `nats://`, `tls://` or `ws://`. If the scheme is "tls:" then
 the "Tls" property for the server **could** also be set to specify the required key and certificates - for establishing `mTLS` secured auth.
 
 
@@ -433,13 +509,6 @@ Username and [password](#password) should not be included as clear text in the c
 https://docs.nats.io/using-nats/developer/connecting/userpass
 
 If a Username is configured then the [Password](#password) must be configured as well.
-
-**Type**: String
-
-
-https://docs.nats.io/using-nats/developer/connecting/userpass
-
-If a Username is configured then the Password must be configured as well.
 
 
 ---
@@ -493,7 +562,7 @@ Default = 10
     },
     "WaitAfterConnectError": {
       "type": "integer",
-      "description": "Wait time in milliseconds after connection error"
+      "description": "Wait time in seconds after a connection error, minimum 1"
     }
   },
   "required": ["Url"]
@@ -503,20 +572,15 @@ Default = 10
 
 ### NatsServerConfiguration Examples
 
-```json
-"TargetType" : "NATS-TARGET"
-```
-
 Basic Configuration:
 
 ```json
 {
-  "TargetType" : "NATS-TARGET",
   "Url": "nats://localhost:4222",
   "Username": "${user}",
   "Password": "${password}",
   "ConnectRetries": 3,
-  "WaitAfterConnectError": 5000
+  "WaitAfterConnectError": 5
 }
 ```
 
@@ -528,11 +592,12 @@ Secure Configuration with TLS:
 {
   "Url": "nats://nats.example.com:4222",
   "Tls": {
-    "CertificateFile": "/path/to/client-cert.pem",
-    "PrivateKeyFile": "/path/to/private-key.pem"
+    "Certificate": "/path/to/client-cert.pem",
+    "PrivateKey": "/path/to/private-key.pem",
+    "RootCA": "/path/to/root-ca.pem"
   },
   "ConnectRetries": 5,
-  "WaitAfterConnectError": 10000
+  "WaitAfterConnectError": 10
 }
 ```
 
@@ -545,19 +610,18 @@ Token-Based Authentication:
   "Url": "nats://nats-server:4222",
   "Token": "${token}",
   "ConnectRetries": 3,
-  "WaitAfterConnectError": 3000
+  "WaitAfterConnectError": 3
 }
 ```
 
 
 
-Credentials File Configuration:
+Credentials File Configuration. Set only one of `NKeyFile` or `CredentialsFile`; with both, only the credentials file is used:
 
 ```json
 {
   "Url": "nats://prod.nats.com:4222",
-  "CredentialsFile": "/path/to/credentials.creds",
-  "NKeyFile": "/path/to/user.nkey"
+  "CredentialsFile": "/path/to/credentials.creds"
 }
 ```
 

@@ -75,7 +75,6 @@
     },
     "MskTarget": {
       "Active": true,
-      "CredentialProviderClient": "AwsIotClient",
       "TargetServer": "MskTargetServer",
       "TargetType": "AWS-MSK",
       "BootstrapBrokers": [
@@ -84,7 +83,8 @@
         "< HOSTNAME-3 >:9198"
       ],
       "TopicName": "< TOPIC >",
-      "Key": " KEY ",
+      "Key": "< KEY >",
+      "Interval": 1000,
       "Compression": "gzip",
       "Serialization": "json",
       "Acknowledgements": "all"

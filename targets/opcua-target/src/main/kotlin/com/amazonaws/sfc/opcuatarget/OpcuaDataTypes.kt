@@ -5,7 +5,7 @@
 package com.amazonaws.sfc.opcuatarget
 
 import com.amazonaws.sfc.data.JsonHelper
-import org.eclipse.milo.opcua.stack.core.Identifiers
+import org.eclipse.milo.opcua.stack.core.NodeIds
 import org.eclipse.milo.opcua.stack.core.types.builtin.*
 import java.time.Instant
 
@@ -18,24 +18,24 @@ class OpcuaDataTypes {
 
         fun asType(value: Any, type: NodeId): Any =
             when (type) {
-                Identifiers.Boolean -> toBoolean(value)
-                Identifiers.ByteString -> ByteString.of(value.toString().encodeToByteArray())
-                Identifiers.DateTime -> DateTime(Instant.parse(value.toString()))
-                Identifiers.Double -> toDouble(value)
-                Identifiers.ExpandedNodeId -> ExpandedNodeId.parse(value.toString())
-                Identifiers.Float -> toFloat(value)
-                Identifiers.Int16 -> toShort(value)
-                Identifiers.Int32 -> toInt(value)
-                Identifiers.Int64 -> toLong(value)
-                Identifiers.NodeId -> NodeId.parse(value.toString())
-                Identifiers.SByte -> toByte(value)
-                Identifiers.String -> value.toString()
-                Identifiers.Structure -> JsonHelper.gsonExtended().toJson(value)
-                Identifiers.Byte -> toByte(value)
-                Identifiers.UInt16 -> toShort(value)
-                Identifiers.UInt32 -> toInt(value)
-                Identifiers.UInt64 -> toLong(value)
-                Identifiers.XmlElement ->  XmlElement(value.toString())
+                NodeIds.Boolean -> toBoolean(value)
+                NodeIds.ByteString -> ByteString.of(value.toString().encodeToByteArray())
+                NodeIds.DateTime -> DateTime(Instant.parse(value.toString()))
+                NodeIds.Double -> toDouble(value)
+                NodeIds.ExpandedNodeId -> ExpandedNodeId.parse(value.toString())
+                NodeIds.Float -> toFloat(value)
+                NodeIds.Int16 -> toShort(value)
+                NodeIds.Int32 -> toInt(value)
+                NodeIds.Int64 -> toLong(value)
+                NodeIds.NodeId -> NodeId.parse(value.toString())
+                NodeIds.SByte -> toByte(value)
+                NodeIds.String -> value.toString()
+                NodeIds.Structure -> JsonHelper.gsonExtended().toJson(value)
+                NodeIds.Byte -> toByte(value)
+                NodeIds.UInt16 -> toShort(value)
+                NodeIds.UInt32 -> toInt(value)
+                NodeIds.UInt64 -> toLong(value)
+                NodeIds.XmlElement ->  XmlElement(value.toString())
                 else -> value
 
             }
@@ -164,7 +164,7 @@ class OpcuaDataTypes {
                 is UInt -> value.toLong()
                 is Short -> value.toLong()
                 is UShort -> value.toLong()
-                is Long -> value.toLong()
+                is Long -> value
                 is ULong -> value.toLong()
                 is Float -> value.toInt().toLong()
                 is Double -> value.toInt().toLong()
@@ -181,7 +181,7 @@ class OpcuaDataTypes {
             is Short -> value.toULong()
             is UShort -> value.toULong()
             is Long -> value.toULong()
-            is ULong -> value.toULong()
+            is ULong -> value
             is Float -> value.toInt().toULong()
             is Double -> value.toInt().toULong()
             else -> throw TypeConversionException("Cannot convert $value to ULong")
@@ -197,7 +197,7 @@ class OpcuaDataTypes {
             is UShort -> value.toFloat()
             is Long -> value.toFloat()
             is ULong -> value.toFloat()
-            is Float -> value.toFloat()
+            is Float -> value
             is Double -> value.toFloat()
             else -> throw TypeConversionException("Cannot convert $value to Float")
         }
@@ -213,7 +213,7 @@ class OpcuaDataTypes {
                 is UShort -> value.toDouble()
                 is Long -> value.toDouble()
                 is ULong -> value.toDouble()
-                is Double -> value.toDouble()
+                is Double -> value
                 is Float -> value.toDouble()
                 else -> throw TypeConversionException("Cannot convert $value to Double")
             }

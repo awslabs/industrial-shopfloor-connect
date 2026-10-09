@@ -1,17 +1,61 @@
 # SQL Adapter Configuration
 
-The SQL adapter for AWS IoT SiteWise Connector (SFC) enables data ingestion from SQL databases using JDBC connections. It allows you to execute custom SQL queries to retrieve data from various SQL databases like MySQL, PostgreSQL, Microsoft SQL Server, and Oracle. 
+The SQL adapter for Shop Floor Connectivity (SFC) enables data ingestion from SQL databases using JDBC connections. It allows you to execute custom SQL queries to retrieve data from MySQL, MariaDB, PostgreSQL, Microsoft SQL Server and Oracle databases. 
 
-In order to use this adapter as in [in-process](../sfc-running-adapters.md#running-protocol-adapters-in-process) type adapter the type must be added to the [AdapterTypes](../core/sfc-configuration.md#adaptertypes)(../core/sfc-configuration.md#AdapterTypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this adapter
+
+`AdapterType` is `SQL` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"AdapterTypes" :{
-  "SQL" : {
-    "JarFiles" : ["<location of deployment>/sql/lib"]
-  },
-  "FactoryClassName" : "com.amazonaws.sfc.sql.SqlAdapter"
+"AdapterTypes": {
+  "SQL": { "FactoryClassName": "com.amazonaws.sfc.sql.SqlAdapter" }
 }
 ```
+
+**In-process** - module bundle `sql` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"AdapterTypes": {
+  "SQL": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/sql/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.sql.SqlAdapter"
+  }
+}
+```
+
+**IPC** - no `AdapterTypes`; the adapter runs as its own service:
+
+```json
+"ProtocolAdapters": {
+  "SqlAdapter": {
+    "AdapterType": "SQL",
+    "AdapterServer": "SqlAdapterServer"
+  }
+},
+"AdapterServers": {
+  "SqlAdapterServer": { "Address": "localhost", "Port": 50000 }
+}
+```
+
+Start the service before SFC, on the port of its `AdapterServers` entry:
+
+**Linux / macOS**
+
+```shell
+sql/bin/sql -port 50000
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\sql\lib\*" com.amazonaws.sfc.sql.SqlProtocolService -port 50000
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.sql.SqlProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.sql.SqlProtocolService -port 50000`).
+
+**Examples:** uberjar: [uberjar-sql-file](../../examples/uberjar-sql-file/README.md) · all: [examples catalog](../examples/README.md)
 
 **Configuration:**
 
@@ -72,7 +116,7 @@ The number of items in the list must match the number of "?" placeholders in the
 
 ---
 ### SqlReadStatement
-The SqlReadStatement property defines the SQL query or stored procedure call that will be executed to retrieve data from the database. This can be either a SELECT statement or a stored procedure name. The statement is responsible for implementing the appropriate data retrieval strategy, such as marking processed records or implementing a mechanism to prevent duplicate reads. For example, the query might include logic to only select unprocessed records and update their status after reading, or delete records once they've been processed.
+The SqlReadStatement property defines the SQL statement that will be executed to retrieve data from the database. It must be a single statement that returns a result set, such as a SELECT, because the adapter runs it with JDBC `executeQuery`. Values for the statement are passed as "?" placeholders with [SqlReadParameters](#sqlreadparameters); named parameters such as ":machineId" are not supported. The statement is responsible for implementing the appropriate data retrieval strategy, such as marking processed records or implementing a mechanism to prevent duplicate reads. For example, the statement might only select unprocessed records and update their status, or delete records once they've been read, as long as it returns the rows it read as a result set.
 
 **Type**: String
 
@@ -110,11 +154,9 @@ The SqlReadStatement property defines the SQL query or stored procedure call tha
           "default": false
         },
         "SqlReadParameters": {
-          "type": "object",
-          "description": "Parameters to be used in the SQL read statement",
-          "additionalProperties": {
-            "type": "string"
-          }
+          "type": "array",
+          "description": "Values for the ? placeholders in the SQL read statement, in order",
+          "items": {}
         },
         "SqlReadStatement": {
           "type": "string",
@@ -135,10 +177,8 @@ The SqlReadStatement property defines the SQL query or stored procedure call tha
   "ProtocolAdapter": "SqlAdapter",
   "Description": "Process monitoring metrics",
   "AdapterDbServer": "MainDB",
-  "SqlReadStatement": "SELECT timestamp, temperature, pressure, flow_rate FROM process_metrics WHERE machine_id = :machineId",
-  "SqlReadParameters": {
-    "machineId": "MACHINE001"
-  },
+  "SqlReadStatement": "SELECT timestamp, temperature, pressure, flow_rate FROM process_metrics WHERE machine_id = ?",
+  "SqlReadParameters": ["MACHINE001"],
   "SingleRow": true,
   "Channels": {
     "Temperature": {
@@ -188,7 +228,9 @@ The ColumnNames property specifies which columns from the SQL query result set s
 
 The default value  *  includes all columns from the result set
 
+Column names are matched case-insensitively; with "*" the keys are the lowercase column names.
 
+> Columns that the JDBC driver reports as type DATE or TIME cannot be converted yet and make the read fail; convert them in the SELECT to a date-time type that the driver reports as TIMESTAMP, or to text. A NULL value reads as 0 in integer and floating-point columns and makes the read fail in NUMERIC, DECIMAL and TIMESTAMP columns; use COALESCE for nullable columns.
 
 **Type**: String[]
 
@@ -214,10 +256,10 @@ Default value is ["*"]
           "items": {
             "type": "string"
           },
-          "minItems": 1
+          "minItems": 1,
+          "default": ["*"]
         }
-      },
-      "required": ["ColumnNames"]
+      }
     }
   ]
 }
@@ -269,7 +311,7 @@ The DbServers property defines a collection of database server configurations th
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "type": "object",
-  "description": "Configuration for SNMP adapter with database servers",
+  "description": "Configuration for SQL adapter with database servers",
   "allOf": [
     {
       "$ref": "#/definitions/AdapterConfiguration"
@@ -299,17 +341,17 @@ Basic configuration with single database:
 
 ```json
 {
-  "Name": "SnmpLoggingAdapter",
-  "Description": "SNMP adapter with database logging",
+  "AdapterType": "SQL",
+  "Description": "Process database",
   "DbServers": {
     "MainDB": {
-      "DatabaseType": "PostgreSQL",
+      "DatabaseType": "postgresql",
       "Host": "localhost",
       "Port": 5432,
-      "DatabaseName": "snmp_logs",
-      "UserName": "snmp_user",
-      "Password": "secure_password",
-      "ConnectTimeout": 30
+      "DatabaseName": "process_db",
+      "UserName": "${user}",
+      "Password": "${password}",
+      "ConnectTimeout": 30000
     }
   }
 }
@@ -321,7 +363,7 @@ Example 2 - Multi-database configuration:
 
 ```json
 {
-  "AdapterType": "SqlAdapterType",
+  "AdapterType": "SQL",
   "DbServers": {
     "PrimaryDB": {
       "DatabaseType": "mysql",
@@ -330,8 +372,8 @@ Example 2 - Multi-database configuration:
       "DatabaseName": "primary-db",
       "UserName": "${user}",
       "Password": "${password}",
-      "ConnectTimeout": 30,
-      "InitSql": "init.sql"
+      "ConnectTimeout": 30000,
+      "InitScript": "init.sql"
     },
     "BackupDB": {
       "DatabaseType": "mysql",
@@ -340,8 +382,8 @@ Example 2 - Multi-database configuration:
       "DatabaseName": "backup-db",
       "UserName": "${user}",
       "Password": "${password}",
-      "ConnectTimeout": 30,
-      "InitSql": "init.sql"
+      "ConnectTimeout": 30000,
+      "InitScript": "init.sql"
     }
   }
 }
@@ -373,6 +415,8 @@ DbServerConfiguration defines the connection settings and authentication details
 - [Password](#password)
 - [Port](#port)
 - [UserName](#username)
+- [WaitAfterConnectError](#waitafterconnecterror)
+- [WaitAfterReadError](#waitafterreaderror)
 
 ---
 ### ConnectTimeout
@@ -388,7 +432,7 @@ The DatabaseName property specifies the name of the database to connect to, or i
 
 ---
 ### DatabaseType
-The DatabaseType property specifies which JDBC driver should be used to connect to the database, with supported options being: 
+The DatabaseType property specifies which JDBC driver should be used to connect to the database, with supported options being (lowercase, exactly as listed): 
 
 - "postgresql"
 - "mariadb"
@@ -397,6 +441,12 @@ The DatabaseType property specifies which JDBC driver should be used to connect 
 - "oracle"
 
  This setting determines which database-specific driver and connection protocol will be used for establishing the database connection. 
+
+The JDBC drivers for all five types ship with the adapter (the `sql` module bundle and the uberjar), so there is nothing to install; other databases cannot be added through configuration. In the in-process mode the adapter loads the driver for each used DatabaseType from the `JarFiles` of the `AdapterTypes` entry `SQL`.
+
+For "sqlserver", TLS is enabled and the server certificate is trusted without validation.
+
+**SQL Server on Windows:** only SQL Server authentication ([UserName](#username) and [Password](#password)) is supported, not Windows integrated authentication (`integratedSecurity`). Enable SQL Server authentication on the server and create a SQL login for SFC.
 
 
 **Type**: String
@@ -409,13 +459,13 @@ The Host property specifies the hostname or IP address of the database server to
 
 ---
 ### InitScript
-The InitScript property specifies the path to a SQL script file that will be executed automatically when a new database connection is established. This script runs before any other database operations, but it cannot contain placeholders for secrets or environment variables. Note that if both InitScript and [InitSql](#initsql) properties are defined, the InitSql property will take precedence.
+The InitScript property specifies the path to a SQL script file that is executed when the adapter starts, before the sources read, on a separate connection that is closed afterwards. Session-level settings made by the script therefore do not carry over to the connections used for reads. The script cannot contain placeholders for secrets or environment variables. A relative path is resolved against the working directory of the process that runs the adapter. Note that if both InitScript and [InitSql](#initsql) properties are defined, the InitSql property will take precedence.
 
 **Type**: String
 
 ---
 ### InitSql
-The InitSql property allows you to specify SQL commands that will be executed immediately after establishing a database connection. Unlike InitScript, InitSql accepts the SQL commands directly as text rather than from a file, and it supports placeholders for secrets and environment variables. If both InitSql and [InitScript](#initscript) are configured, the InitSql commands will be executed instead of the InitScript.
+The InitSql property allows you to specify SQL commands that are executed when the adapter starts, in the same way as [InitScript](#initscript). Unlike InitScript, InitSql accepts the SQL commands directly as text rather than from a file, and it supports placeholders for secrets and environment variables. If both InitSql and [InitScript](#initscript) are configured, the InitSql commands will be executed instead of the InitScript.
 
 **Type**: String
 
@@ -427,9 +477,9 @@ The Password property specifies the authentication password used to connect to t
 
 ---
 ### Port
-The Port property specifies the TCP port number where the database server is listening for connections. 
+The Port property specifies the TCP port number where the database server is listening for connections. Required; there is no default.
 
-Port number for supported database servers are 3306 for MySQL/MariaDB, 1433 for SQL Server, 5432 for PostgreSQL, or 1521 for Oracle.
+The usual ports of the supported database servers are 3306 for MySQL/MariaDB, 1433 for SQL Server, 5432 for PostgreSQL, or 1521 for Oracle.
 
 **Type**: Integer
 
@@ -438,6 +488,22 @@ Port number for supported database servers are 3306 for MySQL/MariaDB, 1433 for 
 The UserName property specifies the database user account used to authenticate with the database server. For security best practices, it is strongly recommended to not store this username directly in the configuration, but instead use a placeholder that references a value stored in  [AWS Secrets manager](../core/secrets-manager-configuration.md), which provides secure, encrypted storage and management of database credentials.
 
 **Type**: String
+
+---
+### WaitAfterConnectError
+The WaitAfterConnectError property specifies how long (in milliseconds) a source pauses reading after a failed attempt to connect to the database server. It must be at least 1000 milliseconds.
+
+**Type**: Integer
+
+Default is 10000
+
+---
+### WaitAfterReadError
+The WaitAfterReadError property specifies how long (in milliseconds) a source pauses reading after a failed read.
+
+**Type**: Integer
+
+Default is 10000
 
 
 
@@ -451,8 +517,9 @@ The UserName property specifies the database user account used to authenticate w
   "properties": {
     "ConnectTimeout": {
       "type": "integer",
-      "description": "Connection timeout in seconds",
-      "minimum": 1
+      "description": "Connection timeout in milliseconds",
+      "minimum": 1000,
+      "default": 10000
     },
     "DatabaseName": {
       "type": "string",
@@ -461,7 +528,7 @@ The UserName property specifies the database user account used to authenticate w
     "DatabaseType": {
       "type": "string",
       "description": "Type of database server",
-      "enum": ["mysql", "postgresql", "sqlerver", "oracle", "mariadb"]
+      "enum": ["mysql", "postgresql", "sqlserver", "oracle", "mariadb"]
     },
     "Host": {
       "type": "string",
@@ -486,9 +553,20 @@ The UserName property specifies the database user account used to authenticate w
     "UserName": {
       "type": "string",
       "description": "Database username"
+    },
+    "WaitAfterConnectError": {
+      "type": "integer",
+      "description": "Time in milliseconds a source pauses after a failed connect",
+      "minimum": 1000,
+      "default": 10000
+    },
+    "WaitAfterReadError": {
+      "type": "integer",
+      "description": "Time in milliseconds a source pauses after a failed read",
+      "default": 10000
     }
   },
-  "required": ["DatabaseName", "DatabaseType", "Host", "UserName", "Password"]
+  "required": ["DatabaseName", "DatabaseType", "Host", "Port"]
 }
 
 ```
@@ -503,7 +581,7 @@ The UserName property specifies the database user account used to authenticate w
   "DatabaseName": "myapp_db",
   "UserName": "${user}",
   "Password": "${password}",
-  "ConnectTimeout": 30
+  "ConnectTimeout": 30000
 }
 
 ```

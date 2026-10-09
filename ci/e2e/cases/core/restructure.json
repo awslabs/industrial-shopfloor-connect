@@ -1,0 +1,697 @@
+{
+  "cases": [
+    {
+      "id": "CORE-RESTRUCT-01",
+      "title": "Decompose (nested, source default with channel opt-out) and Compose restructure the channel map; decomposed values lose the channel Metadata (known defect)",
+      "tier": "core",
+      "intent": "restructureChannels runs decompose, spread, compose in that order (ScheduleReader.kt:388-393). A decomposed Structure is replaced by one value per leaf, keyed '<channelID>.<field>' and recursing into nested maps (:407-421) - so 'st.a', 'st.b', 'st.n.x', not the channel Name 'Status'. Source-level Decompose applies to every channel unless the channel opts out (:395-398): src2.s1 is decomposed, src2.s2 stays a structure. Compose builds 'IO' from in0/out0, naming fields by channel Name or ID (:553-564), and removes the originals (:540-543). But the output writer looks channel Metadata up by the part before '/' (ScheduleWriter.kt:213-220), while decomposition uses '.', so 'st.a' finds no channel and its Metadata {unit: u} is dropped; an ordinary channel keeps its Metadata.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:388-398",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:405-468",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:517-564",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:207-221",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ChannelConfiguration.kt:114"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.sim.values",
+          "keys": [
+            "st.a",
+            "st.b",
+            "st.n.x",
+            "IO",
+            "plain"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": [
+            "sources",
+            "sim",
+            "values",
+            "st.a",
+            "value"
+          ],
+          "equals": 1,
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": [
+            "sources",
+            "sim",
+            "values",
+            "st.b",
+            "value"
+          ],
+          "equals": "x",
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": [
+            "sources",
+            "sim",
+            "values",
+            "st.n.x",
+            "value"
+          ],
+          "equals": 2.5,
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": [
+            "sources",
+            "sim",
+            "values",
+            "IO",
+            "value"
+          ],
+          "equals": {
+            "Input0": true,
+            "out0": false
+          },
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": [
+            "sources",
+            "sim",
+            "values",
+            "plain",
+            "value"
+          ],
+          "equals": 9,
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": [
+            "sources",
+            "sim",
+            "values",
+            "plain",
+            "metadata"
+          ],
+          "equals": {
+            "unit": "p"
+          }
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.src2.values",
+          "keys": [
+            "s1.p",
+            "s2"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": [
+            "sources",
+            "src2",
+            "values",
+            "s1.p",
+            "value"
+          ],
+          "equals": 1,
+          "strictTypes": true
+        },
+        {
+          "kind": "everyRecord",
+          "path": [
+            "sources",
+            "src2",
+            "values",
+            "s2",
+            "value"
+          ],
+          "equals": {
+            "q": 2
+          },
+          "strictTypes": true
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:220",
+        "summary": "Decomposed values are keyed '<id>.<field>' but the metadata lookup splits channel IDs on '/', so decomposed values lose the channel's Metadata",
+        "assertCurrent": [
+          {
+            "kind": "keysAbsent",
+            "paths": [
+              [
+                "sources",
+                "sim",
+                "values",
+                "st.a",
+                "metadata"
+              ],
+              [
+                "sources",
+                "sim",
+                "values",
+                "st.n.x",
+                "metadata"
+              ]
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "path": [
+              "sources",
+              "sim",
+              "values",
+              "st.a",
+              "metadata"
+            ],
+            "equals": {
+              "unit": "u"
+            }
+          },
+          {
+            "kind": "everyRecord",
+            "path": [
+              "sources",
+              "sim",
+              "values",
+              "st.n.x",
+              "metadata"
+            ],
+            "equals": {
+              "unit": "u"
+            }
+          }
+        ]
+      },
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-RESTRUCT-01",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ],
+              "src2": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Compose": {
+              "IO": [
+                "in0",
+                "out0"
+              ]
+            },
+            "Channels": {
+              "st": {
+                "Name": "Status",
+                "Decompose": true,
+                "Metadata": {
+                  "unit": "u"
+                },
+                "Simulation": {
+                  "SimulationType": "Structure",
+                  "Properties": {
+                    "a": {
+                      "SimulationType": "Constant",
+                      "DataType": "Int",
+                      "Value": 1
+                    },
+                    "b": {
+                      "SimulationType": "Constant",
+                      "DataType": "String",
+                      "Value": "x"
+                    },
+                    "n": {
+                      "SimulationType": "Structure",
+                      "Properties": {
+                        "x": {
+                          "SimulationType": "Constant",
+                          "DataType": "Double",
+                          "Value": 2.5
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "in0": {
+                "Name": "Input0",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": true
+                }
+              },
+              "out0": {
+                "Name": "out0",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Boolean",
+                  "Value": false
+                }
+              },
+              "plain": {
+                "Name": "plain",
+                "Metadata": {
+                  "unit": "p"
+                },
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "Int",
+                  "Value": 9
+                }
+              }
+            }
+          },
+          "src2": {
+            "Name": "src2",
+            "ProtocolAdapter": "SimAdapter",
+            "Decompose": true,
+            "Channels": {
+              "s1": {
+                "Name": "s1",
+                "Simulation": {
+                  "SimulationType": "Structure",
+                  "Properties": {
+                    "p": {
+                      "SimulationType": "Constant",
+                      "DataType": "Int",
+                      "Value": 1
+                    }
+                  }
+                }
+              },
+              "s2": {
+                "Name": "s2",
+                "Decompose": false,
+                "Simulation": {
+                  "SimulationType": "Structure",
+                  "Properties": {
+                    "q": {
+                      "SimulationType": "Constant",
+                      "DataType": "Int",
+                      "Value": 2
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "CORE-RESTRUCT-02",
+      "title": "Spread on a list of primitives removes the channel instead of spreading it (known defect)",
+      "tier": "core",
+      "intent": "The docs say Spread turns every element of a list into a separate value named '<name>.<index>' and removes the list (docs/core/channel-configuration.md:99-103). spreadChannelValues only creates entries for elements that are Maps (ScheduleReader.kt:494-498) but removes the list unconditionally (:503-505), so a list of numbers - a register block, a 3-element counter here - silently disappears from the output. (Spread of a list of structures cannot be produced by the simulator: a List simulation coerces items to a scalar DataType.) The unspread counter is the control and the record source.",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:471-512",
+        "docs/core/channel-configuration.md:99-103",
+        "adapters/simulator/src/main/kotlin/com/amazonaws/sfc/simulator/simulations/List.kt"
+      ],
+      "records": 3,
+      "timeoutSeconds": 60,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 3
+        },
+        {
+          "kind": "channelSequence",
+          "source": "sim",
+          "channel": "ctr",
+          "step": 1
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:495",
+        "summary": "Spread keeps only Map elements of a list but always removes the list, so a list of primitives vanishes",
+        "assertCurrent": [
+          {
+            "kind": "keySet",
+            "path": "sources.sim.values",
+            "keys": [
+              "ctr"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "path": [
+              "sources",
+              "sim",
+              "values",
+              "arr.0",
+              "value"
+            ],
+            "value": 0
+          },
+          {
+            "kind": "deepEquals",
+            "index": 0,
+            "path": [
+              "sources",
+              "sim",
+              "values",
+              "arr.2",
+              "value"
+            ],
+            "value": 2
+          },
+          {
+            "kind": "deepEquals",
+            "index": 1,
+            "path": [
+              "sources",
+              "sim",
+              "values",
+              "arr.0",
+              "value"
+            ],
+            "value": 3
+          }
+        ]
+      },
+      "priority": "P1",
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CORE-RESTRUCT-02",
+        "Version": 1,
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 100,
+            "Active": true,
+            "TimestampLevel": "None",
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "FileTarget"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "SimAdapter",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1
+                }
+              },
+              "arr": {
+                "Name": "arr",
+                "Spread": true,
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000,
+                  "Step": 1,
+                  "Size": 3
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "Active": true,
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1,
+            "Interval": 60
+          }
+        },
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimAdapterServer": {
+          "module": "simulator"
+        },
+        "FileTargetServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "SimAdapter": {
+            "AdapterServer": "SimAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "FileTarget": {
+            "TargetServer": "FileTargetServer"
+          }
+        },
+        "TargetServers": {
+          "FileTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

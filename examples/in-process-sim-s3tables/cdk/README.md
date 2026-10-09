@@ -78,11 +78,19 @@ Zooming re-queries the visible window at a finer bucket width server-side.
 - **Run the SFC pipeline first** — [`../sfc-to-s3tables`](../sfc-to-s3tables). It creates the table
   bucket, namespace and table with `AutoCreate: true`; this stack never creates them.
 - Node.js 20+, and **Docker running** — the query function is a container image with no zip fallback.
+  Windows: `winget install OpenJS.NodeJS.LTS`, and Docker Desktop in its default Linux-containers mode
+  (`winget install Docker.DockerDesktop`), because the function image is built for linux/amd64. If
+  PowerShell reports that running scripts is disabled when you type `npm` or `npx`, type `npm.cmd` or
+  `npx.cmd` instead.
+- The AWS CLI v2, used by `scripts/create-user.sh` (and the Windows commands that replace it) and to
+  delete the table bucket (Windows: `winget install Amazon.AWSCLI`).
 - `npx cdk bootstrap` once per account and region, for the container asset repository.
 - Deploy into the same region as the table bucket, or pass `-c tableBucketRegion=…`: DuckDB derives
   the S3 Tables endpoint from the ARN's region.
 
 ## Deploy
+
+**Linux / macOS**
 
 ```shell
 cd examples/in-process-sim-s3tables/cdk
@@ -92,6 +100,26 @@ npx cdk deploy
 # self sign-up is disabled, so create yourself an account
 ./scripts/create-user.sh you@example.com
 ```
+
+**Windows (PowerShell)**
+
+```powershell
+cd examples\in-process-sim-s3tables\cdk
+npm.cmd ci
+npx.cmd cdk deploy
+
+# self sign-up is disabled, so create yourself an account
+$Email = "you@example.com"
+$Password = '<your password>'
+$PoolId = aws cloudformation describe-stacks --stack-name SfcS3TablesDuckDbQueryApp --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text
+aws cognito-idp admin-create-user --user-pool-id $PoolId --username $Email --user-attributes "Name=email,Value=$Email" "Name=email_verified,Value=true" --message-action SUPPRESS
+aws cognito-idp admin-set-user-password --user-pool-id $PoolId --username $Email --password $Password --permanent
+```
+
+`create-user.sh` is a bash script, so the Windows block runs its `describe-stacks`, `admin-create-user`
+and `admin-set-user-password` calls directly. Choose a password of at least 12 characters with upper-
+and lower-case letters, a digit and a symbol; the single quotes keep a `$` in it literal. Without a
+password, `create-user.sh` generates and prints one.
 
 Then open the `SiteUrl` output and sign in. Outputs:
 
@@ -122,8 +150,11 @@ CDK context values; defaults in [`cdk.json`](cdk.json), override with `-c name=v
 | `stackName` | `SfcS3TablesDuckDbQueryApp` | |
 
 ```shell
-npx cdk deploy -c tableBucketNames=sfc-industrial-data-bucket,another-bucket
+npx cdk deploy -c "tableBucketNames=sfc-industrial-data-bucket,another-bucket"
 ```
+
+The quotes matter in PowerShell, which would otherwise split the value at the comma; the command is
+the same in both shells.
 
 ## Two things to know before enabling `allowFreeSql`
 
@@ -143,7 +174,7 @@ function URL — only IAM principals can reach it. A browser app in front of an 
 ## Cost
 
 Reading is cheap: no per-GB scan charge, CloudFront and Cognito have large free tiers, and the
-function bills only while a query runs. The expensive part is the **SFC writer** at a 250 ms
+function bills only while a query runs. The expensive part is the **SFC writer** at a 50 ms
 interval — see [the example README](../README.md#tuning-for-high-frequency-machine-data). Stop the
 pipeline when you are done.
 
@@ -154,20 +185,21 @@ npx cdk destroy
 ```
 
 Everything in the stack is removable, so a redeploy under the same name works; the distribution takes
-15–25 minutes to disappear. Two things survive:
+15–25 minutes to disappear. Three things survive:
+
+- The container image in the bootstrap ECR repository. Remove unused images with the command below;
+  `cdk gc` is still marked unstable, hence the flag.
+- The account-wide API Gateway CloudWatch role, kept on purpose because other APIs may use it.
+- The table bucket, which is outside this stack and refuses deletion while it holds tables. Delete it
+  as the [example's clean-up](../README.md#clean-up) describes.
 
 ```shell
-# the container image in the bootstrap ECR repo
-npx cdk gc
-
-# the table bucket, which is outside this stack and refuses deletion while it holds tables
-BUCKET_ARN=arn:aws:s3tables:us-west-2:111122223333:bucket/sfc-industrial-data-bucket
-aws s3tables delete-table --table-bucket-arn "$BUCKET_ARN" --namespace sfc --name sim
-aws s3tables delete-namespace --table-bucket-arn "$BUCKET_ARN" --namespace sfc
-aws s3tables delete-table-bucket --table-bucket-arn "$BUCKET_ARN"
+npx cdk gc --unstable=gc --type=ecr
 ```
 
 ## Development
+
+**Linux / macOS**
 
 ```shell
 npm test               # spectral lint + jest, no AWS credentials needed
@@ -185,7 +217,25 @@ docker run --rm --platform linux/amd64 --entrypoint python \
 ./scripts/verify-post-only.sh
 ```
 
-`npm test` is the only automated gate — the repository's CI runs Gradle only and never type-checks
+**Windows (PowerShell)**
+
+```powershell
+npm.cmd test
+npx.cmd cdk synth
+
+docker build --platform linux/amd64 -t sfc-duckdb-test lambda/
+docker run --rm --platform linux/amd64 --entrypoint python `
+  -e TABLE_BUCKET_REGION=us-west-2 -e ACCOUNT_ID=111122223333 `
+  -e ALLOWED_TABLE_BUCKETS=sfc-industrial-data-bucket `
+  -e AWS_ACCESS_KEY_ID=x -e AWS_SECRET_ACCESS_KEY=y `
+  -v "${PWD}/lambda:/opt/test:ro" sfc-duckdb-test /opt/test/test_handler.py
+```
+
+`scripts/verify-post-only.sh` is a developer check for Linux and macOS; it needs bash, the AWS CLI and
+`python3`. On Windows run it in WSL, with the AWS CLI and `python3` installed there:
+`wsl bash ./scripts/verify-post-only.sh`.
+
+`npm test` is the only automated gate — nothing else in the repository type-checks this
 TypeScript. It asserts what API Gateway will not, most importantly that every `post` carries the
 Cognito authorizer with an empty scope array and that there is no root-level `security:`, which
 API Gateway silently *ignores* on REST import.

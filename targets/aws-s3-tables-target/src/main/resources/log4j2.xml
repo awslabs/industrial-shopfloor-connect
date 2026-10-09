@@ -14,7 +14,16 @@
 
     </Appenders>
     <Loggers>
-        <Root level="OFF">
+        <!-- Third-party logging only: SFC's own output bypasses log4j2 (ConsoleLogWriter writes
+             straight to System.out), so -info / -trace are unaffected by this file. Root is WARN
+             because Iceberg logs a CommitReport per commit and Hadoop a line per compressor. -->
+        <Logger name="org.apache.hadoop.util.NativeCodeLoader" level="error"/>
+
+        <!-- Milo logs the bound OPC UA endpoint URLs and SDK version at startup only. That is
+             the operationally useful "which URL do I connect to" output, so keep it at INFO. -->
+        <Logger name="org.eclipse.milo" level="info"/>
+
+        <Root level="warn">
             <AppenderRef ref="Console"/>
         </Root>
     </Loggers>

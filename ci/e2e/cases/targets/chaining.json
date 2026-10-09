@@ -1,0 +1,406 @@
+{
+  "cases": [
+    {
+      "id": "CHAIN-SF-LOOP-NEG-01",
+      "title": "A store-and-forward chain that loops back on itself aborts startup",
+      "tier": "core",
+      "priority": "P1",
+      "intent": "SF1 forwards to SF2 and SF2 back to SF1. Without loop detection every record would circle forever; ControllerServiceConfiguration.validateTargets walks each target's sub-target chain and rejects a target already on the path (ControllerServiceConfiguration.kt:126-152), and ServiceMain exits on the configuration error (ServiceMain.kt:95). The case asserts the non-zero exit and the specific message naming the chain.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ControllerServiceConfiguration.kt:135",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/service/ServiceMain.kt:95"
+      ],
+      "dirs": [
+        "buffer"
+      ],
+      "assert": [
+        {
+          "kind": "exitCode",
+          "nonZero": true
+        },
+        {
+          "kind": "logContains",
+          "text": "causes loop in sub target chain"
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Target \"SF1\" causes loop in sub target chain SF1 -> SF2 -> SF1"
+        }
+      ],
+      "expectStartupFailure": true,
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-LOOP-NEG-01",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SF1"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SF1": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "SF2"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "SF2": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "SF1"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SF1Server": {
+          "module": "store-forward-target"
+        },
+        "SF2Server": {
+          "module": "store-forward-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SF1": {
+            "TargetServer": "SF1Server"
+          },
+          "SF2": {
+            "TargetServer": "SF2Server"
+          }
+        },
+        "TargetServers": {
+          "SF1Server": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SF2Server": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        }
+      }
+    },
+    {
+      "id": "CHAIN-SF-LOOP-NEG-02",
+      "title": "Two store-and-forward targets sharing one leaf (a diamond) are falsely rejected as a loop",
+      "tier": "core",
+      "priority": "P2",
+      "intent": "Top forwards to A and B, and both forward to the same file target Leaf: a diamond, not a cycle. walkTargets assigns each child's accumulated path back to targetPath (ControllerServiceConfiguration.kt:143), so when it walks B the path already holds A's branch including Leaf, and Leaf is reported as 'causes loop in sub target chain Top -> A -> Leaf -> B -> Leaf'. Today sfc-main exits on startup; correct code would run and Leaf would receive every record through both branches. The gate accepts the exit (orExit) so the same case can assert both outcomes.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ControllerServiceConfiguration.kt:143"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        }
+      },
+      "dirs": [
+        "buffer"
+      ],
+      "failFast": [],
+      "gate": {
+        "sink": "main",
+        "records": 10,
+        "orExit": true
+      },
+      "assert": [],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/config/ControllerServiceConfiguration.kt:143",
+        "summary": "walkTargets carries sibling paths forward, so a diamond (two chains sharing a leaf) is rejected as a loop and SFC does not start",
+        "assertCurrent": [
+          {
+            "kind": "exitCode",
+            "nonZero": true
+          },
+          {
+            "kind": "logContains",
+            "text": "Target \"Leaf\" causes loop in sub target chain Top -> A -> Leaf -> B -> Leaf"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logAbsent",
+            "texts": [
+              "causes loop in sub target chain"
+            ]
+          },
+          {
+            "kind": "recordCount",
+            "min": 10
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "CHAIN-SF-LOOP-NEG-02",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Top"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Top": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "A",
+              "B"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "A": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Leaf"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "B": {
+            "TargetType": "STORE-FORWARD",
+            "Directory": "${SFC_E2E_DIR_BUFFER}",
+            "Targets": [
+              "Leaf"
+            ],
+            "RetainFiles": 1000,
+            "RetainSize": 100
+          },
+          "Leaf": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          },
+          "STORE-FORWARD": {
+            "FactoryClassName": "com.amazonaws.sfc.storeforward.StoreForwardTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/store-forward-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "TopServer": {
+          "module": "store-forward-target"
+        },
+        "AServer": {
+          "module": "store-forward-target"
+        },
+        "BServer": {
+          "module": "store-forward-target"
+        },
+        "LeafServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Top": {
+            "TargetServer": "TopServer"
+          },
+          "A": {
+            "TargetServer": "AServer"
+          },
+          "B": {
+            "TargetServer": "BServer"
+          },
+          "Leaf": {
+            "TargetServer": "LeafServer"
+          }
+        },
+        "TargetServers": {
+          "TopServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "AServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "BServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          },
+          "LeafServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50004
+          }
+        }
+      }
+    }
+  ]
+}

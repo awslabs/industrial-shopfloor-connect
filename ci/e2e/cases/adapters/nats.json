@@ -1,0 +1,208 @@
+{
+  "cases": [
+    {
+      "id": "ADP-NATS-PILOT",
+      "title": "pilot: nats-server + publisher -> nats adapter (KeepAll, wildcard subject, name mapping) -> file",
+      "intent": "The first case on the NATS adapter reading real messages: a publisher sends {\"v\": n, \"unit\": \"C\"} on e2e.temp every 100 ms; the adapter subscribes to the wildcard e2e.* and keeps every message (ReadMode KeepAll), so the core slices each read into one record per message. A step-1 sequence of v proves no message is lost, duplicated or reordered; the selector picks the field out of the JSON payload, which Gson turns into Doubles. Channel names come from SubjectNameMappingConfiguration rather than Name, because sfc-main strips Name from the channels it sends to an IPC adapter service (IpcSourceReader.kt:270-283) and a NATS channel needs one of the two (NatsChannelConfiguration.kt:110-127). It avoids raw mode (Json false), whose validation is inverted and which stores the jnats Message object, and KeepLast, which wraps the value twice.",
+      "pins": [
+        "adapters/nats/src/main/kotlin/com/amazonaws/sfc/nats/NatsAdapter.kt:412-456",
+        "adapters/nats/src/main/kotlin/com/amazonaws/sfc/nats/config/SubjectNameMappingConfiguration.kt:67-74",
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReader.kt:270-283"
+      ],
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "nats",
+          "kind": "nats"
+        },
+        {
+          "name": "pub",
+          "kind": "command",
+          "args": {
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "nats",
+              "--port",
+              "${SFC_E2E_NATS_PORT}",
+              "--subject",
+              "e2e.temp",
+              "--payload",
+              "{\"v\": {n}, \"unit\": \"C\"}",
+              "--count",
+              "0",
+              "--interval-ms",
+              "100"
+            ],
+            "readyLog": "published 0"
+          }
+        }
+      ],
+      "records": 8,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.n.values",
+          "keys": [
+            "temp"
+          ],
+          "comment": "one channel, one subscription: two subscriptions on one subject can hold different message counts at a read, which would leave the last sliced record without one of the channels"
+        },
+        {
+          "kind": "channelSequence",
+          "source": "n",
+          "channel": "temp",
+          "step": 1,
+          "comment": "deltas only: the adapter subscribes on its first read, so the first messages are missed"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.n.values.temp.value",
+          "type": "float"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "is not valid JSON",
+            "No channel found for message",
+            "does not match with any of the Subject Mappings"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-NATS-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "n": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "n": {
+            "Name": "n",
+            "ProtocolAdapter": "Nats",
+            "AdapterServer": "s",
+            "Channels": {
+              "temp": {
+                "Subjects": [
+                  "e2e.*"
+                ],
+                "Selector": "v",
+                "SubjectNameMappingConfiguration": {
+                  "Mappings": {
+                    "^e2e\\.(\\w+)$": "$1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Nats": {
+            "AdapterType": "NATS",
+            "ReadMode": "KeepAll",
+            "Servers": {
+              "s": {
+                "Url": "nats://127.0.0.1:${SFC_E2E_NATS_PORT}",
+                "ConnectRetries": 3,
+                "WaitAfterConnectError": 1
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "NATS": {
+            "FactoryClassName": "com.amazonaws.sfc.nats.NatsAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "NATS": {
+            "FactoryClassName": "com.amazonaws.sfc.nats.NatsAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/nats/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "NatsServer": {
+          "module": "nats"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Nats": {
+            "AdapterServer": "NatsServer"
+          }
+        },
+        "AdapterServers": {
+          "NatsServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

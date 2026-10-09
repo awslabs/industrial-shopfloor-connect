@@ -56,7 +56,7 @@ open class IpcServiceCommandLine(args: Array<String>) : ServiceCommandLineOption
 
         val options = super.options()
         val portOrConfig = OptionGroup()
-        portOrConfig.addOption(configOption.required(false).build())
+        portOrConfig.addOption(configOption.required(false).get())
         portOrConfig.addOption(portOption)
         portOrConfig.addOption(envPortOption)
         options.addOptionGroup(portOrConfig)
@@ -88,8 +88,7 @@ class ProtocolServerCommandLine(args: Array<String>) : IpcServiceCommandLine(arg
             .type(String::class.java)
             .argName(OPTION_PROTOCOL_ADAPTER)
             .desc("Adapter ID for the service")
-            .hasArg()
-            .build()
+            .hasArg().get()
     }
 
 

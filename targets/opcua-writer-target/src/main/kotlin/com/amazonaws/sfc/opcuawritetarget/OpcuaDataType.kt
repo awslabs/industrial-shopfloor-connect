@@ -8,7 +8,7 @@ package com.amazonaws.sfc.opcuawritetarget
 import com.amazonaws.sfc.config.ChannelConfiguration.Companion.CONFIG_TRANSFORMATION
 import com.amazonaws.sfc.log.Logger
 import com.amazonaws.sfc.opcuawritetarget.OpcuaDataTypes.Companion.asType
-import org.eclipse.milo.opcua.stack.core.Identifiers
+import org.eclipse.milo.opcua.stack.core.NodeIds
 import org.eclipse.milo.opcua.stack.core.types.builtin.*
 import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.UByte
 import org.eclipse.milo.opcua.stack.core.types.builtin.unsigned.UInteger
@@ -19,136 +19,136 @@ enum class OpcuaDataType {
 
     BOOLEAN {
         override val identifier: NodeId
-            get() = Identifiers.Boolean
+            get() = NodeIds.Boolean
     },
     BYTE {
         override val identifier: NodeId
-            get() = Identifiers.SByte
+            get() = NodeIds.SByte
     },
     SBYTE {
         override val identifier: NodeId
-            get() = Identifiers.SByte
+            get() = NodeIds.SByte
     },
     BYTESTRING {
         override val identifier: NodeId
-            get() = Identifiers.ByteString
+            get() = NodeIds.ByteString
     },
     DATETIME {
         override val identifier: NodeId
-            get() = Identifiers.DateTime
+            get() = NodeIds.DateTime
     },
     DOUBLE {
         override val identifier: NodeId
-            get() = Identifiers.Double
+            get() = NodeIds.Double
     },
     EXPANDEDNODEID {
         override val identifier: NodeId
-            get() = Identifiers.ExpandedNodeId
+            get() = NodeIds.ExpandedNodeId
     },
 
     FLOAT {
         override val identifier: NodeId
-            get() = Identifiers.Float
+            get() = NodeIds.Float
     },
     INT {
         override val identifier: NodeId
-            get() = Identifiers.Int32
+            get() = NodeIds.Int32
     },
     INTEGER {
         override val identifier: NodeId
-            get() = Identifiers.Int32
+            get() = NodeIds.Int32
     },
     INT32 {
         override val identifier: NodeId
-            get() = Identifiers.Int32
+            get() = NodeIds.Int32
     },
     LOCALIZEDTEXT {
         override val identifier: NodeId
-            get() = Identifiers.LocalizedText
+            get() = NodeIds.LocalizedText
     },
     LONG {
         override val identifier: NodeId
-            get() = Identifiers.Int64
+            get() = NodeIds.Int64
     },
     INT64 {
         override val identifier: NodeId
-            get() = Identifiers.Int64
+            get() = NodeIds.Int64
     },
     NODEID {
         override val identifier: NodeId
-            get() = Identifiers.NodeId
+            get() = NodeIds.NodeId
     },
     QUALIFIEDNAME {
         override val identifier: NodeId
-            get() = Identifiers.QualifiedName
+            get() = NodeIds.QualifiedName
     },
     REAL {
         override val identifier: NodeId
-            get() = Identifiers.Float
+            get() = NodeIds.Float
     },
     SHORT {
         override val identifier: NodeId
-            get() = Identifiers.Int16
+            get() = NodeIds.Int16
     },
     INT16 {
         override val identifier: NodeId
-            get() = Identifiers.Int16
+            get() = NodeIds.Int16
     },
     STRING {
         override val identifier: NodeId
-            get() = Identifiers.String
+            get() = NodeIds.String
     },
     UINT {
         override val identifier: NodeId
-            get() = Identifiers.UInt32
+            get() = NodeIds.UInt32
     },
     UINT32 {
         override val identifier: NodeId
-            get() = Identifiers.UInt32
+            get() = NodeIds.UInt32
     },
     UINTEGER {
         override val identifier: NodeId
-            get() = Identifiers.UInt32
+            get() = NodeIds.UInt32
     },
     UUID {
         override val identifier: NodeId
-            get() = Identifiers.Guid
+            get() = NodeIds.Guid
     },
     XML_ELEMENT {
         override val identifier: NodeId
-            get() = Identifiers.XmlElement
+            get() = NodeIds.XmlElement
     },
     UBYTE {
         override val identifier: NodeId
-            get() = Identifiers.Byte
+            get() = NodeIds.Byte
     },
     ULONG {
         override val identifier: NodeId
-            get() = Identifiers.UInt64
+            get() = NodeIds.UInt64
     },
     UINT64 {
         override val identifier: NodeId
-            get() = Identifiers.UInt64
+            get() = NodeIds.UInt64
     },
     USHORT {
         override val identifier: NodeId
-            get() = Identifiers.UInt16
+            get() = NodeIds.UInt16
     },
     UINT16 {
         override val identifier: NodeId
-            get() = Identifiers.UInt16
+            get() = NodeIds.UInt16
     },
     STRUCT {
         override val identifier: NodeId
-            get() = Identifiers.Structure
+            get() = NodeIds.Structure
     },
     VARIANT {
         override val identifier: NodeId
-            get() = Identifiers.BaseDataVariableType
+            get() = NodeIds.BaseDataVariableType
     },
     UNDEFINED {
         override val identifier: NodeId
-            get() = Identifiers.BaseDataVariableType
+            get() = NodeIds.BaseDataVariableType
     };
 
     abstract val identifier: NodeId
@@ -176,24 +176,24 @@ enum class OpcuaDataType {
                 if (v is List<*> && dimensions != null) {
 
                     v = when (dataTypeIdentifier) {
-                        Identifiers.Boolean -> deepCast<Boolean>(dimensions, v) {asType(it, Identifiers.Boolean) as Boolean }
-                        Identifiers.SByte -> deepCast<Byte>(dimensions, v) { asType(it, Identifiers.SByte) as Byte }
-                        Identifiers.ByteString -> deepCast<ByteString>(dimensions, v) { asType(it, Identifiers.ByteString) as ByteString  }
-                        Identifiers.String -> deepCast<String>(dimensions, v) { asType(it, Identifiers.String) as String }
-                        Identifiers.Structure -> deepCast<String>(dimensions, v) { asType(it, Identifiers.Structure) as String}
-                        Identifiers.DateTime -> deepCast<DateTime>(dimensions, v) { asType(it, Identifiers.DateTime) as DateTime }
-                        Identifiers.Double -> deepCast<Double>(dimensions, v) { asType(it, Identifiers.Double) as Double }
-                        Identifiers.ExpandedNodeId -> deepCast<ExpandedNodeId>(dimensions, v) { asType(it, Identifiers.ExpandedNodeId) as ExpandedNodeId }
-                        Identifiers.Float -> deepCast<Float>(dimensions, v) { asType(it, Identifiers.Float) as Float }
-                        Identifiers.Int16 -> deepCast<Short>(dimensions, v) { asType(it, Identifiers.Int16) as Short }
-                        Identifiers.Int32 -> deepCast<Int>(dimensions, v) { asType(it, Identifiers.Int32) as Int }
-                        Identifiers.Int64 -> deepCast<Long>(dimensions, v) { asType(it, Identifiers.Int64) as Long }
-                        Identifiers.Byte -> deepCast<UByte>(dimensions, v) { UByte.valueOf(asType(it, Identifiers.Int16) as Short) }
-                        Identifiers.UInt16 -> deepCast<UShort>(dimensions, v) { UShort.valueOf(asType(it, Identifiers.Int32) as Int) }
-                        Identifiers.UInt32 -> deepCast<UInteger>(dimensions, v) { UInteger.valueOf(asType(it, Identifiers.Int64) as Long) }
-                        Identifiers.UInt64 -> deepCast<ULong>(dimensions, v) { asType(it, Identifiers.Int64) as ULong }
-                        Identifiers.NodeId -> deepCast<NodeId>(dimensions, v) { NodeId.parse(it.toString()) }
-                        Identifiers.XmlElement -> deepCast<XmlElement>(dimensions, v) { asType(it, Identifiers.XmlElement) as XmlElement }
+                        NodeIds.Boolean -> deepCast<Boolean>(dimensions, v) {asType(it, NodeIds.Boolean) as Boolean }
+                        NodeIds.SByte -> deepCast<Byte>(dimensions, v) { asType(it, NodeIds.SByte) as Byte }
+                        NodeIds.ByteString -> deepCast<ByteString>(dimensions, v) { asType(it, NodeIds.ByteString) as ByteString  }
+                        NodeIds.String -> deepCast<String>(dimensions, v) { asType(it, NodeIds.String) as String }
+                        NodeIds.Structure -> deepCast<String>(dimensions, v) { asType(it, NodeIds.Structure) as String}
+                        NodeIds.DateTime -> deepCast<DateTime>(dimensions, v) { asType(it, NodeIds.DateTime) as DateTime }
+                        NodeIds.Double -> deepCast<Double>(dimensions, v) { asType(it, NodeIds.Double) as Double }
+                        NodeIds.ExpandedNodeId -> deepCast<ExpandedNodeId>(dimensions, v) { asType(it, NodeIds.ExpandedNodeId) as ExpandedNodeId }
+                        NodeIds.Float -> deepCast<Float>(dimensions, v) { asType(it, NodeIds.Float) as Float }
+                        NodeIds.Int16 -> deepCast<Short>(dimensions, v) { asType(it, NodeIds.Int16) as Short }
+                        NodeIds.Int32 -> deepCast<Int>(dimensions, v) { asType(it, NodeIds.Int32) as Int }
+                        NodeIds.Int64 -> deepCast<Long>(dimensions, v) { asType(it, NodeIds.Int64) as Long }
+                        NodeIds.Byte -> deepCast<UByte>(dimensions, v) { UByte.valueOf(asType(it, NodeIds.Int16) as Short) }
+                        NodeIds.UInt16 -> deepCast<UShort>(dimensions, v) { UShort.valueOf(asType(it, NodeIds.Int32) as Int) }
+                        NodeIds.UInt32 -> deepCast<UInteger>(dimensions, v) { UInteger.valueOf(asType(it, NodeIds.Int64) as Long) }
+                        NodeIds.UInt64 -> deepCast<ULong>(dimensions, v) { asType(it, NodeIds.Int64) as ULong }
+                        NodeIds.NodeId -> deepCast<NodeId>(dimensions, v) { NodeId.parse(it.toString()) }
+                        NodeIds.XmlElement -> deepCast<XmlElement>(dimensions, v) { asType(it, NodeIds.XmlElement) as XmlElement }
                         else -> v
                     }
                 } else {

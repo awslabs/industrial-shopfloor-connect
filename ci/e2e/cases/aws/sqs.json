@@ -1,0 +1,1011 @@
+{
+  "cases": [
+    {
+      "id": "AWS-SQS-01",
+      "title": "SQS BatchSize 1: every record becomes its own SendMessageBatch call and arrives in the real queue",
+      "tier": "aws",
+      "priority": "P0",
+      "intent": "The basic SQS contract against the real service: with BatchSize 1 each record is flushed on arrival (AwsSqsTargetWriter.kt:218) as a one-entry SendMessageBatch whose body is the record JSON, authorised by sqs:SendMessage on the project role. Each case run writes to a queue of its own, which the sink reads to the end once SFC has stopped, because a standard queue keeps no order. The case fails if a record is lost or duplicated (the counter run must be contiguous), if SFC batches despite BatchSize 1 (Messages/Writes must be exactly 1), or if a write error is counted.",
+      "pins": [
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:218",
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:266-270",
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:310-318",
+        "ci/cdk/lib/sfc-it-stack.ts:434-436"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sqs"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "Sqs",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr",
+          "comment": "SQS standard queues do not keep order: a contiguous set, no duplicates"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "S"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.sim.values.ctr.value",
+          "type": "int"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "Sqs",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "Sqs",
+            "name": "Writes"
+          },
+          "op": "eq",
+          "value": 1,
+          "comment": "BatchSize 1: one record per SendMessageBatch"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to queue",
+            "Message exceeds max SQS message size",
+            "NoClassDefFoundError",
+            "ClassNotFoundException"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SQS-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Sqs"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Sqs": {
+            "TargetType": "AWS-SQS",
+            "QueueUrl": "${SFC_E2E_SQS_QUEUE_URL}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sqs-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SqsServer": {
+          "module": "aws-sqs-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Sqs": {
+            "TargetServer": "SqsServer"
+          }
+        },
+        "TargetServers": {
+          "SqsServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SQS-02",
+      "title": "SQS batching: BatchSize fills 10-entry batches under a steady stream; Interval flushes a partial batch once the stream is idle",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Batching is how SFC keeps SQS cost and request rate down, and Interval is what bounds the latency of a partial batch. SqsBatch gets a record every 100 ms with BatchSize 10, so it must flush full ten-entry batches (handleTargetData, AwsSqsTargetWriter.kt:218); SqsIdle gets a record every second with BatchSize 10 and Interval 200, so only the timer (:166-169) can flush it, one record at a time. Both write to the run's own real queue and are told apart by schedule name. The case fails if batching is disabled (Messages/Writes would be 1 for SqsBatch), if the Interval flush does not happen (no Slow record would ever arrive, a batch of 10 takes 10 s), or if records are lost or duplicated. The Interval is an inactivity timer, not a maximum wait; that defect is pinned by LOC-AWSTGT-SQS-INTERVAL-IDLE-01.",
+      "pins": [
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:155-171",
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:218",
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/config/AwsSqsTargetConfiguration.kt:64-71"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sqs"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "SqsIdle",
+              "name": "Writes",
+              "op": "ge",
+              "value": 4
+            }
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "SqsBatch",
+              "name": "Writes",
+              "op": "ge",
+              "value": 3
+            }
+          }
+        }
+      ],
+      "records": 34,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Slow"
+          },
+          "min": 3
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "Fast"
+          },
+          "min": 20
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Slow"
+          },
+          "source": "simSlow",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueRun",
+          "where": {
+            "schedule": "Fast"
+          },
+          "source": "simFast",
+          "channel": "ctr"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "SqsBatch",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "SqsBatch",
+            "name": "Writes"
+          },
+          "op": "ge",
+          "value": 5,
+          "comment": "full batches of 10; 1 would mean no batching"
+        },
+        {
+          "kind": "metricRatio",
+          "numerator": {
+            "source": "SqsIdle",
+            "name": "Messages"
+          },
+          "denominator": {
+            "source": "SqsIdle",
+            "name": "Writes"
+          },
+          "op": "lt",
+          "value": 2,
+          "comment": "the 200 ms timer flushes each slow record (the start-up reads can share a write); without it a write would carry 10"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to queue"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SQS-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "Fast",
+            "Interval": 100,
+            "Sources": {
+              "simFast": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SqsBatch"
+            ]
+          },
+          {
+            "Name": "Slow",
+            "Interval": 1000,
+            "Sources": {
+              "simSlow": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SqsIdle"
+            ]
+          }
+        ],
+        "Sources": {
+          "simFast": {
+            "Name": "simFast",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          },
+          "simSlow": {
+            "Name": "simSlow",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SqsBatch": {
+            "TargetType": "AWS-SQS",
+            "QueueUrl": "${SFC_E2E_SQS_QUEUE_URL}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 10,
+            "Interval": 2000
+          },
+          "SqsIdle": {
+            "TargetType": "AWS-SQS",
+            "QueueUrl": "${SFC_E2E_SQS_QUEUE_URL}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 10,
+            "Interval": 200
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sqs-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SqsBatchServer": {
+          "module": "aws-sqs-target"
+        },
+        "SqsIdleServer": {
+          "module": "aws-sqs-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SqsBatch": {
+            "TargetServer": "SqsBatchServer"
+          },
+          "SqsIdle": {
+            "TargetServer": "SqsIdleServer"
+          }
+        },
+        "TargetServers": {
+          "SqsBatchServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SqsIdleServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SQS-03",
+      "title": "SQS GZip: the {compression, payload} envelope is accepted by the real queue and decodes back to the record",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "Compression changes what SFC puts into the message body: Compress.compressedDataPayload wraps gzip bytes in a base64 JSON envelope. That body has to be accepted by the real SQS service and decode back to the record a consumer expects. The sqs sink unwraps the envelope, so the decoded records prove the round trip (contiguous counter, the constant string intact); the per-record 'Used GZIP compression' log line proves the compression path ran for each message. The exact envelope bytes are asserted on the wire by LOC-AWSTGT-SQS-COMPRESSION-WRAPPER-01, because the sink cannot show whether a message arrived compressed.",
+      "pins": [
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:359-377",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/Compress.kt:51-57",
+        "ci/e2e/lib/sinks/aws.py:38-56"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sqs"
+        }
+      },
+      "records": 6,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "SqsGzip",
+              "name": "Writes",
+              "op": "ge",
+              "value": 6
+            }
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 6
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "sim",
+          "channel": "txt",
+          "values": [
+            "sfc-e2e-gzip-payload-sfc-e2e-gzip-payload-sfc-e2e-gzip-payload"
+          ]
+        },
+        {
+          "kind": "logContains",
+          "text": "Used GZIP compression to compress",
+          "min": 6,
+          "comment": "one line per compressed message body"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error sending to queue"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SQS-03",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SqsGzip"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              },
+              "txt": {
+                "Name": "txt",
+                "Simulation": {
+                  "SimulationType": "Constant",
+                  "DataType": "String",
+                  "Value": "sfc-e2e-gzip-payload-sfc-e2e-gzip-payload-sfc-e2e-gzip-payload"
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SqsGzip": {
+            "TargetType": "AWS-SQS",
+            "QueueUrl": "${SFC_E2E_SQS_QUEUE_URL}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Compression": "GZip"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sqs-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SqsGzipServer": {
+          "module": "aws-sqs-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SqsGzip": {
+            "TargetServer": "SqsGzipServer"
+          }
+        },
+        "TargetServers": {
+          "SqsGzipServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "AWS-SQS-NEG-01",
+      "title": "SQS: a record over 1 MiB is dropped before sending while normal records keep flowing - and no WriteError is counted (known defect)",
+      "tier": "aws",
+      "priority": "P1",
+      "intent": "SQS rejects messages over 1 MiB, so SFC checks the payload length first (SQS_MAX_BATCH_MSG_SIZE, AwsSqsTargetWriter.kt:201-205, 416): SqsBig renders a 1.1 M-character template and must never reach the queue, while SqsSmall in the same schedule keeps delivering. The check only logs and reports the record as an error to a result handler; it does not increment WriteError, so a dashboard shows no failure while every SqsBig record is lost. The IoT Core target does count its oversize payloads (AwsIotCoreTargetWriter.kt:357), which is why this is pinned as a defect rather than accepted.",
+      "pins": [
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:201-205",
+        "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:416",
+        "targets/aws-iot-core-target/src/main/kotlin/com/amazonaws/sfc/awsiotcore/AwsIotCoreTargetWriter.kt:354-357"
+      ],
+      "sinks": {
+        "main": {
+          "kind": "sqs"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "log": "Message exceeds max SQS message size",
+            "count": 4
+          }
+        },
+        {
+          "wait": {
+            "metric": {
+              "source": "SqsSmall",
+              "name": "Writes",
+              "op": "ge",
+              "value": 5
+            }
+          }
+        }
+      ],
+      "records": 5,
+      "timeoutSeconds": 90,
+      "offlineSeconds": 25,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 5
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "big"
+          ],
+          "comment": "no oversize record ever reached the queue"
+        },
+        {
+          "kind": "channelValueRun",
+          "source": "sim",
+          "channel": "ctr"
+        },
+        {
+          "kind": "logContains",
+          "text": "Message exceeds max SQS message size",
+          "min": 4
+        },
+        {
+          "kind": "metric",
+          "source": "SqsBig",
+          "name": "Writes",
+          "op": "eq",
+          "value": 0,
+          "comment": "nothing was sent for SqsBig"
+        }
+      ],
+      "knownDefect": {
+        "ref": "targets/aws-sqs-target/src/main/kotlin/com/amazonaws/sfc/awssqs/AwsSqsTargetWriter.kt:201-205",
+        "summary": "An SQS record over 1 MiB is dropped with only an error log line; WriteError is not incremented, so the data loss is invisible in metrics",
+        "assertCurrent": [
+          {
+            "kind": "metric",
+            "source": "SqsBig",
+            "name": "WriteError",
+            "op": "eq",
+            "value": 0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "metric",
+            "source": "SqsBig",
+            "name": "WriteError",
+            "op": "ge",
+            "value": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "AWS-SQS-NEG-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "SqsSmall",
+              "SqsBig"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 100000
+                }
+              }
+            }
+          }
+        },
+        "Targets": {
+          "SqsSmall": {
+            "TargetType": "AWS-SQS",
+            "QueueUrl": "${SFC_E2E_SQS_QUEUE_URL}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1
+          },
+          "SqsBig": {
+            "TargetType": "AWS-SQS",
+            "QueueUrl": "${SFC_E2E_SQS_QUEUE_URL}",
+            "Region": "${SFC_E2E_REGION}",
+            "BatchSize": 1,
+            "Template": "${SFC_E2E_CASE_DIR}/big.vm"
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "AWS-SQS": {
+            "FactoryClassName": "com.amazonaws.sfc.awssqs.AwsSqsTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/aws-sqs-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "SqsSmallServer": {
+          "module": "aws-sqs-target"
+        },
+        "SqsBigServer": {
+          "module": "aws-sqs-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "SqsSmall": {
+            "TargetServer": "SqsSmallServer"
+          },
+          "SqsBig": {
+            "TargetServer": "SqsBigServer"
+          }
+        },
+        "TargetServers": {
+          "SqsSmallServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          },
+          "SqsBigServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "files": {
+        "big.vm": "{\"metadata\":{\"marker\":\"$metadata.marker\"},\"big\":\"#foreach($i in [1..22000])01234567890123456789012345678901234567890123456789#end\"}\n"
+      }
+    }
+  ]
+}

@@ -17,7 +17,7 @@ class Fahrenheit : TransformationImpl<Nothing>() {
 
         if (target == null || !isNumeric(target::class)) null else
             when (target) {
-                is Float -> ((target.toFloat() * 1.8f) + 32f)
+                is Float -> ((target * 1.8f) + 32f)
                 else -> ((target.toDouble() * 1.8) + 32.0)
             }
 

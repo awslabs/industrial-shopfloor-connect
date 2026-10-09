@@ -62,7 +62,7 @@ class RangeTest {
             Triple(range2, range1, true),
             Triple(range1, range3, false),
             Triple(range3, range1, false),
-            Triple(range1, Object(), false),
+            Triple(range1, Any(), false),
             Triple(range1, null, false),
         )
 

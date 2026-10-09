@@ -1,0 +1,371 @@
+{
+  "cases": [
+    {
+      "id": "ADP-SQL-PILOT",
+      "title": "pilot: PostgreSQL -> sql adapter (prepared SELECT, single and multi row) -> file",
+      "intent": "The first case on the SQL adapter: a real PostgreSQL database, seeded per case run, read through the bundled pgjdbc driver. A parameterised single-row query must give a map of every column and exact typed scalars (integer -> Int, bigint -> Long, double precision -> Double, boolean -> Boolean, text -> String; SqlSource.kt:154-199); a multi-row query must give one list per channel in row order; a query on clock_timestamp() and random() must change on every read. It fails when the driver does not load, the statement or its parameter binding breaks, or a type conversion changes. It avoids DATE and TIME columns, whose toInstant() always throws (SqlSource.kt:170-171), and NULLs, which crash or turn into zeros (SqlSource.kt:157-175). DatabaseType is the lowercase 'postgresql' the enum accepts (DbServerType.kt:16-31).",
+      "pins": [
+        "adapters/sql/src/main/kotlin/com/amazonaws/sfc/sql/SqlSource.kt:154-199",
+        "adapters/sql/src/main/kotlin/com/amazonaws/sfc/sql/SqlSource.kt:290-330",
+        "adapters/sql/src/main/kotlin/com/amazonaws/sfc/sql/config/DbServerType.kt:16-31"
+      ],
+      "tier": "local-infra",
+      "priority": "P1",
+      "services": [
+        {
+          "name": "db",
+          "kind": "postgres",
+          "args": {
+            "sql": "seed.sql"
+          }
+        }
+      ],
+      "records": 8,
+      "files": {
+        "seed.sql": "CREATE TABLE readings (id integer PRIMARY KEY, tag text NOT NULL, temp double precision NOT NULL, cnt integer NOT NULL, big bigint NOT NULL, ok boolean NOT NULL, label varchar(32) NOT NULL);\nINSERT INTO readings VALUES (1, 't1', 21.5, 7, 1234567890123, true, 'SFC-SIM'), (2, 't2', -3.25, -12345, -1, false, 'line-2'), (3, 't1', 22.75, 8, 9007199254740991, true, 'x');\n"
+      },
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 8
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.one.values",
+          "keys": [
+            "big",
+            "cnt",
+            "label",
+            "ok",
+            "row",
+            "temp"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.rows.values",
+          "keys": [
+            "tags",
+            "temps"
+          ]
+        },
+        {
+          "kind": "keySet",
+          "path": "sources.live.values",
+          "keys": [
+            "r",
+            "t"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.one.values.row.value",
+          "equals": {
+            "id": 1,
+            "tag": "t1",
+            "temp": 21.5,
+            "cnt": 7,
+            "big": 1234567890123,
+            "ok": true,
+            "label": "SFC-SIM"
+          },
+          "comment": "ColumnNames [\"*\"] (the default): every column, lowercase names"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "one",
+          "channel": "temp",
+          "values": [
+            21.5
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "one",
+          "channel": "cnt",
+          "values": [
+            7
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "one",
+          "channel": "big",
+          "values": [
+            1234567890123
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "one",
+          "channel": "ok",
+          "values": [
+            true
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "one",
+          "channel": "label",
+          "values": [
+            "SFC-SIM"
+          ]
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.rows.values.temps.value",
+          "equals": [
+            21.5,
+            -3.25,
+            22.75
+          ],
+          "comment": "multi-row: one list per channel, in row order"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.rows.values.tags.value",
+          "equals": [
+            "t1",
+            "t2",
+            "t1"
+          ]
+        },
+        {
+          "kind": "channelNumericRange",
+          "source": "live",
+          "channel": "r",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.live.values.r.value",
+          "min": 3
+        },
+        {
+          "kind": "distinct",
+          "path": "sources.live.values.t.value",
+          "min": 3,
+          "comment": "clock_timestamp() changes on every read: the statement runs each time"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Error reading",
+            "Error executing",
+            "No suitable driver"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-SQL-PILOT",
+        "Schedules": [
+          {
+            "Name": "S",
+            "Interval": 200,
+            "Sources": {
+              "one": [
+                "*"
+              ],
+              "rows": [
+                "*"
+              ],
+              "live": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "one": {
+            "Name": "one",
+            "ProtocolAdapter": "Sql",
+            "AdapterDbServer": "pg",
+            "SqlReadStatement": "SELECT id, tag, temp, cnt, big, ok, label FROM readings WHERE tag = ? ORDER BY id",
+            "SqlReadParameters": [
+              "t1"
+            ],
+            "SingleRow": true,
+            "Channels": {
+              "row": {
+                "Name": "row"
+              },
+              "temp": {
+                "Name": "temp",
+                "ColumnNames": [
+                  "temp"
+                ]
+              },
+              "cnt": {
+                "Name": "cnt",
+                "ColumnNames": [
+                  "cnt"
+                ]
+              },
+              "big": {
+                "Name": "big",
+                "ColumnNames": [
+                  "big"
+                ]
+              },
+              "ok": {
+                "Name": "ok",
+                "ColumnNames": [
+                  "ok"
+                ]
+              },
+              "label": {
+                "Name": "label",
+                "ColumnNames": [
+                  "label"
+                ]
+              }
+            }
+          },
+          "rows": {
+            "Name": "rows",
+            "ProtocolAdapter": "Sql",
+            "AdapterDbServer": "pg",
+            "SqlReadStatement": "SELECT tag, temp FROM readings ORDER BY id",
+            "SingleRow": false,
+            "Channels": {
+              "tags": {
+                "Name": "tags",
+                "ColumnNames": [
+                  "tag"
+                ]
+              },
+              "temps": {
+                "Name": "temps",
+                "ColumnNames": [
+                  "temp"
+                ]
+              }
+            }
+          },
+          "live": {
+            "Name": "live",
+            "ProtocolAdapter": "Sql",
+            "AdapterDbServer": "pg",
+            "SqlReadStatement": "SELECT extract(epoch from clock_timestamp())::double precision AS t, random() * 100 AS r",
+            "SingleRow": true,
+            "Channels": {
+              "t": {
+                "Name": "t",
+                "ColumnNames": [
+                  "t"
+                ]
+              },
+              "r": {
+                "Name": "r",
+                "ColumnNames": [
+                  "r"
+                ]
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sql": {
+            "AdapterType": "SQL",
+            "DbServers": {
+              "pg": {
+                "DatabaseType": "postgresql",
+                "Host": "127.0.0.1",
+                "Port": "${SFC_E2E_DB_PORT}",
+                "DatabaseName": "${SFC_E2E_DB_DB}",
+                "UserName": "sfc_e2e",
+                "Password": "sfc_e2e",
+                "ConnectTimeout": 5000,
+                "WaitAfterConnectError": 1000,
+                "WaitAfterReadError": 1000
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SQL": {
+            "FactoryClassName": "com.amazonaws.sfc.sql.SqlAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SQL": {
+            "FactoryClassName": "com.amazonaws.sfc.sql.SqlAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/sql/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SqlServer": {
+          "module": "sql"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sql": {
+            "AdapterServer": "SqlServer"
+          }
+        },
+        "AdapterServers": {
+          "SqlServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

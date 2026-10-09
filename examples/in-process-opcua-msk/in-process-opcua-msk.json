@@ -49,10 +49,6 @@
           "Name": "Sawtooth",
           "NodeId": "ns=3;i=1003"
         },
-        "SimulationSawtoothInt": {
-          "Name": "SawtoothInt",
-          "NodeId": "ns=3;i=1003"
-        },
         "SimulationSinusoid": {
           "Name": "Sinusoid",
           "NodeId": "ns=3;i=1004"
@@ -82,7 +78,8 @@
         "< HOSTNAME-3 >:9198"
       ],
       "TopicName": "< TOPIC >",
-      "Key": " KEY ",
+      "Key": "< KEY >",
+      "Interval": 1000,
       "Compression": "gzip",
       "Serialization": "json",
       "Acknowledgements": "all"

@@ -1,23 +1,67 @@
 # REST Protocol Adapter
 
-The REST protocol adapter in SFC enables polling data from HTTP endpoints using GET requests, where the adapter periodically fetches data from configured REST APIs and transforms the JSON responses into the SFC's internal data format. The adapter supports query parameters and authentication for secure API access.
+The REST protocol adapter in SFC enables polling data from HTTP endpoints using GET requests, where the adapter periodically fetches data from configured REST APIs and transforms the JSON responses into the SFC's internal data format. Query parameters are part of the source's [Request](#request) (e.g. "pumps?site=1"); the polling interval is the `Interval` of the schedule that reads the source.
 
-In order to use this adapter as in [in-process](../sfc-running-adapters.md#running-protocol-adapters-in-process) type adapter the type must be added to the [AdapterTypes](../core/sfc-configuration.md#adaptertypes) section in the [SFC configuration file](../core/sfc-configuration.md).
+## Deploy this adapter
+
+`AdapterType` is `REST` in every deployment mode. In the uberjar and in-process modes the `AdapterTypes` key is the same value. How the modes differ: [Configure a component in each mode](../sfc-deployment.md#configuration-in-each-mode). All types and classes: [Protocol adapter types and classes](../sfc-running-adapters.md#protocol-adapter-types-and-classes).
+
+**Uberjar** - installed by [sfcup](../../README.md#1-install); run with `sfcx`:
 
 ```json
-"AdapterTypes" :{
-  "REST" : {
-    "JarFiles" : ["<location of deployment>/rest/lib"]
-  },
-  "FactoryClassName" : "com.amazonaws.sfc.rest.RestAdapter"
+"AdapterTypes": {
+  "REST": { "FactoryClassName": "com.amazonaws.sfc.rest.RestAdapter" }
 }
 ```
+
+**In-process** - module bundle `rest` unpacked into the directory named by `SFC_DEPLOYMENT_DIR`, run with `sfc-main`:
+
+```json
+"AdapterTypes": {
+  "REST": {
+    "JarFiles": ["${SFC_DEPLOYMENT_DIR}/rest/lib"],
+    "FactoryClassName": "com.amazonaws.sfc.rest.RestAdapter"
+  }
+}
+```
+
+**IPC** - no `AdapterTypes`; the adapter runs as its own service:
+
+```json
+"ProtocolAdapters": {
+  "RestAdapter": {
+    "AdapterType": "REST",
+    "AdapterServer": "RestAdapterServer"
+  }
+},
+"AdapterServers": {
+  "RestAdapterServer": { "Address": "localhost", "Port": 50000 }
+}
+```
+
+Start the service before SFC, on the port of its `AdapterServers` entry:
+
+**Linux / macOS**
+
+```shell
+rest/bin/rest -port 50000
+```
+
+**Windows (PowerShell)**
+
+```powershell
+java -cp "C:\sfc\rest\lib\*" com.amazonaws.sfc.rest.RestProtocolService -port 50000
+```
+
+From an sfcup install, start the same service from the uberjar: `java -cp "$HOME/.sfc/current/lib/*" com.amazonaws.sfc.rest.RestProtocolService -port 50000` (Windows: `java -cp "$HOME\.sfc\versions\$(Get-Content $HOME\.sfc\current.txt)\lib\*" com.amazonaws.sfc.rest.RestProtocolService -port 50000`).
+
+**Examples:** uberjar: [uberjar-rest-file](../../examples/uberjar-rest-file/README.md) · all: [examples catalog](../examples/README.md)
 
 
 
 [**REST Adapter data mapping**](#rest-adapter-data-mapping)
 
-- [All object properties  a single channel value](#all-object-properties--a-single-channel-value)
+- [All object properties as a single channel value](#all-object-properties-as-a-single-channel-value)
 - [Object properties as separate channel values](#object-properties-as-separate-channel-values)
 - [Selecting object properties](#selecting-object-properties)
 - [Objects lists](#objects-lists)
@@ -36,14 +80,16 @@ In order to use this adapter as in [in-process](../sfc-running-adapters.md#runni
 
 ## REST Adapter data mapping
 
-The REST adapter retrieves data from a service via GET requests.
+The REST adapter retrieves data from a service via GET requests. JSON numbers in a response are returned as doubles (64 becomes 64.0); the outputs below show them as they appear in the response.
+
+> When the REST adapter runs as an IPC service, a channel value in which a JSON object contains a list of JSON objects, such as `{"line": {"sensors": [{"name": "t1"}, {"name": "t2"}]}}`, cannot be transferred to SFC yet: the service prints a conversion error and drops that value. Select the list itself or values inside it with a [Selector](#selector) instead (e.g. "line.sensors" or "line.sensors[0].name").
 
 A source within the adapter, configured to interact with the "PumpDataServer," utilizes the "pumps/1" request. 
 This adapter uses a GET request to the URL "https://api.pumpserver.com/pumps/1" to retrieve the desired object which returns 
 the following payload:
 
 ```
-{"id":"1","name":"FluidConveyor-1","data":{"flow"64,"pressure":33}}
+{"id":"1","name":"FluidConveyor-1","data":{"flow":64,"pressure":33}}
 ```
 
 Source configuration (partial)
@@ -54,7 +100,7 @@ Source configuration (partial)
       "ProtocolAdapter": "REST",
       "RestServer": "PumpDataServer",
       "Request": "pumps/1"
-
+    }
 ```
 
 Adapter configuration
@@ -63,7 +109,6 @@ Adapter configuration
   "ProtocolAdapters": {
     "REST": {
       "AdapterType": "REST",
-      "AdapterServer": "Pumps",
       "RestServers": {
         "PumpDataServer": {
           "Server": "https://api.pumpserver.com",
@@ -78,7 +123,7 @@ Adapter configuration
 
 For a source one or more channels must be defined. There are the following options:
 
-### All object properties  a single channel value
+### All object properties as a single channel value
 
 The source configuration below has a single channel named "Object", without further channel configuration data. It's assumed that
 the returned data is in JSON format. When the data is not JSON then the channel Configuration must include a setting `"Json" : false` 
@@ -89,7 +134,7 @@ in which case the raw data is used for the value of the channel.
     "Name": "RestSource",
     "ProtocolAdapter": "REST",
     "RestServer": "PumpDataServer",
-    "Request": "objects",
+    "Request": "pumps/1",
     "Channels": {
       "Object": {}
     }
@@ -99,6 +144,7 @@ in which case the raw data is used for the value of the channel.
 This configuration results in the following output data
 
 ```json
+  {
     "timestamp": "2024-11-27T10:34:00.856635Z",
     "sources": {
       "RestSource": {
@@ -108,7 +154,7 @@ This configuration results in the following output data
               "id": "1",
               "name": "FluidConveyor-1",
               "data": {
-                "flow" 64,
+                "flow": 64,
                 "pressure": 33
               }
             }
@@ -188,10 +234,10 @@ The source configuration below has 4 channels with a selector to query the data
         "Name": {
           "Selector": "name"
         },
-        "flow" {
+        "flow": {
           "Selector": "data.flow"
         },
-        "pressure" {
+        "pressure": {
            "Selector": "data.pressure"
         }
       }
@@ -214,10 +260,10 @@ The structure of the output data is for this configuration is:
           "Name": {
             "value": "FluidConveyor-1"
           },
-          "flow" {
+          "flow": {
             "value": 64
           },
-          "pressure" {
+          "pressure": {
             "value": 33
           }
         },
@@ -229,8 +275,8 @@ The structure of the output data is for this configuration is:
 
 ### Objects lists
 
-When a request returns a list of objects, then these values can be returned as a single channel value. Here a request "objects" is
-used with a single channel named "Objects".
+When a request returns a list of objects, then these values can be returned as a single channel value. Here a request "pumps" is
+used with a single channel named "Pumps".
 
 ```json
 "REST-SOURCE": {
@@ -258,9 +304,9 @@ The output is:
       "values": {
         "Pumps": {
           "value": [
-            {"id":"1","name":"FluidConveyor-1","data":{"flow"64,"pressure":33}},
-            {"id":"2","name":"FluidConveyor-2","data":{"flow"68,"pressure":42}},
-            {"id":"3","name":"FluidConveyor-3","data":{"flow"67,"pressure":17}},
+            {"id":"1","name":"FluidConveyor-1","data":{"flow":64,"pressure":33}},
+            {"id":"2","name":"FluidConveyor-2","data":{"flow":68,"pressure":42}},
+            {"id":"3","name":"FluidConveyor-3","data":{"flow":67,"pressure":17}}
           ]
         }
       },
@@ -278,7 +324,7 @@ If the number of returned object is known, channels can be defined each selectin
       "Name": "RestSource",
       "ProtocolAdapter": "REST",
       "RestServer": "PumpDataServer",
-      "Request": "objects",
+      "Request": "pumps",
       "Channels": {
         "Pump1": {
           "Selector" : "[0]"
@@ -291,7 +337,7 @@ If the number of returned object is known, channels can be defined each selectin
         }
       }
     }
-  },
+  }
 ```
 
 
@@ -308,7 +354,7 @@ If the number of returned object is known, channels can be defined each selectin
             "id": "1",
             "name": "FluidConveyor-1",
             "data": {
-              "flow" 64,
+              "flow": 64,
               "pressure": 33
             }
           }
@@ -318,7 +364,7 @@ If the number of returned object is known, channels can be defined each selectin
             "id": "2",
             "name": "FluidConveyor-2",
             "data": {
-              "flow" 46,
+              "flow": 46,
               "pressure": 23
             }
           }
@@ -328,7 +374,7 @@ If the number of returned object is known, channels can be defined each selectin
             "id": "4",
             "name": "FluidConveyor-3",
             "data": {
-              "flow" 47,
+              "flow": 47,
               "pressure": 26
             }
           }
@@ -347,7 +393,7 @@ Or if the number of returned objects is unknown a single channel definition can 
     "Name": "RestSource",
     "ProtocolAdapter": "REST",
     "RestServer": "PumpDataServer",
-    "Request": "objects",
+    "Request": "pumps",
     "Channels": {
       "Pump": {
         "Spread": true
@@ -371,7 +417,7 @@ This results in a numbered channel being created for every object in the returne
             "id": "1",
             "name": "FluidConveyor-1",
             "data": {
-              "flow" 64,
+              "flow": 64,
               "pressure": 33
             }
           },
@@ -382,7 +428,7 @@ This results in a numbered channel being created for every object in the returne
             "id": "2",
             "name": "FluidConveyor-2",
             "data": {
-              "flow" 68,
+              "flow": 68,
               "pressure": 26
             }
           },
@@ -393,12 +439,14 @@ This results in a numbered channel being created for every object in the returne
             "id": "3",
             "name": "FluidConveyor-3",
             "data": {
-              "flow" 46,
+              "flow": 46,
               "pressure": 54
             }
           },
           "timestamp": "2024-11-27T10:41:18.224438Z"
         }
+      }
+    }
   }
 }
 ```
@@ -407,7 +455,7 @@ This results in a numbered channel being created for every object in the returne
 
 ## REST Adapter Configuration
 
-The REST adapter configuration defines the HTTP endpoints, authentication methods, polling intervals, and response mapping required to fetch data from REST APIs. Below are the configuration parameters needed to set up the REST adapter for data collection.
+Configure [RestServers](#restservers) on the adapter and a [Request](#request) and [Channels](#channels) on each source. Below are the configuration parameters needed to set up the REST adapter for data collection.
 
 ## RestSourceConfiguration
 
@@ -445,7 +493,7 @@ For instance, if you intend to access "https://api.restful-api.dev/objects/7", y
 
 ---
 ### RestServer
-The RestServer property specifies the identifier of the REST server configuration to use, which must match an existing server definition in the RestServers section of the REST adapter configuration. This String value links the source to its server configuration containing connection details like base URL and authentication parameters. The referenced server identifier must exist in the adapter configuration specified by the ProtocolAdapter attribute.
+The RestServer property specifies the identifier of the REST server configuration to use, which must match an existing server definition in the RestServers section of the REST adapter configuration. This String value links the source to its server configuration containing connection details like the base URL. The referenced server identifier must exist in the adapter configuration specified by the ProtocolAdapter attribute.
 
 **Type**: String
 
@@ -599,7 +647,7 @@ A Selector can only be used if "Json" is set to true (the default).
 
 ## RestAdapterConfiguration
 
-The RestAdapterConfiguration defines the configuration settings for REST servers that can be referenced by a source.  These server configurations contain the necessary connection details, authentication parameters, and other REST-specific settings that RestSources can use to connect to and retrieve data from REST endpoints
+The RestAdapterConfiguration defines the configuration settings for REST servers that can be referenced by a source.  These server configurations contain the necessary connection details and other REST-specific settings that RestSources can use to connect to and retrieve data from REST endpoints
 
 RestAdapterConfiguration extension the [AdapterConfiguration](../core/protocol-adapter-configuration.md) with properties for the REST Protocol adapter.
 
@@ -642,41 +690,11 @@ The RestServers property contains a collection of REST server configurations tha
 
 ### RestAdapterConfiguration Examples
 
-Here's the JSON Schema for RestAdapterConfiguration:
-
-```json
-{
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "allOf": [
-    {
-      "$ref": "#/definitions/AdapterConfiguration"
-    },
-    {
-      "type": "object",
-      "properties": {
-        "RestServers": {
-          "type": "object",
-          "description": "Map of REST server configurations",
-          "additionalProperties": {
-            "$ref": "#/definitions/RestServerConfiguration"
-          },
-          "minProperties": 1
-        }
-      },
-      "required": [
-        "RestServers"
-      ]
-    }
-  ]
-}
-```
-
-
-
 Single server configuration:
 
 ```json
 {
+  "AdapterType": "REST",
   "RestServers": {
     "MainAPI": {
       "Server": "https://api.example.com",
@@ -696,7 +714,7 @@ Example 2 - Multiple servers configuration:
 
 ```json
 {
-  "AdapterType" : "RestAdapterType",
+  "AdapterType" : "REST",
   "RestServers": {
     "ProductionAPI": {
       "Server": "https://api.production.com",
@@ -749,7 +767,7 @@ This configuration can be referenced by multiple RestSources, allowing for reuse
 
 ---
 ### Headers
-The Headers property defines a collection of HTTP headers that will be included in every request sent to the REST server. These headers can specify things like: 
+The Headers property defines a collection of HTTP headers for the requests sent to the REST server. These headers can specify things like: 
 
 - Content type (e.g., "Content-Type: application/json")
 - Authentication tokens (e.g., "Authorization: Bearer token123")
@@ -757,17 +775,14 @@ The Headers property defines a collection of HTTP headers that will be included 
 - Accept types
 - API keys
 
-These headers are automatically added to each request made to the server, ensuring consistent header information across all communications with the REST endpoint.
+> **Known limitation:** the configured headers, and the default header "Accept: application/json", are currently not sent with requests. Endpoints that need authentication headers (tokens, API keys) cannot be read yet.
 
 **Type**: Map[String,String]
-
-
-The header "Accept" is by default set to application/json.
 
 ---
 ### MaxRetries
 
-The MaxRetries property specifies the maximum number of times the system will attempt to retry a failed REST request before giving up. This helps handle temporary network issues or brief server unavailability.
+The MaxRetries property specifies the total number of requests the adapter sends for one read while the server answers with a status other than 200 (OK): the default of 3 means the first request plus 2 retries, with [WaitBeforeRetry](#waitbeforeretry) between them. This helps handle brief server unavailability. Requests that fail with an exception, such as a connection error or a timeout, are not retried; see [WaitAfterReadError](#waitafterreaderror).
 
 **Type**: Integer
 
@@ -785,11 +800,11 @@ The Proxy property allows you to configure proxy server settings when the client
 
 **Type**: [ClientProxyConfiguration](../core/client-proxy-configuration.md)
 
-Optional
+Optional. The REST adapter uses [ProxyUrl](../core/client-proxy-configuration.md#proxyurl) as an HTTP proxy, sends ProxyUsername and ProxyPassword as basic proxy authentication only when both are set, and ignores NoProxyAddresses.
 
 ---
 ### RequestTimeout
-The RequestTimeout property specifies the maximum amount of time (in milliseconds) that the client will wait for a response from the REST server before timing out the request. If the server doesn't respond within this time period, the request will be considered failed and may trigger a retry (depending on the [MaxRetries](#maxretries) setting)
+The RequestTimeout property specifies the maximum amount of time (in milliseconds) that the client will wait for a response from the REST server before timing out the request. If the server doesn't respond within this time period, the request is considered failed. A timeout is not retried; the source pauses for [WaitAfterReadError](#waitafterreaderror).
 
 **Type**: Integer
 
@@ -800,8 +815,8 @@ Default is 5000
 The Server property defines the base URL or host address of the REST server as a String. It represents the root endpoint of the REST API that will be used for all requests.
 
 - It should contain the base URL without specific endpoints or resource paths
-- If the URL doesn't start with "http://" or "https://", the system automatically prepends "https://"
-- It can include the domain and any base path that's common to all API endpoints
+- If the URL has no scheme, "http://" is prepended; always write "https://" for TLS endpoints
+- It can include the domain and any base path that's common to all API endpoints. If [Port](#port) is set, Server must be the scheme and host only, because the port is appended to the end of Server; put the base path in the source's [Request](#request) instead
 
 To retrieve an objects using requests as "https://api.restful-api.dev/objects/7", this would be "https://api.restful-api.dev"
 
@@ -810,15 +825,15 @@ To retrieve an objects using requests as "https://api.restful-api.dev/objects/7"
 
 ---
 ### WaitAfterReadError
-The WaitAfterReadError property specifies the time duration (in milliseconds) that the system should wait before attempting another request after encountering a read error (a situation where all retry attempts have failed). This delay helps prevent overwhelming the server during error conditions and implements a basic back-off strategy.
+The WaitAfterReadError property specifies the time duration (in milliseconds) that the source pauses after a request fails with an exception, such as a connection error or a timeout. It is not applied when the requests of [MaxRetries](#maxretries) all receive a status other than 200. This delay helps prevent overwhelming the server during error conditions and implements a basic back-off strategy.
 
 **Type** : Integer
 
-Default value is 1000.
+Default value is 10000.
 
 ---
 ### WaitBeforeRetry
-The WaitBeforeRetry property defines the delay period (in milliseconds) between individual retry attempts when a request fails. This is different from [WaitAfterReadError](#waitafterreaderror), which specifies the wait time after all retries have failed (a read error).
+The WaitBeforeRetry property defines the delay period (in milliseconds) between individual retry attempts when the server answers with a status other than 200. This is different from [WaitAfterReadError](#waitafterreaderror), which specifies the pause after a request fails with an exception.
 
 Key aspects:
 
@@ -845,12 +860,12 @@ Default is 1000
       "description": "HTTP headers to be included in requests",
       "additionalProperties": {
         "type": "string"
-      },
-      "minProperties": 1
+      }
     },
-    "Password": {
-      "type": "string",
-      "description": "Password for authentication"
+    "MaxRetries": {
+      "type": "integer",
+      "description": "Total number of requests when the server answers with a status other than 200",
+      "default": 3
     },
     "Port": {
       "type": "integer",
@@ -866,8 +881,7 @@ Default is 1000
     },
     "Server": {
       "type": "string",
-      "description": "Server host address",
-      "pattern": "^https?://.*"
+      "description": "Server host address"
     },
     "WaitAfterReadError": {
       "type": "integer",
@@ -900,7 +914,7 @@ Basic configuration:
 
 
 
-Secure configuration with authentication:
+Configuration with authentication headers (see the known limitation under [Headers](#headers)):
 
 ```json
 {

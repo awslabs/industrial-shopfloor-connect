@@ -1,0 +1,5027 @@
+{
+  "cases": [
+    {
+      "id": "ADP-MQTT-AUTH-01",
+      "title": "Username/password broker authentication: correct credentials connect, a wrong password is refused and not logged",
+      "tier": "local-infra",
+      "priority": "P2",
+      "intent": "MqttHelper copies Username and Password into the Paho connect options. A mosquitto with allow_anonymous false and a password file accepts broker 'ok' and refuses broker 'bad' (wrong password) with 'Not authorized'; the source on 'bad' logs 'Error connecting to' and never delivers. Neither password may appear in any log. mosquitto runs as a command service because the mosquitto service kind has no password option.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttHelper.kt:93-99",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:353-359"
+      ],
+      "requires": [
+        "mosquitto",
+        "mosquitto_passwd"
+      ],
+      "services": [
+        {
+          "name": "authbroker",
+          "kind": "command",
+          "args": {
+            "listens": true,
+            "argv": [
+              "sh",
+              "-c",
+              "mosquitto_passwd -b -c pw e2e s3cr3t-ok && chmod 644 pw && printf 'listener %s 127.0.0.1\\nallow_anonymous false\\npassword_file %s/pw\\n' \"$SFC_E2E_AUTHBROKER_PORT\" \"$PWD\" > m.conf && exec mosquitto -c m.conf"
+            ]
+          }
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_AUTHBROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--user",
+              "e2e",
+              "--password",
+              "s3cr3t-ok",
+              "--message",
+              "e2e/auth",
+              "{\"v\": 1}"
+            ]
+          }
+        }
+      ],
+      "steps": [
+        {
+          "wait": {
+            "log": "for source \"mbad\""
+          }
+        }
+      ],
+      "records": 1,
+      "assert": [
+        {
+          "kind": "channelValueSet",
+          "source": "mok",
+          "channel": "e2e/auth",
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.mbad"
+          ]
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Error connecting to tcp://127\\.0\\.0\\.1:\\d+ for source \"mbad\", .*[Nn]ot authori[sz]ed"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "for source \"mok\", "
+          ],
+          "comment": "the error line ends 'for source \"<id>\", <exception>'; the good source never logs one"
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "s3cr3t-ok",
+            "wr0ng-pw"
+          ],
+          "comment": "credentials are never logged"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-AUTH-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "mok": [
+                "*"
+              ],
+              "mbad": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "mok": {
+            "Name": "mok",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "ok",
+            "Channels": {
+              "v": {
+                "Topics": [
+                  "e2e/auth"
+                ],
+                "Selector": "v"
+              }
+            }
+          },
+          "mbad": {
+            "Name": "mbad",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "bad",
+            "Channels": {
+              "v": {
+                "Topics": [
+                  "e2e/auth"
+                ],
+                "Selector": "v"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "ok": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_AUTHBROKER_PORT}",
+                "Port": "${SFC_E2E_AUTHBROKER_PORT}",
+                "WaitAfterConnectError": 1,
+                "Username": "e2e",
+                "Password": "s3cr3t-ok"
+              },
+              "bad": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_AUTHBROKER_PORT}",
+                "Port": "${SFC_E2E_AUTHBROKER_PORT}",
+                "WaitAfterConnectError": 1,
+                "Username": "e2e",
+                "Password": "wr0ng-pw"
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-CONNMETRIC-01",
+      "title": "The MQTT 'Connections' metric counts reads, not connections (known defect)",
+      "tier": "local-infra",
+      "priority": "P2",
+      "intent": "getClientForSource puts Connections (or ConnectionErrors) on every read, whether or not a connection was made (MqttAdapter.kt:319-322); the client is created once and then served from the cache. A heartbeat in the same schedule counts the reads (30 at 100 ms) while one client stays connected, so Connections should be 1 but grows with every read. NatsAdapter.kt:236 does the same.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:311-323",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:75-81"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/cm",
+              "{\"v\": 1}"
+            ]
+          }
+        }
+      ],
+      "records": 30,
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "source": "hb",
+          "channel": "n",
+          "step": 1
+        },
+        {
+          "kind": "logCount",
+          "text": "Creating client for source \"m\"",
+          "equals": 1,
+          "comment": "exactly one client, so exactly one connection"
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:321",
+        "summary": "The MQTT adapter adds 1 to Connections on every read that finds a cached client, so the metric counts reads rather than connections (same in NatsAdapter.kt:236)",
+        "assertCurrent": [
+          {
+            "kind": "metric",
+            "source": "MqttAdapter",
+            "name": "Connections",
+            "op": "ge",
+            "value": 5
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "metric",
+            "source": "MqttAdapter",
+            "name": "Connections",
+            "op": "eq",
+            "value": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-CONNMETRIC-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 100,
+            "Sources": {
+              "hb": [
+                "*"
+              ],
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "hb": {
+            "Name": "hb",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "n": {
+                "Name": "n",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 1000000
+                }
+              }
+            }
+          },
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "v": {
+                "Topics": [
+                  "e2e/cm"
+                ],
+                "Selector": "v"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          },
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          },
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          },
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          },
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          },
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-DOWN-01",
+      "title": "Broker down at startup: the adapter logs, pauses, counts ConnectionErrors, and recovers once the broker starts",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "With no broker, createMqttClient logs 'Error connecting to', read() pauses the source for WaitAfterConnectError and returns a SourceReadError, and getClientForSource counts ConnectionErrors. The client cache only keeps a client that is connected (isValid at MqttAdapter.kt:78-80), so once the broker is up a later read builds a new client and subscribes. A retained {\"v\": 7} published after the broker starts must then arrive. Every step waits on a log line or a record.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:75-81",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:193-207",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:319-322",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:354-359"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto",
+          "start": "deferred"
+        }
+      ],
+      "steps": [
+        {
+          "wait": {
+            "log": "Reading for source m paused for 1s",
+            "count": 2
+          }
+        },
+        {
+          "do": "start",
+          "service": "broker"
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/publish.py",
+            "mqtt",
+            "--port",
+            "${SFC_E2E_BROKER_PORT}",
+            "--retain",
+            "--interval-ms",
+            "0",
+            "--message",
+            "e2e/late",
+            "{\"v\": 7}"
+          ]
+        }
+      ],
+      "records": 1,
+      "assert": [
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "e2e/late",
+          "values": [
+            7.0
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "logRegex",
+          "regex": "Error connecting to tcp://127\\.0\\.0\\.1:\\d+ for source \"m\""
+        },
+        {
+          "kind": "logContains",
+          "text": "Reading for source m paused for 1s until",
+          "min": 2
+        },
+        {
+          "kind": "metric",
+          "source": "MqttAdapter",
+          "name": "ConnectionErrors",
+          "op": "ge",
+          "value": 1
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-DOWN-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "late": {
+                "Topics": [
+                  "e2e/late"
+                ],
+                "Selector": "v"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-EXPLICITCHANNELS-01",
+      "title": "A schedule that lists MQTT channel IDs explicitly never receives data, while ['*'] does (known defect)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "The adapter stores values under '<channelID>/<topic or Name>' (MqttAdapter.kt:431), but SourceDataValuesStore and SourceDataMultiValuesStore filter a read by the plain channel IDs the schedule lists; only ['*'] becomes null and reads everything. Two sources with the same channel on the same topic (separate clients, so no listener clash): schedule SA reads m1 with ['*'], schedule SB reads m2 with ['ctr']. A publisher sends a counter every 50 ms. Today every record comes from SA; listing a channel, which validation explicitly allows (MqttConfiguration.kt:72-79), silently yields nothing. The NATS adapter keys values the same way (NatsAdapter.kt:429).",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:425-432",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourceDataMultiValuesStore.kt:110-128",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/SourceDataValuesStore.kt:34-55",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttConfiguration.kt:67-80"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "pub",
+          "kind": "command",
+          "args": {
+            "readyLog": "published 0",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--topic",
+              "e2e/ctr",
+              "--payload",
+              "{\"n\": {n}}",
+              "--count",
+              "0",
+              "--interval-ms",
+              "50"
+            ]
+          }
+        }
+      ],
+      "records": 10,
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "source": "m1",
+          "channel": "e2e/ctr",
+          "step": 1,
+          "where": {
+            "schedule": "SA"
+          }
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:431",
+        "summary": "Values are stored under '<channelID>/<name>' but the store filters reads by the schedule's plain channel IDs, so a schedule listing MQTT (or NATS) channels explicitly never receives a value",
+        "assertCurrent": [
+          {
+            "kind": "everyRecord",
+            "path": "schedule",
+            "equals": "SA"
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "recordCount",
+            "where": {
+              "schedule": "SB"
+            },
+            "min": 1
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-EXPLICITCHANNELS-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "SA",
+            "Interval": 200,
+            "Sources": {
+              "m1": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          },
+          {
+            "Name": "SB",
+            "Interval": 200,
+            "Sources": {
+              "m2": [
+                "ctr"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "m1": {
+            "Name": "m1",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "ctr": {
+                "Topics": [
+                  "e2e/ctr"
+                ],
+                "Selector": "n"
+              }
+            }
+          },
+          "m2": {
+            "Name": "m2",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "ctr": {
+                "Topics": [
+                  "e2e/ctr"
+                ],
+                "Selector": "n"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-INVALIDJSON-01",
+      "title": "Invalid JSON on a JSON channel is logged and dropped while other channels keep working",
+      "tier": "local-infra",
+      "priority": "P2",
+      "intent": "A payload that does not parse on a Json channel raises JsonSyntaxException, which dataValue logs and turns into no value (MqttAdapter.kt:457-461); the other channels of the source are unaffected. Retained truncated '{\"a\":' on e2e/bad and {v:1} on e2e/ok, plus the sentinel subscribed last.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:446-462"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/bad",
+              "{\"a\":",
+              "--message",
+              "e2e/ok",
+              "{\"v\": 1}",
+              "--message",
+              "e2e/ready",
+              "{\"s\": \"e2e-sentinel-invalidjson-01\"}"
+            ]
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "debug",
+          "target": "Dbg"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "log": "e2e-sentinel-invalidjson-01"
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "e2e/ok",
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.m.values.e2e/bad"
+          ]
+        },
+        {
+          "kind": "logContains",
+          "text": "Source \"m\", Channel \"bad\", Value \"{\"a\":\" is not valid JSON"
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-INVALIDJSON-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Dbg"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "bad": {
+                "Topics": [
+                  "e2e/bad"
+                ]
+              },
+              "ok": {
+                "Topics": [
+                  "e2e/ok"
+                ],
+                "Selector": "v"
+              },
+              "ready": {
+                "Topics": [
+                  "e2e/ready"
+                ],
+                "Selector": "s"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetType": "DEBUG-TARGET"
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "DbgServer": {
+          "module": "debug-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetServer": "DbgServer"
+          }
+        },
+        "TargetServers": {
+          "DbgServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-KEEPLAST-IPC-01",
+      "title": "KeepLast over IPC yields the plain value (the cross-mode divergence of ADP-MQTT-KEEPLAST-NESTED-01)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The configuration of ADP-MQTT-KEEPLAST-NESTED-01 in IPC mode. The adapter service returns the same double-wrapped ChannelReadValue, but the gRPC conversion unwraps a ChannelReadValue found as a value (GrpcValueFromNativeExt.kt:402), so sfc-main receives the number. One retained {\"v\": 7} must arrive as the plain Double 7.0; together with the in-process pin this documents that the same configuration produces different records per mode.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcValueFromNativeExt.kt:384-409",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:209-227"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/kl",
+              "{\"v\": 7}"
+            ]
+          }
+        }
+      ],
+      "records": 1,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 1
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "e2e/kl",
+          "values": [
+            7.0
+          ],
+          "strictTypes": true
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-KEEPLAST-IPC-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "v": {
+                "Topics": [
+                  "e2e/kl"
+                ],
+                "Selector": "v"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-KEEPLAST-NESTED-01",
+      "title": "KeepLast (the default ReadMode) emits an internal wrapper object instead of the value in-process and in the uberjar (known defect)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "intent": "With ReadMode omitted the adapter keeps only the last value per channel (SourceDataValuesStore), and read() wraps each stored ChannelReadValue in a second ChannelReadValue (MqttAdapter.kt:223-225). The core unwraps nested values only inside lists (ScheduleReader.kt:807-830, the KeepAll path), so in-process and uberjar targets serialise the inner object reflectively instead of the number. One retained {\"v\": 7} gives one record. IPC unwraps the value on the way back, so IPC is covered separately by ADP-MQTT-KEEPLAST-IPC-01.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:123-127",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:209-227",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttAdapterConfiguration.kt:37-40",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:807-830"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/kl",
+              "{\"v\": 7}"
+            ]
+          }
+        }
+      ],
+      "records": 1,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 1
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:224",
+        "summary": "KeepLast read() wraps the stored ChannelReadValue in another ChannelReadValue; only list values are unwrapped by the core, so in-process/uberjar records carry an internal object instead of the value (same pattern in NatsAdapter.kt:264)",
+        "assertCurrent": [
+          {
+            "kind": "keySet",
+            "path": "sources.m.values.e2e/kl.value",
+            "keys": [
+              "_value",
+              "timestamp",
+              "valueCount"
+            ],
+            "comment": "The inner ChannelReadValue, serialised field by field."
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.m.values.e2e/kl.value._value",
+            "equals": 7.0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "path": "sources.m.values.e2e/kl.value",
+            "type": "float"
+          },
+          {
+            "kind": "everyRecord",
+            "path": "sources.m.values.e2e/kl.value",
+            "equals": 7.0
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-KEEPLAST-NESTED-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "v": {
+                "Topics": [
+                  "e2e/kl"
+                ],
+                "Selector": "v"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-MULTIADAPTER-01",
+      "title": "In the uberjar a second MQTT adapter's ReadMode is ignored: the first adapter created serves every MQTT source (known defect)",
+      "tier": "local-infra",
+      "priority": "P2",
+      "modes": [
+        "uberjar"
+      ],
+      "intent": "MqttAdapter.newInstance keeps one adapter per class (companion 'adapter'), created with the first caller's adapterID and configuration, and every store uses that adapter's ReadMode. In the uberjar all schedules resolve the factory from the system classpath, so the adapter of the first schedule (SA, MqttA, KeepLast) also serves MqttB (KeepAll): mb comes back in KeepLast's wrapper shape (ADP-MQTT-KEEPLAST-NESTED-01) instead of the plain value. Schedules are created in configuration order, so the winner is fixed. In-process mode builds a URLClassLoader per reader and IPC runs one service per adapter, so both honour MqttB's ReadMode (ADP-MQTT-MULTIADAPTER-02).",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:85",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:123-127",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:512-539",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/SourcesReaderFactory.kt:47-49",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:30-41",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:172"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/ma",
+              "{\"v\": 1}",
+              "--message",
+              "e2e/mb",
+              "{\"v\": 2}"
+            ]
+          }
+        }
+      ],
+      "records": 2,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 2,
+          "comment": "one retained copy per source"
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "schedule": "SB"
+          },
+          "equals": 1
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:518-520",
+        "summary": "The MQTT adapter is a per-class singleton: in the uberjar the first ProtocolAdapter created (its ID and ReadMode) serves every MQTT source, so a second adapter's ReadMode, MaxRetainSize and ReceivedDataChannelSize are ignored",
+        "assertCurrent": [
+          {
+            "kind": "keySet",
+            "where": {
+              "schedule": "SB"
+            },
+            "path": "sources.mb.values.e2e/mb.value",
+            "keys": [
+              "_value",
+              "timestamp",
+              "valueCount"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "everyRecord",
+            "where": {
+              "schedule": "SB"
+            },
+            "path": "sources.mb.values.e2e/mb.value",
+            "equals": 2.0,
+            "strictTypes": true
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-MULTIADAPTER-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "SA",
+            "Interval": 200,
+            "Sources": {
+              "ma": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          },
+          {
+            "Name": "SB",
+            "Interval": 200,
+            "Sources": {
+              "mb": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "ma": {
+            "Name": "ma",
+            "ProtocolAdapter": "MqttA",
+            "AdapterBroker": "b",
+            "Channels": {
+              "v": {
+                "Topics": [
+                  "e2e/ma"
+                ],
+                "Selector": "v"
+              }
+            }
+          },
+          "mb": {
+            "Name": "mb",
+            "ProtocolAdapter": "MqttB",
+            "AdapterBroker": "b",
+            "Channels": {
+              "v": {
+                "Topics": [
+                  "e2e/mb"
+                ],
+                "Selector": "v"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttA": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepLast"
+          },
+          "MqttB": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-MULTIADAPTER-02",
+      "title": "In-process and IPC honour each MQTT adapter's own ReadMode (the counterpart of ADP-MQTT-MULTIADAPTER-01)",
+      "tier": "local-infra",
+      "priority": "P2",
+      "modes": [
+        "inprocess",
+        "ipc"
+      ],
+      "intent": "The configuration of ADP-MQTT-MULTIADAPTER-01. In-process, SourcesReaderFactory creates a new InstanceFactory, and with JarFiles a new URLClassLoader, for every reader, so each ProtocolAdapter gets its own MqttAdapter singleton; in IPC each adapter is its own service. MqttB's KeepAll is therefore honoured and mb arrives as the plain Double. ma's shape is not asserted: it is KeepLast and differs per mode (ADP-MQTT-KEEPLAST-NESTED-01, -IPC-01). If class loaders were ever shared in-process, the uberjar defect would appear here too.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:85",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:123-127",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:512-539",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/SourcesReaderFactory.kt:47-49",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/util/InstanceFactory.kt:30-41",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/MainControllerService.kt:172"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/ma",
+              "{\"v\": 1}",
+              "--message",
+              "e2e/mb",
+              "{\"v\": 2}"
+            ]
+          }
+        }
+      ],
+      "records": 2,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 2
+        },
+        {
+          "kind": "everyRecord",
+          "where": {
+            "schedule": "SB"
+          },
+          "path": "sources.mb.values.e2e/mb.value",
+          "equals": 2.0,
+          "strictTypes": true
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-MULTIADAPTER-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "SA",
+            "Interval": 200,
+            "Sources": {
+              "ma": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          },
+          {
+            "Name": "SB",
+            "Interval": 200,
+            "Sources": {
+              "mb": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "ma": {
+            "Name": "ma",
+            "ProtocolAdapter": "MqttA",
+            "AdapterBroker": "b",
+            "Channels": {
+              "v": {
+                "Topics": [
+                  "e2e/ma"
+                ],
+                "Selector": "v"
+              }
+            }
+          },
+          "mb": {
+            "Name": "mb",
+            "ProtocolAdapter": "MqttB",
+            "AdapterBroker": "b",
+            "Channels": {
+              "v": {
+                "Topics": [
+                  "e2e/mb"
+                ],
+                "Selector": "v"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttA": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepLast"
+          },
+          "MqttB": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAServer": {
+          "module": "mqtt"
+        },
+        "MqttBServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttA": {
+            "AdapterServer": "MqttAServer"
+          },
+          "MqttB": {
+            "AdapterServer": "MqttBServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          },
+          "MqttBServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-RAW-01",
+      "title": "A Json:false channel stores the raw payload string",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "With Json false the adapter skips JSON decoding and stores the payload text as a String (MqttAdapter.kt:462-465). One retained plain-text payload gives exactly one record with that string. Regression note: this configuration only loads because MQTT channel validation never runs; the dead validateSelector is inverted (MqttChannelConfiguration.kt:84-90) and would reject every Json:false channel without a Selector if it were ever wired in.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:446-466",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttChannelConfiguration.kt:82-90",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttConfiguration.kt:31-38"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/raw",
+              "plain-text-42"
+            ]
+          }
+        }
+      ],
+      "records": 1,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 1
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "e2e/raw",
+          "values": [
+            "plain-text-42"
+          ],
+          "strictTypes": true
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-RAW-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "raw": {
+                "Topics": [
+                  "e2e/raw"
+                ],
+                "Json": false
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-RESTART-01",
+      "title": "After a short connection drop that Paho repairs on its own, the adapter never resubscribes and the source goes silent (known defect)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "MqttHelper connects with automaticReconnect=true and cleanSession=true, so after a drop Paho reconnects about 1 s later with no subscriptions, and nothing resubscribes: subscriptions are made only when createMqttClient builds a client, and the cache keeps the old client because isValid only checks isConnected. A tcpgate between SFC and the broker drops the connection right after the read that delivered the retained {v:1}; the 3 s read interval means no read sees the client disconnected (asserted: one 'Creating client' line). A new retained {v:2} is then published and three more reads follow: it never arrives, and the broker log shows the same client id reconnecting with c1.",
+      "pins": [
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttHelper.kt:87-89",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:75-81",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:361-365",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:378-388"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "gate",
+          "kind": "tcpgate",
+          "args": {
+            "to": "broker"
+          }
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/rs",
+              "{\"v\": 1}"
+            ]
+          }
+        }
+      ],
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 2
+          },
+          "comment": "record 2 is the read that delivered v=1"
+        },
+        {
+          "do": "gate-close",
+          "service": "gate"
+        },
+        {
+          "do": "gate-open",
+          "service": "gate"
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/publish.py",
+            "mqtt",
+            "--port",
+            "${SFC_E2E_BROKER_PORT}",
+            "--retain",
+            "--interval-ms",
+            "0",
+            "--message",
+            "e2e/rs",
+            "{\"v\": 2}"
+          ]
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 5
+          },
+          "comment": "three reads after the retained v=2 was published"
+        }
+      ],
+      "timeoutSeconds": 60,
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "source": "hb",
+          "channel": "n",
+          "step": 1
+        },
+        {
+          "kind": "logCount",
+          "text": "Creating client for source \"m\"",
+          "equals": 1,
+          "comment": "precondition: Paho repaired the drop before any read saw it; otherwise the adapter builds a new client and resubscribes"
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:78-80",
+        "summary": "After Paho's automatic reconnect (clean session) the MQTT adapter never resubscribes, and the cached client still counts as valid, so a source silently stops receiving after any short connection drop",
+        "assertCurrent": [
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "e2e/rs",
+            "values": [
+              1.0
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "e2e/rs",
+            "values": [
+              1.0,
+              2.0
+            ]
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-RESTART-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 3000,
+            "Sources": {
+              "hb": [
+                "*"
+              ],
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "hb": {
+            "Name": "hb",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "n": {
+                "Name": "n",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 1000000
+                }
+              }
+            }
+          },
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "r": {
+                "Topics": [
+                  "e2e/rs"
+                ],
+                "Selector": "v"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          },
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_GATE_PORT}",
+                "Port": "${SFC_E2E_GATE_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          },
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          },
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          },
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          },
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-RETAINED-01",
+      "title": "Retained JSON messages are decoded with Selectors (nested path, array index, whole payload); a big integer loses precision (known defect)",
+      "tier": "local-infra",
+      "priority": "P0",
+      "intent": "The adapter decodes each MQTT payload as JSON and applies the channel's JMESPath Selector, or keeps the whole document when there is none. Four retained copies of one document sit on four topics before SFC starts; each channel subscribes to its own topic and so receives exactly one copy, which pins the decode and selector path without any publisher timing. The fifth channel, subscribed last, carries a sentinel: subscriptions are made one after the other on one connection and a single FIFO worker stores the values, so once the debug target has logged the sentinel every earlier retained copy has been read. Each channel uses its own topic because a source cannot put two channels on one topic (ADP-MQTT-RETAINED-02). Pinned defect: JSON numbers are decoded with Gson's default Double policy, so the integer 9007199254740993 arrives as 9007199254740992.0.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:378-388",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:446-456",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:475-497",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:559",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/JsonHelper.kt:156-181"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/r/small",
+              "{\"small\": 42, \"nested\": {\"arr\": [1, 2, 3]}, \"big\": 9007199254740993}",
+              "--message",
+              "e2e/r/arr2",
+              "{\"small\": 42, \"nested\": {\"arr\": [1, 2, 3]}, \"big\": 9007199254740993}",
+              "--message",
+              "e2e/r/whole",
+              "{\"small\": 42, \"nested\": {\"arr\": [1, 2, 3]}, \"big\": 9007199254740993}",
+              "--message",
+              "e2e/r/big",
+              "{\"small\": 42, \"nested\": {\"arr\": [1, 2, 3]}, \"big\": 9007199254740993}",
+              "--message",
+              "e2e/r/ready",
+              "{\"s\": \"e2e-sentinel-retained-01\"}"
+            ]
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "debug",
+          "target": "Dbg"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "log": "e2e-sentinel-retained-01"
+          },
+          "comment": "The sentinel is the last retained copy delivered; every earlier copy is in this or an earlier record."
+        }
+      ],
+      "assert": [
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "e2e/r/small",
+          "values": [
+            42.0
+          ],
+          "strictTypes": true,
+          "comment": "A JSON integer becomes a Double."
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "e2e/r/arr2",
+          "values": [
+            3.0
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "valueSet",
+          "path": "sources.m.values.e2e/r/whole.value.small",
+          "values": [
+            42.0
+          ],
+          "strictTypes": true,
+          "comment": "No Selector: the whole decoded document is the value."
+        },
+        {
+          "kind": "valueSet",
+          "path": "sources.m.values.e2e/r/whole.value.nested.arr[0]",
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "kind": "valueSet",
+          "path": "sources.m.values.e2e/r/whole.value.nested.arr[2]",
+          "values": [
+            3.0
+          ]
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.m.values.e2e/r/small.value": 42.0
+          },
+          "equals": 1,
+          "comment": "One subscription, one retained copy, one record."
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.m.values.e2e/r/arr2.value": 3.0
+          },
+          "equals": 1
+        },
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.m.values.e2e/r/ready.value": "e2e-sentinel-retained-01"
+          },
+          "equals": 1
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.m.values.small",
+            "sources.m.values.arr2",
+            "sources.m.values.whole"
+          ],
+          "comment": "Without Name or mapping the output channel is the topic, not the channel id."
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/data/JsonHelper.kt:169",
+        "summary": "JSON payload numbers are decoded as Double (gsonBuilder sets no ToNumberStrategy; MqttAdapter.kt:452), so integers above 2^53 lose precision: 9007199254740993 arrives as 9007199254740992.0",
+        "assertCurrent": [
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "e2e/r/big",
+            "values": [
+              9007199254740992.0
+            ],
+            "strictTypes": true
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "e2e/r/big",
+            "values": [
+              9007199254740993
+            ],
+            "strictTypes": true
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-RETAINED-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Dbg"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "small": {
+                "Topics": [
+                  "e2e/r/small"
+                ],
+                "Selector": "small"
+              },
+              "arr2": {
+                "Topics": [
+                  "e2e/r/arr2"
+                ],
+                "Selector": "nested.arr[2]"
+              },
+              "whole": {
+                "Topics": [
+                  "e2e/r/whole"
+                ]
+              },
+              "big": {
+                "Topics": [
+                  "e2e/r/big"
+                ],
+                "Selector": "big"
+              },
+              "ready": {
+                "Topics": [
+                  "e2e/r/ready"
+                ],
+                "Selector": "s"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetType": "DEBUG-TARGET"
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "ReadMode": "KeepAll",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "DbgServer": {
+          "module": "debug-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetServer": "DbgServer"
+          }
+        },
+        "TargetServers": {
+          "DbgServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-RETAINED-02",
+      "title": "Two channels of one source on the same topic: only the channel subscribed last receives messages (known defect)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "Putting two channels with different Selectors on one JSON topic is the natural way to split a document into values, and nothing in the configuration or its validation forbids it. MqttAdapter subscribes once per channel and topic on one shared client (MqttAdapter.kt:380-386), but Paho keeps one message listener per topic filter in a Hashtable (CommsCallback.setMessageListener, paho 1.2.5), so the second subscribe replaces the first channel's listener and the first channel never sees a message. The retained ready sentinel is subscribed last, so once it is logged both e2e/dup subscriptions exist; ten live messages follow, then a live end sentinel on its own topic that arrives after them in FIFO order.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:378-388",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttChannelConfiguration.kt:131-141"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/ready",
+              "{\"s\": \"e2e-ready-retained-02\"}"
+            ]
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "debug",
+          "target": "Dbg"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "log": "e2e-ready-retained-02"
+          }
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/publish.py",
+            "mqtt",
+            "--port",
+            "${SFC_E2E_BROKER_PORT}",
+            "--topic",
+            "e2e/dup",
+            "--payload",
+            "{\"v\": \"dup-{n}\"}",
+            "--count",
+            "10",
+            "--interval-ms",
+            "0"
+          ]
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/publish.py",
+            "mqtt",
+            "--port",
+            "${SFC_E2E_BROKER_PORT}",
+            "--interval-ms",
+            "0",
+            "--message",
+            "e2e/end",
+            "{\"s\": \"e2e-end-retained-02\"}"
+          ]
+        },
+        {
+          "wait": {
+            "log": "e2e-end-retained-02"
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "recordCount",
+          "where": {
+            "sources.m.values.e2e/end.value": "e2e-end-retained-02"
+          },
+          "equals": 1
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:382",
+        "summary": "Channels of one source that share a topic overwrite each other's Paho listener (one listener per topic filter), so only the last-subscribed channel receives messages and the others stay silent",
+        "assertCurrent": [
+          {
+            "kind": "keysAbsent",
+            "paths": [
+              "sources.m.values.first"
+            ]
+          },
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "second",
+            "values": [
+              "dup-0",
+              "dup-1",
+              "dup-2",
+              "dup-3",
+              "dup-4",
+              "dup-5",
+              "dup-6",
+              "dup-7",
+              "dup-8",
+              "dup-9"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "first",
+            "values": [
+              "dup-0",
+              "dup-1",
+              "dup-2",
+              "dup-3",
+              "dup-4",
+              "dup-5",
+              "dup-6",
+              "dup-7",
+              "dup-8",
+              "dup-9"
+            ]
+          },
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "second",
+            "values": [
+              "dup-0",
+              "dup-1",
+              "dup-2",
+              "dup-3",
+              "dup-4",
+              "dup-5",
+              "dup-6",
+              "dup-7",
+              "dup-8",
+              "dup-9"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-RETAINED-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Dbg"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "first": {
+                "Topics": [
+                  "e2e/dup"
+                ],
+                "Selector": "v",
+                "TopicNameMappingConfiguration": {
+                  "Mappings": {
+                    "^e2e/dup$": "first"
+                  }
+                }
+              },
+              "second": {
+                "Topics": [
+                  "e2e/dup"
+                ],
+                "Selector": "v",
+                "TopicNameMappingConfiguration": {
+                  "Mappings": {
+                    "^e2e/dup$": "second"
+                  }
+                }
+              },
+              "end": {
+                "Topics": [
+                  "e2e/end"
+                ],
+                "Selector": "s"
+              },
+              "ready": {
+                "Topics": [
+                  "e2e/ready"
+                ],
+                "Selector": "s"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetType": "DEBUG-TARGET"
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "ReadMode": "KeepAll",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "DbgServer": {
+          "module": "debug-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetServer": "DbgServer"
+          }
+        },
+        "TargetServers": {
+          "DbgServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-RT-KEEPALL-01",
+      "title": "mqtt-target -> mosquitto -> MQTT adapter (KeepAll) delivers every message exactly once and in order",
+      "tier": "local-infra",
+      "priority": "P0",
+      "intent": "The MQTT adapter's core contract: every message received on a subscribed topic is kept (ReadMode KeepAll) and the core slices the per-channel value lists into one record per message, in arrival order. Schedule P publishes a simulator counter through mqtt-target every 50 ms; schedule R reads it back through the adapter every 500 ms, so each read carries about ten values. A gap-free step-1 sequence over 20 records proves no message was lost, duplicated or reordered, and the float type proves the JSON payload went through Gson (numbers become Double). The channel deliberately has no Name: without one the output channel is named after the topic in every mode (MqttChannelConfiguration.kt:131-136); a Name is stripped in IPC mode, see ADP-MQTT-RT-KEEPALL-02.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:123-127",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:421-432",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:446-456",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttChannelConfiguration.kt:131-136",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:781-830",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:211-214"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        }
+      ],
+      "steps": [
+        {
+          "wait": {
+            "metric": {
+              "source": "MqttTarget",
+              "name": "Writes",
+              "op": "ge",
+              "value": 20
+            }
+          }
+        }
+      ],
+      "records": 20,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "min": 20
+        },
+        {
+          "kind": "everyRecord",
+          "path": "schedule",
+          "equals": "R"
+        },
+        {
+          "kind": "channelSequence",
+          "source": "m",
+          "channel": "e2e/ctr",
+          "step": 1,
+          "comment": "One publisher connection, one topic, QoS 1, one subscriber and a single consumer coroutine: arrival order is publish order. Only deltas are asserted; the start value is the first message after the subscription."
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.m.values.e2e/ctr.value",
+          "type": "float"
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.m.values.ctr"
+          ],
+          "comment": "No Name, no mapping: the output channel is the topic, not the channel id."
+        },
+        {
+          "kind": "metric",
+          "source": "MqttTarget",
+          "name": "Writes",
+          "op": "ge",
+          "value": 20
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-RT-KEEPALL-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "P",
+            "Interval": 50,
+            "Sources": {
+              "sim": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "MqttTarget"
+            ]
+          },
+          {
+            "Name": "R",
+            "Interval": 500,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "sim": {
+            "Name": "sim",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "ctr": {
+                "Name": "ctr",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 1000000
+                }
+              }
+            }
+          },
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "ctr": {
+                "Topics": [
+                  "e2e/ctr"
+                ],
+                "Selector": "sources.sim.values.ctr.value"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "MqttTarget": {
+            "TargetType": "MQTT-TARGET",
+            "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+            "Port": "${SFC_E2E_BROKER_PORT}",
+            "TopicName": "e2e/ctr",
+            "Qos": 1
+          },
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          },
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "ReadMode": "KeepAll",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            }
+          }
+        },
+        "Metrics": {
+          "Interval": 1,
+          "Writer": {}
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          },
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter"
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter"
+            }
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          },
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "MQTT-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt-target/lib"
+            ]
+          },
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "MqttTargetServer": {
+          "module": "mqtt-target"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          },
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          },
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Targets": {
+          "MqttTarget": {
+            "TargetServer": "MqttTargetServer"
+          },
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "MqttTargetServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        },
+        "Metrics": {
+          "Writer": {
+            "MetricsWriter": {
+              "FactoryClassName": "com.amazonaws.sfc.e2e.E2eMetricsWriter",
+              "JarFiles": [
+                "${SFC_E2E_SUPPORT_JAR}"
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-RT-KEEPALL-02",
+      "title": "A channel Name names the MQTT value (in-process and uberjar)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "modes": [
+        "inprocess",
+        "uberjar"
+      ],
+      "intent": "For an MQTT channel with a Name, MqttChannelConfiguration.mapTopicName returns the Name instead of the topic, the value is stored as '<channelID>/<Name>' and the core emits it under the Name. One retained message on e2e/name with Name 'val' must arrive as channel 'val' and not as the topic. IPC mode is excluded because sfc-main strips the Name before it sends the configuration to the adapter service; that divergence is pinned in ADP-MQTT-RT-KEEPALL-03 (the harness cannot scope a knownDefect to one mode).",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttChannelConfiguration.kt:131-134",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:425-431",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:211-214"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/name",
+              "{\"v\": 7}"
+            ]
+          }
+        }
+      ],
+      "records": 1,
+      "modeParity": true,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 1,
+          "comment": "One retained copy, one record."
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "val",
+          "values": [
+            7.0
+          ],
+          "strictTypes": true
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.m.values.e2e/name",
+            "sources.m.values.v"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-RT-KEEPALL-02",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "v": {
+                "Name": "val",
+                "Topics": [
+                  "e2e/name"
+                ],
+                "Selector": "v"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "ReadMode": "KeepAll",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-RT-KEEPALL-03",
+      "title": "In IPC mode an MQTT channel Name is dropped and the value is named after the topic (known defect, IPC)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "modes": [
+        "ipc"
+      ],
+      "intent": "The same configuration as ADP-MQTT-RT-KEEPALL-02, in IPC mode only. Before sfc-main initialises an adapter service it removes the channel Name (with Description, Transformation and the filters) from every source channel, on the assumption that adapters never use it (IpcSourceReader.kt:268-282). The MQTT adapter does use it: mapTopicName returns the Name when set and the topic otherwise. In IPC the service therefore stores the value under 'v/e2e/name' and the record carries channel 'e2e/name', while in-process and uberjar it is 'val'. Any target, filter or downstream consumer keyed on the channel name breaks when a deployment moves to IPC.",
+      "pins": [
+        "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReader.kt:268-282",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttChannelConfiguration.kt:131-134",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:211-214"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/name",
+              "{\"v\": 7}"
+            ]
+          }
+        }
+      ],
+      "records": 1,
+      "assert": [
+        {
+          "kind": "recordCount",
+          "equals": 1
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/IpcSourceReader.kt:273",
+        "summary": "IPC strips the channel Name from the adapter configuration, so MQTT values are named after the topic ('e2e/name') instead of the configured Name ('val') in IPC mode only",
+        "assertCurrent": [
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "e2e/name",
+            "values": [
+              7.0
+            ],
+            "strictTypes": true
+          },
+          {
+            "kind": "keysAbsent",
+            "paths": [
+              "sources.m.values.val"
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "val",
+            "values": [
+              7.0
+            ],
+            "strictTypes": true
+          },
+          {
+            "kind": "keysAbsent",
+            "paths": [
+              "sources.m.values.e2e/name"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-RT-KEEPALL-03",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "v": {
+                "Name": "val",
+                "Topics": [
+                  "e2e/name"
+                ],
+                "Selector": "v"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "ReadMode": "KeepAll",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            }
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-SELECTOR-INVALID-01",
+      "title": "An invalid MQTT Selector is silently ignored and the whole payload is emitted (known defect)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "MqttConfiguration.validate checks schedules and that sources exist, but never validates adapters, brokers, sources or channels, so MqttChannelConfiguration.validateSelector (which would reject the selector) never runs. The selector getter swallows the compile error and returns null (MqttChannelConfiguration.kt:46-67), and dataValue then stores the whole decoded payload. A retained {\"v\": 7} read through Selector 'v.[' arrives as the map {v: 7.0}. The heartbeat schedule has its own sink so the case reaches its assertions whether or not the MQTT adapter starts.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttConfiguration.kt:31-38",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttChannelConfiguration.kt:41-101",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:450-456"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/sel",
+              "{\"v\": 7}"
+            ]
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "file"
+        },
+        "hb": {
+          "kind": "file"
+        }
+      },
+      "gates": [
+        {
+          "sink": "hb",
+          "records": 30
+        }
+      ],
+      "failFast": [],
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "source": "hb",
+          "channel": "n",
+          "step": 1,
+          "sink": "hb"
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttConfiguration.kt:32",
+        "summary": "MQTT source/channel configuration is never validated, and an uncompilable Selector silently turns into 'no selector', so the full payload is emitted",
+        "assertCurrent": [
+          {
+            "kind": "recordCount",
+            "sink": "main",
+            "min": 1
+          },
+          {
+            "kind": "everyRecord",
+            "sink": "main",
+            "path": "sources.m.values.e2e/sel.value.v",
+            "equals": 7.0
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "logContains",
+            "text": "is not a valid JMESPath selector"
+          },
+          {
+            "kind": "recordCount",
+            "sink": "main",
+            "equals": 0
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-SELECTOR-INVALID-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "H",
+            "Interval": 100,
+            "Sources": {
+              "hb": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Hb"
+            ]
+          },
+          {
+            "Name": "R",
+            "Interval": 100,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "hb": {
+            "Name": "hb",
+            "ProtocolAdapter": "Sim",
+            "Channels": {
+              "n": {
+                "Name": "n",
+                "Simulation": {
+                  "SimulationType": "Counter",
+                  "DataType": "Int",
+                  "Min": 0,
+                  "Max": 1000000
+                }
+              }
+            }
+          },
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "bad": {
+                "Topics": [
+                  "e2e/sel"
+                ],
+                "Selector": "v.["
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          },
+          "Hb": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK_HB}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterType": "SIMULATOR"
+          },
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          },
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          },
+          "SIMULATOR": {
+            "FactoryClassName": "com.amazonaws.sfc.simulator.SimulatorAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/simulator/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "SimServer": {
+          "module": "simulator"
+        },
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        },
+        "HbServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "Sim": {
+            "AdapterServer": "SimServer"
+          },
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "SimServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          },
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          },
+          "Hb": {
+            "TargetServer": "HbServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50002
+          },
+          "HbServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50003
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-TOPICMAP-UNMAPPED-01",
+      "title": "IncludeUnmappedTopics decides whether an unmatched topic is dropped (with a warning) or kept under its raw name",
+      "tier": "local-infra",
+      "priority": "P2",
+      "intent": "A topic that matches the subscription but none of the mappings is dropped with a warning when IncludeUnmappedTopics is false (the default) and kept under the raw topic name when it is true. Retained e2e/m/a, e2e/m/b, e2e/n/a and e2e/n/b; 'strict' maps only e2e/m/a, 'loose' maps only e2e/n/a. The two channels use different filters because channels of one source cannot share a topic filter (ADP-MQTT-RETAINED-02).",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/TopicNameMappingConfiguration.kt:60-74",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttChannelConfiguration.kt:135-140",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:425-437"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/m/a",
+              "{\"v\": 1}",
+              "--message",
+              "e2e/m/b",
+              "{\"v\": 2}",
+              "--message",
+              "e2e/n/a",
+              "{\"v\": 1}",
+              "--message",
+              "e2e/n/b",
+              "{\"v\": 2}",
+              "--message",
+              "e2e/ready",
+              "{\"s\": \"e2e-sentinel-topicmap-01\"}"
+            ]
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "debug",
+          "target": "Dbg"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "log": "e2e-sentinel-topicmap-01"
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "alpha",
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "alpha2",
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "e2e/n/b",
+          "values": [
+            2.0
+          ]
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.m.values.e2e/m/b",
+            "sources.m.values.e2e/m/a",
+            "sources.m.values.e2e/n/a"
+          ]
+        },
+        {
+          "kind": "logContains",
+          "text": "Topic name \"e2e/m/b\" does not match with any of the TopicName Mappings for \"m\", Channel \"strict\""
+        },
+        {
+          "kind": "logAbsent",
+          "texts": [
+            "Topic name \"e2e/n/b\" does not match"
+          ]
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-TOPICMAP-UNMAPPED-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Dbg"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "strict": {
+                "Topics": [
+                  "e2e/m/+"
+                ],
+                "Selector": "v",
+                "TopicNameMappingConfiguration": {
+                  "Mappings": {
+                    "^e2e/m/a$": "alpha"
+                  },
+                  "IncludeUnmappedTopics": false
+                }
+              },
+              "loose": {
+                "Topics": [
+                  "e2e/n/+"
+                ],
+                "Selector": "v",
+                "TopicNameMappingConfiguration": {
+                  "Mappings": {
+                    "^e2e/n/a$": "alpha2"
+                  },
+                  "IncludeUnmappedTopics": true
+                }
+              },
+              "ready": {
+                "Topics": [
+                  "e2e/ready"
+                ],
+                "Selector": "s"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetType": "DEBUG-TARGET"
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "DbgServer": {
+          "module": "debug-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetServer": "DbgServer"
+          }
+        },
+        "TargetServers": {
+          "DbgServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-UTF8-01",
+      "title": "Non-ASCII MQTT payloads are decoded with the platform charset and corrupted under a non-UTF-8 default (known defect)",
+      "tier": "local-infra",
+      "priority": "P2",
+      "intent": "MqttAdapter.kt:401 turns the payload into text with MqttMessage.toString(), which in paho 1.2.5 is new String(payload) in the JVM default charset. CodeBuild runs corretto17 with LC_ALL=C, where the default is US-ASCII; the case pins that default on any JDK with JAVA_TOOL_OPTIONS=-Dfile.encoding=US-ASCII (JDK 18+ otherwise defaults to UTF-8). The payload {\"s\": \"h\\u00e9llo-\\u20ac\"} is published as UTF-8 bytes; StrEquals against the same text (written as JSON escapes, so the config file is ASCII) turns the decoded string into a boolean, which keeps the check independent of how any target encodes text. The ASCII control channel must be true in both worlds.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:398-402",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/transformations/StrEquals.kt:13-17",
+        "ci/cdk/lib/buildspec.ts:50"
+      ],
+      "env": {
+        "JAVA_TOOL_OPTIONS": "-Dfile.encoding=US-ASCII"
+      },
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/u/utf8",
+              "hex:7b2273223a202268c3a96c6c6f2de282ac227d",
+              "--message",
+              "e2e/u/ascii",
+              "{\"s\": \"hello\"}",
+              "--message",
+              "e2e/ready",
+              "{\"s\": \"e2e-sentinel-utf8-01\"}"
+            ]
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "debug",
+          "target": "Dbg"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "log": "e2e-sentinel-utf8-01"
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "e2e/u/ascii",
+          "values": [
+            true
+          ],
+          "strictTypes": true
+        }
+      ],
+      "knownDefect": {
+        "ref": "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:401",
+        "summary": "MQTT payloads are decoded with the JVM default charset (MqttMessage.toString() is new String(payload)), so UTF-8 text is corrupted wherever the default is not UTF-8 (corretto17 + LC_ALL=C in CodeBuild)",
+        "assertCurrent": [
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "e2e/u/utf8",
+            "values": [
+              false
+            ],
+            "strictTypes": true
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "e2e/u/utf8",
+            "values": [
+              true
+            ],
+            "strictTypes": true
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-UTF8-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Dbg"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "utf8": {
+                "Topics": [
+                  "e2e/u/utf8"
+                ],
+                "Selector": "s",
+                "Transformation": "isUtf8"
+              },
+              "ascii": {
+                "Topics": [
+                  "e2e/u/ascii"
+                ],
+                "Selector": "s",
+                "Transformation": "isAscii"
+              },
+              "ready": {
+                "Topics": [
+                  "e2e/ready"
+                ],
+                "Selector": "s"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetType": "DEBUG-TARGET"
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Transformations": {
+          "isUtf8": [
+            {
+              "Operator": "StrEquals",
+              "Operand": "héllo-€"
+            }
+          ],
+          "isAscii": [
+            {
+              "Operator": "StrEquals",
+              "Operand": "hello"
+            }
+          ]
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "DbgServer": {
+          "module": "debug-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetServer": "DbgServer"
+          }
+        },
+        "TargetServers": {
+          "DbgServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-WILDCARD-01",
+      "title": "'+' and '#' wildcards with TopicNameMapping select exactly the expected topics",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "Topic filters are matched by the broker and the received topic is mapped to a channel name by the first matching regex (TopicNameMappingConfiguration.map, Kotlin Regex.replace with $1). Retained {v:1}, {v:2}, {v:3} on e2e/w/a, e2e/w/b and e2e/w/c/deep: the '+' channel must see a and b only, the '#' channel all three, each value under its mapped name. Distinct prefixes are needed because the core names a value after the part behind '<channelID>/'. The sentinel on e2e/ready is subscribed last, so once it is logged every retained burst has been read. The filters overlap on one client: a retained copy sent for the '#' subscription is also handed to the '+' channel's listener (paho delivers to every matching listener), so retained values typically arrive twice per channel; only the set of names and values is asserted.",
+      "pins": [
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/TopicNameMappingConfiguration.kt:60-74",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/config/MqttChannelConfiguration.kt:131-141",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:421-432",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleWriter.kt:211-214"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "fixtures",
+          "kind": "command",
+          "args": {
+            "readyLog": "published all",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--retain",
+              "--interval-ms",
+              "0",
+              "--linger",
+              "--message",
+              "e2e/w/a",
+              "{\"v\": 1}",
+              "--message",
+              "e2e/w/b",
+              "{\"v\": 2}",
+              "--message",
+              "e2e/w/c/deep",
+              "{\"v\": 3}",
+              "--message",
+              "e2e/ready",
+              "{\"s\": \"e2e-sentinel-wildcard-01\"}"
+            ]
+          }
+        }
+      ],
+      "sinks": {
+        "main": {
+          "kind": "debug",
+          "target": "Dbg"
+        }
+      },
+      "steps": [
+        {
+          "wait": {
+            "log": "e2e-sentinel-wildcard-01"
+          }
+        }
+      ],
+      "assert": [
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "plus_a",
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "plus_b",
+          "values": [
+            2.0
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "hash_a",
+          "values": [
+            1.0
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "hash_b",
+          "values": [
+            2.0
+          ]
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "hash_c/deep",
+          "values": [
+            3.0
+          ]
+        },
+        {
+          "kind": "keysAbsent",
+          "paths": [
+            "sources.m.values.plus_c/deep",
+            "sources.m.values.plus_c",
+            "sources.m.values.e2e/w/a",
+            "sources.m.values.e2e/w/c/deep"
+          ],
+          "comment": "'+' matches one level only, and every received topic was mapped."
+        }
+      ],
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-WILDCARD-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 200,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "Dbg"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "plus": {
+                "Topics": [
+                  "e2e/w/+"
+                ],
+                "Selector": "v",
+                "TopicNameMappingConfiguration": {
+                  "Mappings": {
+                    "^e2e/w/(.*)$": "plus_$1"
+                  }
+                }
+              },
+              "hash": {
+                "Topics": [
+                  "e2e/w/#"
+                ],
+                "Selector": "v",
+                "TopicNameMappingConfiguration": {
+                  "Mappings": {
+                    "^e2e/w/(.*)$": "hash_$1"
+                  }
+                }
+              },
+              "ready": {
+                "Topics": [
+                  "e2e/ready"
+                ],
+                "Selector": "s"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetType": "DEBUG-TARGET"
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "DEBUG-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.debugtarget.DebugTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/debug-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "DbgServer": {
+          "module": "debug-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "Dbg": {
+            "TargetServer": "DbgServer"
+          }
+        },
+        "TargetServers": {
+          "DbgServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    },
+    {
+      "id": "ADP-MQTT-XFORM-FILTER-01",
+      "title": "Channel ChangeFilter and ValueFilter are ignored for MQTT values while the Transformation applies (known defect)",
+      "tier": "local-infra",
+      "priority": "P1",
+      "intent": "MQTT values reach the core keyed '<channelID>/<topic>'. The transformation lookup splits that key (ScheduleReader.kt:691-699), but ChangeFiltersCache and applyValueFilter look the channel up with the full key, find nothing and pass the value (ChangeFiltersCache.kt:35-36, ScheduleReader.kt:645-650). Three publishers feed three topics every 50 ms (KeepAll, so every value is kept in order): raw is a counter (step 1); x2 doubles the counter and should then pass the Absolute 5 change filter only every third value (step 6); gt is the constant 5 behind ValueFilter gt 20 and should never appear. Today x2 steps by 2 and gt appears in every record. The same keying is used by the NATS adapter (NatsAdapter.kt:429).",
+      "pins": [
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:328-337",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:589-602",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:645-650",
+        "core/sfc-main/src/main/kotlin/com/amazonaws/sfc/ScheduleReader.kt:688-705",
+        "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFiltersCache.kt:28-43",
+        "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:431"
+      ],
+      "services": [
+        {
+          "name": "broker",
+          "kind": "mosquitto"
+        },
+        {
+          "name": "pubraw",
+          "kind": "command",
+          "args": {
+            "readyLog": "published 0",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--topic",
+              "e2e/x/raw",
+              "--payload",
+              "{\"n\": {n}}",
+              "--count",
+              "0",
+              "--interval-ms",
+              "50"
+            ]
+          }
+        },
+        {
+          "name": "pubx2",
+          "kind": "command",
+          "args": {
+            "readyLog": "published 0",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--topic",
+              "e2e/x/x2",
+              "--payload",
+              "{\"n\": {n}}",
+              "--count",
+              "0",
+              "--interval-ms",
+              "50"
+            ]
+          }
+        },
+        {
+          "name": "pubgt",
+          "kind": "command",
+          "args": {
+            "readyLog": "published 0",
+            "argv": [
+              "python",
+              "${COUNTERPARTS}/publish.py",
+              "mqtt",
+              "--port",
+              "${SFC_E2E_BROKER_PORT}",
+              "--topic",
+              "e2e/x/gt",
+              "--payload",
+              "{\"n\": 5}",
+              "--count",
+              "0",
+              "--interval-ms",
+              "50"
+            ]
+          }
+        }
+      ],
+      "records": 30,
+      "assert": [
+        {
+          "kind": "channelSequence",
+          "source": "m",
+          "channel": "e2e/x/raw",
+          "step": 1,
+          "skipMissing": true
+        }
+      ],
+      "knownDefect": {
+        "ref": "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/filters/ChangeFiltersCache.kt:36",
+        "summary": "Channel ChangeFilter/ValueFilter (and ConditionFilter) are looked up with the adapter's '<channelID>/<name>' value key, find no channel and pass every value, so filters never apply to MQTT or NATS channels",
+        "assertCurrent": [
+          {
+            "kind": "channelSequence",
+            "source": "m",
+            "channel": "e2e/x/x2",
+            "step": 2,
+            "skipMissing": true,
+            "comment": "Multiply 2 applied, Absolute 5 change filter not applied."
+          },
+          {
+            "kind": "channelValueSet",
+            "source": "m",
+            "channel": "e2e/x/gt",
+            "values": [
+              5.0
+            ]
+          }
+        ],
+        "assertCorrect": [
+          {
+            "kind": "channelSequence",
+            "source": "m",
+            "channel": "e2e/x/x2",
+            "step": 6,
+            "skipMissing": true
+          },
+          {
+            "kind": "keysAbsent",
+            "paths": [
+              "sources.m.values.e2e/x/gt"
+            ]
+          }
+        ]
+      },
+      "config": {
+        "AWSVersion": "2022-04-02",
+        "Name": "ADP-MQTT-XFORM-FILTER-01",
+        "LogLevel": "Info",
+        "Schedules": [
+          {
+            "Name": "R",
+            "Interval": 500,
+            "Sources": {
+              "m": [
+                "*"
+              ]
+            },
+            "Targets": [
+              "File"
+            ]
+          }
+        ],
+        "Sources": {
+          "m": {
+            "Name": "m",
+            "ProtocolAdapter": "MqttAdapter",
+            "AdapterBroker": "b",
+            "Channels": {
+              "raw": {
+                "Topics": [
+                  "e2e/x/raw"
+                ],
+                "Selector": "n"
+              },
+              "x2": {
+                "Topics": [
+                  "e2e/x/x2"
+                ],
+                "Selector": "n",
+                "Transformation": "times2",
+                "ChangeFilter": "abs5"
+              },
+              "gt": {
+                "Topics": [
+                  "e2e/x/gt"
+                ],
+                "Selector": "n",
+                "ValueFilter": "gt20"
+              }
+            }
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetType": "FILE-TARGET",
+            "Directory": "${SFC_E2E_SINK}",
+            "Json": true,
+            "UtcTime": true,
+            "Extension": ".json",
+            "BufferSize": 1,
+            "BufferCount": 1
+          }
+        },
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterType": "MQTT",
+            "Brokers": {
+              "b": {
+                "EndPoint": "tcp://127.0.0.1:${SFC_E2E_BROKER_PORT}",
+                "Port": "${SFC_E2E_BROKER_PORT}",
+                "WaitAfterConnectError": 1
+              }
+            },
+            "ReadMode": "KeepAll"
+          }
+        },
+        "Transformations": {
+          "times2": [
+            {
+              "Operator": "Multiply",
+              "Operand": 2
+            }
+          ]
+        },
+        "ChangeFilters": {
+          "abs5": {
+            "Type": "Absolute",
+            "Value": 5
+          }
+        },
+        "ValueFilters": {
+          "gt20": {
+            "Operator": "gt",
+            "Value": 20
+          }
+        },
+        "Metadata": {
+          "runId": "${SFC_E2E_RUN_ID}",
+          "case": "${SFC_E2E_CASE}",
+          "mode": "${SFC_E2E_MODE}",
+          "marker": "${SFC_E2E_MARKER}"
+        }
+      },
+      "uberjar": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter"
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter"
+          }
+        }
+      },
+      "inprocess": {
+        "AdapterTypes": {
+          "MQTT": {
+            "FactoryClassName": "com.amazonaws.sfc.mqtt.MqttAdapter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/mqtt/lib"
+            ]
+          }
+        },
+        "TargetTypes": {
+          "FILE-TARGET": {
+            "FactoryClassName": "com.amazonaws.sfc.filetarget.FileTargetWriter",
+            "JarFiles": [
+              "${SFC_DEPLOYMENT_DIR}/file-target/lib"
+            ]
+          }
+        }
+      },
+      "ipcServices": {
+        "MqttAdapterServer": {
+          "module": "mqtt"
+        },
+        "FileServer": {
+          "module": "file-target"
+        }
+      },
+      "ipc": {
+        "ProtocolAdapters": {
+          "MqttAdapter": {
+            "AdapterServer": "MqttAdapterServer"
+          }
+        },
+        "AdapterServers": {
+          "MqttAdapterServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50000
+          }
+        },
+        "Targets": {
+          "File": {
+            "TargetServer": "FileServer"
+          }
+        },
+        "TargetServers": {
+          "FileServer": {
+            "Address": "${SFC_E2E_IPC_HOST}",
+            "Port": 50001
+          }
+        }
+      }
+    }
+  ]
+}

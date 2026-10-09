@@ -1,118 +1,64 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import java.time.LocalDate
-
 group = "com.amazonaws.sfc"
 version = "1.0.1"
 
-val sfcRelease = rootProject.extra.get("sfc_release")!!
-val module = "awss3tables"
-val kotlinCoroutinesVersion = "1.6.2"
-val kotlinVersion = "2.2.0"
-val sfcCoreVersion = sfcRelease
-val sfcIpcVersion = sfcRelease
-// need this one for S3 Tables version
-val awsSdkVersion = "2.29.30"
-// need this version for jvm 1,8
-var icebergVersion = "1.6.1"
-var awsIcebergVersion = "1.9.0"
-var parquetVersion = "1.15.1"
-var parquetFormatsVersion = "2.11.0"
-var hadoopVersion = "3.4.1"
-var slf4jVersion = "2.0.17"
-
 plugins {
-    id("sfc.kotlin-application-conventions")
-    java
+    id("sfc.module-conventions")
 }
 
-repositories {
-    mavenCentral()
+sfcModule {
+    buildConfigPackage = "awss3tables"
 }
 
 dependencies {
     implementation(project(":core:sfc-core"))
     implementation(project(":core:sfc-ipc"))
 
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlinCoroutinesVersion")
+    implementation(libs.kotlin.stdlib.jdk8)
+    implementation(libs.kotlinx.coroutines.core)
 
+    implementation(libs.iceberg.core)
+    implementation(libs.iceberg.parquet)
+    implementation(libs.iceberg.data)
+    implementation(libs.iceberg.api)
+    implementation(libs.iceberg.aws)
+    // iceberg-aws reflectively loads ApacheHttpClient$Builder (HttpClientProperties), so the
+    // HttpClient 4 based client must be present at runtime even though SFC's own code uses
+    // apache5-client. Without it: NoClassDefFoundError when S3FileIO creates an output file.
+    runtimeOnly(libs.awssdk.apache.client)
+    // iceberg-aws-bundle deliberately omitted: it is a 61 MB fat jar shipping ~19,800
+    // UNRELOCATED software.amazon.awssdk classes for environments that lack the AWS SDK.
+    // SFC declares the SDK explicitly, so the bundle only duplicated it at iceberg's pinned
+    // version - 8,891 colliding class paths in the uberjar.
 
-    implementation("org.apache.iceberg:iceberg-core:$icebergVersion")
-    implementation("org.apache.iceberg:iceberg-parquet:$icebergVersion")
-    implementation("org.apache.iceberg:iceberg-data:$icebergVersion")
-    implementation("org.apache.iceberg:iceberg-api:$icebergVersion")
-    implementation("org.apache.iceberg:iceberg-aws:$icebergVersion")
-    implementation("org.apache.iceberg:iceberg-aws-bundle:$awsIcebergVersion")
+    implementation(libs.awssdk.s3tables)
+    implementation(libs.awssdk.sts)
+    implementation(libs.awssdk.url.connection.client)
+    // iceberg-aws declares the AWS SDK compileOnly. Its S3FileIO, the table I/O of the S3 Tables catalog,
+    // needs the S3 client at runtime. In-process it comes from sfc-main's lib; the IPC service had
+    // none: NoClassDefFoundError: software/amazon/awssdk/services/s3/model/S3Exception.
+    runtimeOnly(libs.awssdk.s3)
 
-    implementation("software.amazon.awssdk:s3tables:2.29.30")
-    implementation("software.amazon.awssdk:sts:2.29.30")
-    implementation("software.amazon.awssdk:url-connection-client:2.29.30")
+    implementation(libs.parquet.avro)
+    implementation(libs.parquet.column)
+    implementation(libs.parquet.common)
+    implementation(libs.parquet.encoding)
 
-    implementation("org.apache.parquet:parquet-avro:$parquetVersion")
-    implementation("org.apache.parquet:parquet-column:$parquetVersion")
-    implementation("org.apache.parquet:parquet-common:$parquetVersion")
-    implementation("org.apache.parquet:parquet-encoding:$parquetVersion")
+    implementation(libs.parquet.hadoop)
+    implementation(libs.parquet.format)
 
-    implementation("org.apache.parquet:parquet-hadoop:$parquetVersion")
-    implementation("org.apache.parquet:parquet-format:$parquetFormatsVersion")
+    implementation(libs.hadoop.common)
+    implementation(libs.hadoop.client)
 
-    implementation("org.apache.hadoop:hadoop-common:$hadoopVersion")
-    implementation("org.apache.hadoop:hadoop-client:$hadoopVersion")
-
-    implementation("org.slf4j:slf4j-nop:$slf4jVersion")
+    // slf4j-nop deliberately removed: it registers an SLF4JServiceProvider that competes with
+    // log4j-slf4j2-impl. In the uberjar the NOP provider used to win, silently discarding every
+    // log line from the AWS SDK, netty, hadoop, kafka, milo and plc4x. Noisy third-party logging
+    // is now controlled by log4j2 levels instead.
     
 }
 
 application {
     mainClass.set("com.amazonaws.sfc.awss3tables.AwsS3TablesTargetService")
-    applicationName = project.name
 }
-
-tasks.getByName<Zip>("distZip").enabled = false
-tasks.distTar {
-    project.version = version
-    archiveBaseName = "${project.name}"
-    compression = Compression.GZIP
-    archiveExtension = "tar.gz"
-    archiveFileName = "${project.name}.tar.gz"
-}
-
-
-tasks.register<Copy>("copyDist") {
-    from(layout.buildDirectory.dir("distributions"))
-    include("*.tar.gz")
-    into(layout.buildDirectory.dir("../../../build/distribution/"))
-}
-
-
-tasks.register("generateBuildConfig") {
-    val version = project.version.toString()
-
-    val versionSource = resources.text.fromString(
-        """
-          |package com.amazonaws.sfc.$module
-          |
-          |object BuildConfig {
-          |  const val CORE_VERSION = "$sfcCoreVersion" 
-          |  const val IPC_VERSION = "$sfcIpcVersion"
-          |  const val VERSION = "$version"
-          |    override fun toString() = "SFC_MODULE ${project.name.uppercase()}: VERSION=${'$'}VERSION, SFC_CORE_VERSION=${'$'}CORE_VERSION, SFC_IPC_VERSION=${'$'}IPC_VERSION, BUILD_DATE=${LocalDate.now()}"
-          |}
-          |
-        """.trimMargin()
-    )
-
-    copy {
-        from(versionSource)
-        into("src/main/kotlin/com/amazonaws/sfc/$module")
-        rename { "BuildConfig.kt" }
-    }
-}
-
-tasks.named("build") {
-    dependsOn("generateBuildConfig")
-    finalizedBy("copyDist")
-}
-
