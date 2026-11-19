@@ -361,7 +361,7 @@ class MqttAdapter(private val adapterID: String, private val configuration: Mqtt
         return try {
             log.info("Connected to broker for source \"$sourceID\" at ${brokerConfiguration.endPoint} with session id \"$id\"")
             // Setup subscriptions
-            setupSourceSubscriptions(sourceID, sourceConfiguration, client)
+            subscribeAndKeepSubscribed(sourceID, sourceConfiguration, client)
             client
         } catch (e: Exception) {
             log.error("Error setting up subscription ${brokerConfiguration.endPoint} for source \"$sourceID\", $e")
@@ -562,6 +562,58 @@ class MqttAdapter(private val adapterID: String, private val configuration: Mqtt
         private val ADAPTER_METRIC_DIMENSIONS = mapOf(
             MetricsCollector.METRICS_DIMENSION_SOURCE_CATEGORY to METRICS_DIMENSION_SOURCE_CATEGORY_ADAPTER
         )
+    }
+
+    // The client that currently serves each source. A client the cache has replaced must not subscribe again.
+    private val sourceClients = ConcurrentHashMap<String, MqttClient>()
+
+    /**
+     * Subscribes a new client to the topics of its source, and again every time Paho has reconnected it. The session
+     * is clean, so after a reconnect the broker no longer has the subscriptions, and without this the source stays
+     * connected and receives nothing.
+     * @param sourceID String Source ID
+     * @param source MqttSourceConfiguration The Mqtt source
+     * @param client MqttClient The connected client
+     */
+    private fun subscribeAndKeepSubscribed(sourceID: String, source: MqttSourceConfiguration, client: MqttClient) {
+
+        // A read that found the previous client disconnected made this one. The previous client is still reconnecting
+        // on its own: close it, or both would subscribe and every value would arrive twice.
+        val previous = sourceClients.put(sourceID, client)
+        if (previous != null && previous !== client) {
+            try {
+                previous.close(true)
+            } catch (_: Exception) {
+            }
+        }
+
+        client.setCallback(object : org.eclipse.paho.client.mqttv3.MqttCallbackExtended {
+
+            override fun connectComplete(reconnect: Boolean, serverURI: String?) {
+                if (!reconnect || sourceClients[sourceID] !== client) return
+                // Paho calls this on its own thread, where a blocking subscribe would wait for itself
+                scope.launch(context = Dispatchers.IO, name = "Resubscribe") {
+                    val log = logger.getCtxLoggers(className, "resubscribe")
+                    try {
+                        setupSourceSubscriptions(sourceID, source, client)
+                        log.info("Reconnected to $serverURI for source \"$sourceID\", subscribed to its topics again")
+                    } catch (e: Exception) {
+                        log.error("Error subscribing to the topics of source \"$sourceID\" after reconnecting to $serverURI, $e")
+                    }
+                }
+            }
+
+            override fun connectionLost(cause: Throwable?) {
+                logger.getCtxWarningLog(className, "connectionLost")("Connection to the broker lost for source \"$sourceID\", ${cause?.message ?: cause}")
+            }
+
+            // Messages go to the listener of their subscription (setupSourceSubscriptions)
+            override fun messageArrived(topic: String?, message: MqttMessage?) {}
+
+            override fun deliveryComplete(token: org.eclipse.paho.client.mqttv3.IMqttDeliveryToken?) {}
+        })
+
+        setupSourceSubscriptions(sourceID, source, client)
     }
 
 }
