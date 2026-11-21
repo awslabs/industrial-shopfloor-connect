@@ -221,7 +221,7 @@ class MqttAdapter(private val adapterID: String, private val configuration: Mqtt
         createMetrics(protocolAdapterID, dimensions, readDurationInMillis, data.size)
 
         val d = data.map {
-            it.key to ChannelReadValue(it.value)
+            it.key to (it.value as? ChannelReadValue ?: ChannelReadValue(it.value))
         }.toMap()
 
         return SourceReadSuccess(d, DateTime.systemDateTime())

@@ -61,7 +61,6 @@ From an sfcup install, start the same service from the uberjar: `java -cp "$HOME
 
 ## Known limitations
 
-- With `ReadMode` `KeepLast` (the default), the uberjar and in-process modes currently deliver an internal object (`_value`, `timestamp`, `valueCount`) instead of the value. Set `"ReadMode": "KeepAll"`.
 - Keep [Json](#json) set to `true`: with `false` the adapter currently delivers the NATS message object instead of the payload text.
 - In the `Sources` of a schedule, list NATS sources with `["*"]`. A schedule that names NATS channels receives no values from them.
 - `ChangeFilter` and `ValueFilter` of NATS channels are not applied.
@@ -506,8 +505,6 @@ If set to 0 there is no maximum number of values.
 - KeepLast  to collect last values received in read interval each topic, discarding earlier messages (Default)
 
 - KeepAll to collect values received in read interval up to the maximum specified by MaxRetainSize values or not older than specified by MaxRetainPeriod
-
-In the uberjar and in-process modes `KeepLast` currently delivers an internal object instead of the value; use `KeepAll` (see [Known limitations](#known-limitations)).
 
 
 

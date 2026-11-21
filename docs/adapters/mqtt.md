@@ -63,7 +63,6 @@ From an sfcup install, start the same service from the uberjar: `java -cp "$HOME
 
 ## Known limitations
 
-- With `ReadMode` `KeepLast` (the default), the uberjar and in-process modes currently deliver an internal object (`_value`, `timestamp`, `valueCount`) instead of the value. Set `"ReadMode": "KeepAll"`.
 - In the `Sources` of a schedule, list MQTT sources with `["*"]`. A schedule that names MQTT channels receives no values from them.
 - Give each channel of a source its own topics. When two channels of a source subscribe to the same topic, only the last one receives messages.
 - `ChangeFilter` and `ValueFilter` of MQTT channels are not applied.
@@ -548,8 +547,6 @@ If set to 0 there is no maximum number of values.
 - KeepLast  to collect last values received in read interval each topic, discarding earlier messages (Default)
 
 - KeepAll to collect values received in read interval up to the maximum specified by MaxRetainSize values or not older than specified by MaxRetainPeriod
-
-In the uberjar and in-process modes `KeepLast` currently delivers an internal object instead of the value; use `KeepAll` (see [Known limitations](#known-limitations)).
 
 
 ---
