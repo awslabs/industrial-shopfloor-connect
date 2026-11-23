@@ -1,5 +1,19 @@
 # Release Notes:
 
+## version 2.0.1
+
+**Fixes**
+
+- The [MQTT adapter](./docs/adapters/mqtt.md) subscribes to the topics of a source again after an automatic
+  reconnect to the broker. The session is clean, so the broker forgets the subscriptions when the connection drops.
+  The source used to reconnect and then receive no more messages.
+- With `ReadMode` `KeepLast`, the default, the [MQTT](./docs/adapters/mqtt.md), [NATS](./docs/adapters/nats.md) and
+  [J1939](./docs/adapters/j1939.md) adapters hand on the received value itself. In in-process and uberjar mode,
+  targets used to get an object with the fields `_value`, `timestamp` and `valueCount` instead of the value. IPC
+  mode was not affected.
+
+---
+
 ## version 2.0.0
 
 **Breaking changes**
