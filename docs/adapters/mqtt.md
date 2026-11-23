@@ -66,7 +66,6 @@ From an sfcup install, start the same service from the uberjar: `java -cp "$HOME
 - In the `Sources` of a schedule, list MQTT sources with `["*"]`. A schedule that names MQTT channels receives no values from them.
 - Give each channel of a source its own topics. When two channels of a source subscribe to the same topic, only the last one receives messages.
 - `ChangeFilter` and `ValueFilter` of MQTT channels are not applied.
-- After a short broker disconnect the client reconnects without its subscriptions, and the source receives nothing until SFC is restarted.
 - In the uberjar, one adapter instance serves all MQTT sources with the settings of the MQTT adapter it was first created for, so the `ReadMode`, `MaxRetainSize`, `MaxRetainPeriod` and `ReceivedDataChannel*` settings of other MQTT adapters are ignored.
 - In IPC mode the channel `Name` is ignored; values are named after the topic.
 - For `ssl://` endpoints the adapter trusts the certificate that the broker presents, so the broker is not authenticated.

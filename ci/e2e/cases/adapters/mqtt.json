@@ -2229,10 +2229,10 @@
     },
     {
       "id": "ADP-MQTT-RESTART-01",
-      "title": "After a short connection drop that Paho repairs on its own, the adapter never resubscribes and the source goes silent (known defect)",
+      "title": "After a short connection drop that Paho repairs on its own, the adapter subscribes again and the source keeps receiving",
       "tier": "local-infra",
       "priority": "P1",
-      "intent": "MqttHelper connects with automaticReconnect=true and cleanSession=true, so after a drop Paho reconnects about 1 s later with no subscriptions, and nothing resubscribes: subscriptions are made only when createMqttClient builds a client, and the cache keeps the old client because isValid only checks isConnected. A tcpgate between SFC and the broker drops the connection right after the read that delivered the retained {v:1}; the 3 s read interval means no read sees the client disconnected (asserted: one 'Creating client' line). A new retained {v:2} is then published and three more reads follow: it never arrives, and the broker log shows the same client id reconnecting with c1.",
+      "intent": "MqttHelper connects with automaticReconnect=true and cleanSession=true, so after a drop Paho reconnects about 1 s later and the broker no longer has the subscriptions. The adapter subscribes again when Paho reports the reconnect (subscribeAndKeepSubscribed, at the end of MqttAdapter.kt). It used not to: subscriptions were made only when createMqttClient built a client, and the cache keeps the old client because isValid only checks isConnected, so the source stayed connected and silent. A tcpgate between SFC and the broker drops the connection right after the read that delivered the retained {v:1}; the 3 s read interval means no read sees the client disconnected (asserted: one 'Creating client' line). A new retained {v:2} is then published and three more reads follow: it arrives through the same client, which the log shows subscribing again.",
       "pins": [
         "core/sfc-core/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttHelper.kt:87-89",
         "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:75-81",
@@ -2326,33 +2326,22 @@
           "text": "Creating client for source \"m\"",
           "equals": 1,
           "comment": "precondition: Paho repaired the drop before any read saw it; otherwise the adapter builds a new client and resubscribes"
+        },
+        {
+          "kind": "channelValueSet",
+          "source": "m",
+          "channel": "e2e/rs",
+          "values": [
+            1.0,
+            2.0
+          ]
+        },
+        {
+          "kind": "logContains",
+          "text": "for source \"m\", subscribed to its topics again",
+          "comment": "the reconnect was seen and answered; without it the 2 could only come from a new client"
         }
       ],
-      "knownDefect": {
-        "ref": "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:78-80",
-        "summary": "After Paho's automatic reconnect (clean session) the MQTT adapter never resubscribes, and the cached client still counts as valid, so a source silently stops receiving after any short connection drop",
-        "assertCurrent": [
-          {
-            "kind": "channelValueSet",
-            "source": "m",
-            "channel": "e2e/rs",
-            "values": [
-              1.0
-            ]
-          }
-        ],
-        "assertCorrect": [
-          {
-            "kind": "channelValueSet",
-            "source": "m",
-            "channel": "e2e/rs",
-            "values": [
-              1.0,
-              2.0
-            ]
-          }
-        ]
-      },
       "config": {
         "AWSVersion": "2022-04-02",
         "Name": "ADP-MQTT-RESTART-01",
