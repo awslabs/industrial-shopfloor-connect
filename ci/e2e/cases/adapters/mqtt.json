@@ -1186,13 +1186,13 @@
     },
     {
       "id": "ADP-MQTT-KEEPLAST-IPC-01",
-      "title": "KeepLast over IPC yields the plain value (the cross-mode divergence of ADP-MQTT-KEEPLAST-NESTED-01)",
+      "title": "KeepLast over IPC yields the plain value, as in-process and in the uberjar (ADP-MQTT-KEEPLAST-NESTED-01)",
       "tier": "local-infra",
       "priority": "P1",
       "modes": [
         "ipc"
       ],
-      "intent": "The configuration of ADP-MQTT-KEEPLAST-NESTED-01 in IPC mode. The adapter service returns the same double-wrapped ChannelReadValue, but the gRPC conversion unwraps a ChannelReadValue found as a value (GrpcValueFromNativeExt.kt:402), so sfc-main receives the number. One retained {\"v\": 7} must arrive as the plain Double 7.0; together with the in-process pin this documents that the same configuration produces different records per mode.",
+      "intent": "The configuration of ADP-MQTT-KEEPLAST-NESTED-01 in IPC mode. One retained {\"v\": 7} must arrive as the plain Double 7.0, as it does in the other two modes. The gRPC conversion also unwraps a ChannelReadValue found as a value (GrpcValueFromNativeExt.kt:402), which is why IPC delivered the number even while read() wrapped it twice.",
       "pins": [
         "core/sfc-ipc/src/main/kotlin/com/amazonaws/sfc/ipc/extensions/GrpcValueFromNativeExt.kt:384-409",
         "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:209-227"
@@ -1338,14 +1338,14 @@
     },
     {
       "id": "ADP-MQTT-KEEPLAST-NESTED-01",
-      "title": "KeepLast (the default ReadMode) emits an internal wrapper object instead of the value in-process and in the uberjar (known defect)",
+      "title": "KeepLast (the default ReadMode) emits the value itself in-process and in the uberjar",
       "tier": "local-infra",
       "priority": "P1",
       "modes": [
         "inprocess",
         "uberjar"
       ],
-      "intent": "With ReadMode omitted the adapter keeps only the last value per channel (SourceDataValuesStore), and read() wraps each stored ChannelReadValue in a second ChannelReadValue (MqttAdapter.kt:223-225). The core unwraps nested values only inside lists (ScheduleReader.kt:807-830, the KeepAll path), so in-process and uberjar targets serialise the inner object reflectively instead of the number. One retained {\"v\": 7} gives one record. IPC unwraps the value on the way back, so IPC is covered separately by ADP-MQTT-KEEPLAST-IPC-01.",
+      "intent": "With ReadMode omitted the adapter keeps only the last value per channel (SourceDataValuesStore), and read() hands on the stored ChannelReadValue as it is (MqttAdapter.kt:223-225). It used to wrap it in a second ChannelReadValue; the core unwraps nested values only inside lists (ScheduleReader.kt:807-830, the KeepAll path), so in-process and uberjar targets serialised the inner object ({_value, timestamp, valueCount}) instead of the number. One retained {\"v\": 7} gives one record with the plain Double 7.0. IPC is covered by ADP-MQTT-KEEPLAST-IPC-01.",
       "pins": [
         "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:123-127",
         "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:209-227",
@@ -1384,41 +1384,18 @@
         {
           "kind": "recordCount",
           "equals": 1
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.m.values.e2e/kl.value",
+          "type": "float"
+        },
+        {
+          "kind": "everyRecord",
+          "path": "sources.m.values.e2e/kl.value",
+          "equals": 7.0
         }
       ],
-      "knownDefect": {
-        "ref": "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:224",
-        "summary": "KeepLast read() wraps the stored ChannelReadValue in another ChannelReadValue; only list values are unwrapped by the core, so in-process/uberjar records carry an internal object instead of the value (same pattern in NatsAdapter.kt:264)",
-        "assertCurrent": [
-          {
-            "kind": "keySet",
-            "path": "sources.m.values.e2e/kl.value",
-            "keys": [
-              "_value",
-              "timestamp",
-              "valueCount"
-            ],
-            "comment": "The inner ChannelReadValue, serialised field by field."
-          },
-          {
-            "kind": "everyRecord",
-            "path": "sources.m.values.e2e/kl.value._value",
-            "equals": 7.0
-          }
-        ],
-        "assertCorrect": [
-          {
-            "kind": "everyRecord",
-            "path": "sources.m.values.e2e/kl.value",
-            "type": "float"
-          },
-          {
-            "kind": "everyRecord",
-            "path": "sources.m.values.e2e/kl.value",
-            "equals": 7.0
-          }
-        ]
-      },
       "config": {
         "AWSVersion": "2022-04-02",
         "Name": "ADP-MQTT-KEEPLAST-NESTED-01",
@@ -1521,7 +1498,7 @@
       "modes": [
         "uberjar"
       ],
-      "intent": "MqttAdapter.newInstance keeps one adapter per class (companion 'adapter'), created with the first caller's adapterID and configuration, and every store uses that adapter's ReadMode. In the uberjar all schedules resolve the factory from the system classpath, so the adapter of the first schedule (SA, MqttA, KeepLast) also serves MqttB (KeepAll): mb comes back in KeepLast's wrapper shape (ADP-MQTT-KEEPLAST-NESTED-01) instead of the plain value. Schedules are created in configuration order, so the winner is fixed. In-process mode builds a URLClassLoader per reader and IPC runs one service per adapter, so both honour MqttB's ReadMode (ADP-MQTT-MULTIADAPTER-02).",
+      "intent": "MqttAdapter.newInstance keeps one adapter per class (companion 'adapter'), created with the first caller's adapterID and configuration, and every store uses that adapter's ReadMode. In the uberjar all schedules resolve the factory from the system classpath, so the adapter of the first schedule (SA, MqttA, KeepLast) also serves MqttB (KeepAll): mb is read in KeepLast. The two read modes differ in what they keep, so the timeline publishes 3 and 4 on e2e/mb within one 3 s read interval of SB: KeepAll hands on both, KeepLast only the 4. A 5 published a read later ends the timeline in either outcome. Schedules are created in configuration order, so the winner is fixed. In-process mode builds a URLClassLoader per reader and IPC runs one service per adapter, so both honour MqttB's ReadMode (ADP-MQTT-MULTIADAPTER-02).",
       "pins": [
         "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:85",
         "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:123-127",
@@ -1560,19 +1537,74 @@
           }
         }
       ],
-      "records": 2,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 2
+          },
+          "comment": "both retained copies are read; a read of SB has just happened"
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/publish.py",
+            "mqtt",
+            "--port",
+            "${SFC_E2E_BROKER_PORT}",
+            "--interval-ms",
+            "0",
+            "--message",
+            "e2e/mb",
+            "{\"v\": 3}",
+            "--message",
+            "e2e/mb",
+            "{\"v\": 4}"
+          ]
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 3
+          },
+          "comment": "the next read of SB delivered what the adapter kept of 3 and 4"
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/publish.py",
+            "mqtt",
+            "--port",
+            "${SFC_E2E_BROKER_PORT}",
+            "--interval-ms",
+            "0",
+            "--message",
+            "e2e/mb",
+            "{\"v\": 5}"
+          ]
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 1,
+            "where": {
+              "sources.mb.values.e2e/mb.value": 5.0
+            }
+          },
+          "comment": "5 arrives a read later, so every record of the read before it is written in either outcome"
+        }
+      ],
+      "timeoutSeconds": 60,
       "assert": [
         {
           "kind": "recordCount",
-          "equals": 2,
-          "comment": "one retained copy per source"
-        },
-        {
-          "kind": "recordCount",
           "where": {
-            "schedule": "SB"
+            "schedule": "SA"
           },
-          "equals": 1
+          "equals": 1,
+          "comment": "one retained copy of ma"
         }
       ],
       "knownDefect": {
@@ -1580,27 +1612,31 @@
         "summary": "The MQTT adapter is a per-class singleton: in the uberjar the first ProtocolAdapter created (its ID and ReadMode) serves every MQTT source, so a second adapter's ReadMode, MaxRetainSize and ReceivedDataChannelSize are ignored",
         "assertCurrent": [
           {
-            "kind": "keySet",
-            "where": {
-              "schedule": "SB"
-            },
-            "path": "sources.mb.values.e2e/mb.value",
-            "keys": [
-              "_value",
-              "timestamp",
-              "valueCount"
-            ]
+            "kind": "channelValueSet",
+            "source": "mb",
+            "channel": "e2e/mb",
+            "values": [
+              2.0,
+              4.0,
+              5.0
+            ],
+            "strictTypes": true,
+            "comment": "KeepLast: of 3 and 4, published between two reads, only the later one is kept."
           }
         ],
         "assertCorrect": [
           {
-            "kind": "everyRecord",
-            "where": {
-              "schedule": "SB"
-            },
-            "path": "sources.mb.values.e2e/mb.value",
-            "equals": 2.0,
-            "strictTypes": true
+            "kind": "channelValueSet",
+            "source": "mb",
+            "channel": "e2e/mb",
+            "values": [
+              2.0,
+              3.0,
+              4.0,
+              5.0
+            ],
+            "strictTypes": true,
+            "comment": "KeepAll: both values published between two reads arrive."
           }
         ]
       },
@@ -1623,7 +1659,7 @@
           },
           {
             "Name": "SB",
-            "Interval": 200,
+            "Interval": 3000,
             "Sources": {
               "mb": [
                 "*"
@@ -1726,7 +1762,7 @@
         "inprocess",
         "ipc"
       ],
-      "intent": "The configuration of ADP-MQTT-MULTIADAPTER-01. In-process, SourcesReaderFactory creates a new InstanceFactory, and with JarFiles a new URLClassLoader, for every reader, so each ProtocolAdapter gets its own MqttAdapter singleton; in IPC each adapter is its own service. MqttB's KeepAll is therefore honoured and mb arrives as the plain Double. ma's shape is not asserted: it is KeepLast and differs per mode (ADP-MQTT-KEEPLAST-NESTED-01, -IPC-01). If class loaders were ever shared in-process, the uberjar defect would appear here too.",
+      "intent": "The configuration of ADP-MQTT-MULTIADAPTER-01. In-process, SourcesReaderFactory creates a new InstanceFactory, and with JarFiles a new URLClassLoader, for every reader, so each ProtocolAdapter gets its own MqttAdapter singleton; in IPC each adapter is its own service. MqttB's KeepAll is therefore honoured: of 3 and 4, published on e2e/mb within one read interval of SB, both arrive, where KeepLast would keep only the 4. If class loaders were ever shared in-process, the uberjar defect would appear here too.",
       "pins": [
         "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:85",
         "adapters/mqtt/src/main/kotlin/com/amazonaws/sfc/mqtt/MqttAdapter.kt:123-127",
@@ -1765,20 +1801,87 @@
           }
         }
       ],
-      "records": 2,
+      "steps": [
+        {
+          "wait": {
+            "sink": "main",
+            "records": 2
+          },
+          "comment": "both retained copies are read; a read of SB has just happened"
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/publish.py",
+            "mqtt",
+            "--port",
+            "${SFC_E2E_BROKER_PORT}",
+            "--interval-ms",
+            "0",
+            "--message",
+            "e2e/mb",
+            "{\"v\": 3}",
+            "--message",
+            "e2e/mb",
+            "{\"v\": 4}"
+          ]
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 3
+          },
+          "comment": "the next read of SB delivered what the adapter kept of 3 and 4"
+        },
+        {
+          "do": "run",
+          "argv": [
+            "python",
+            "${COUNTERPARTS}/publish.py",
+            "mqtt",
+            "--port",
+            "${SFC_E2E_BROKER_PORT}",
+            "--interval-ms",
+            "0",
+            "--message",
+            "e2e/mb",
+            "{\"v\": 5}"
+          ]
+        },
+        {
+          "wait": {
+            "sink": "main",
+            "records": 1,
+            "where": {
+              "sources.mb.values.e2e/mb.value": 5.0
+            }
+          },
+          "comment": "5 arrives a read later, so every record of the read before it is written in either outcome"
+        }
+      ],
+      "timeoutSeconds": 60,
       "assert": [
         {
           "kind": "recordCount",
-          "equals": 2
+          "where": {
+            "schedule": "SA"
+          },
+          "equals": 1,
+          "comment": "one retained copy of ma"
         },
         {
-          "kind": "everyRecord",
-          "where": {
-            "schedule": "SB"
-          },
-          "path": "sources.mb.values.e2e/mb.value",
-          "equals": 2.0,
-          "strictTypes": true
+          "kind": "channelValueSet",
+          "source": "mb",
+          "channel": "e2e/mb",
+          "values": [
+            2.0,
+            3.0,
+            4.0,
+            5.0
+          ],
+          "strictTypes": true,
+          "comment": "KeepAll: both values published between two reads arrive."
         }
       ],
       "config": {
@@ -1800,7 +1903,7 @@
           },
           {
             "Name": "SB",
-            "Interval": 200,
+            "Interval": 3000,
             "Sources": {
               "mb": [
                 "*"

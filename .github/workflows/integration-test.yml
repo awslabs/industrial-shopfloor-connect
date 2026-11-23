@@ -107,6 +107,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           # The checked-out code must not find this repository's token in .git/config.
           persist-credentials: false
+          allow-unsafe-pr-checkout: true
           # settings.gradle.kts derives the version from `git describe --tags`, and start-build.sh ships
           # .git so CodeBuild sees the same tags.
           fetch-depth: 0
