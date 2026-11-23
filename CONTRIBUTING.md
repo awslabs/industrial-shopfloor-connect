@@ -89,7 +89,7 @@ A change to the docs or the examples follows these rules:
   is `sfcx` on every OS.
 * A new or changed example needs its row in the [examples catalog](docs/examples/README.md), a "Docs used" line at
   the end of its README, and an entry in the **Examples:** line of each component page it uses.
-* Add a bullet to [RELEASE NOTES.md](RELEASE%20NOTES.md).
+* Add a bullet to [RELEASE_NOTES.md](RELEASE_NOTES.md).
 
 
 ## Finding contributions to work on
